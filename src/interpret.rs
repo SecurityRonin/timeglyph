@@ -265,15 +265,24 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
     for (label, value) in byte_ints(&bytes) {
         out.push((label, interpret_int(value)));
     }
-    // Packed formats have an ON-DISK byte order distinct from a linear integer:
-    // FAT/DOS stores a date word then a time word, each little-endian. Decode that
-    // layout explicitly so an analyst with raw bytes gets the right instant.
+    // Packed formats have an ON-DISK byte order distinct from a linear integer,
+    // and FAT is doubly ambiguous: the DOS packed convention is date-word then
+    // time-word, but a FAT DIRECTORY entry stores time-word then date-word (each
+    // little-endian). The same 4 bytes therefore mean two different instants —
+    // surface BOTH, clearly labelled, rather than silently swap date and time.
     if let Some(four) = bytes.get(..4).and_then(|s| <[u8; 4]>::try_from(s).ok()) {
-        let date = u16::from_le_bytes([four[0], four[1]]);
-        let time = u16::from_le_bytes([four[2], four[3]]);
-        let packed = (i64::from(date) << 16) | i64::from(time);
-        if let Some(c) = decode_one("fat", packed) {
-            out.push(("FAT/DOS on-disk (date|time LE words)".to_string(), vec![c]));
+        let lo = u16::from_le_bytes([four[0], four[1]]);
+        let hi = u16::from_le_bytes([four[2], four[3]]);
+        // date-word first (DOS packed): date = bytes[0..2], time = bytes[2..4].
+        if let Some(c) = decode_one("fat", (i64::from(lo) << 16) | i64::from(hi)) {
+            out.push(("FAT/DOS bytes date|time (LE words)".to_string(), vec![c]));
+        }
+        // time-word first (FAT directory order): time = bytes[0..2], date = bytes[2..4].
+        if let Some(c) = decode_one("fat", (i64::from(hi) << 16) | i64::from(lo)) {
+            out.push((
+                "FAT/DOS bytes time|date (LE words, directory order)".to_string(),
+                vec![c],
+            ));
         }
     }
     Ok(out)

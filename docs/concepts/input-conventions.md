@@ -40,14 +40,14 @@ silent errors.
 
 ### The FAT case (a worked example)
 
-FAT/DOS packs a 16-bit date word and a 16-bit time word. timeglyph's `decode fat`
-takes a packed integer with the date in the **high** word; on disk the four bytes
-are stored as date-word-then-time-word, **each little-endian**. The byte string
-`a45a597a` therefore decodes (on disk) as date `0x5AA4`, time `0x7A59` →
-`2025-05-04 15:18:50`. Feed those same bytes as a naïve big-endian integer and you
-get a *different, wrong, plausible* date. timeglyph's `hex` path decodes the
-on-disk packed layout explicitly and labels it, so the analyst sees the right
-instant and the assumption behind it.
+FAT/DOS packs a 16-bit date word and a 16-bit time word. The DOS packed
+convention is date-word-then-time-word, but a FAT **directory entry** stores
+**time-word then date-word** (each little-endian). The same four bytes therefore
+mean two different instants depending on word order — feeding raw directory bytes
+under the DOS order silently *swaps date and time* into a plausible wrong date.
+timeglyph's `hex` path decodes **both** orders and labels each
+(`date|time` vs `time|date (directory order)`), so the analyst chooses rather than
+being silently misled.
 
 ## Things a naïve design gets wrong
 
