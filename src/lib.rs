@@ -136,7 +136,12 @@ pub enum Strategy {
         /// Number of low bits to discard before reading the ms timestamp.
         shift_bits: u32,
     },
-    // TODO(HANDOFF): Packed(fn) for FAT/DOS/SYSTEMTIME/exFAT bit-packed structs;
+    /// A bit-packed civil datetime (FAT/DOS, SYSTEMTIME, exFAT): the integer is
+    /// not a linear offset but packed calendar fields, so decoding needs a
+    /// dedicated unpacker. The function returns the instant; tz semantics (e.g.
+    /// FAT's LOCAL naive time) are carried on the [`Format`] entry.
+    Packed(fn(i64) -> Result<PosixNs, ChronoError>),
+    // TODO(HANDOFF): SYSTEMTIME / exFAT (offset field) packed layouts;
     // ASN.1 / EXIF / RFC-2822 string forms.
 }
 
@@ -219,6 +224,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
+            Strategy::Packed(decode) => decode(value),
             Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format decoded as integer",
                 value: i128::from(value),
@@ -235,7 +241,7 @@ impl Format {
                 let ns = (value * unit.nanos() as f64).round() as i128;
                 Ok(PosixNs(ns + epoch_ns))
             }
-            Strategy::LinearInt { .. } | Strategy::EmbeddedMillis { .. } => {
+            Strategy::LinearInt { .. } | Strategy::EmbeddedMillis { .. } | Strategy::Packed(_) => {
                 Err(ChronoError::OutOfRange {
                     what: "integer format decoded as float",
                     value: 0,
@@ -270,6 +276,10 @@ impl Format {
                 // Encoding would have to invent the worker/sequence low bits; a
                 // round-trip is not defined for ID schemes.
                 what: "embedded-id format cannot be re-encoded from an instant",
+                value: 0,
+            }),
+            Strategy::Packed(_) => Err(ChronoError::OutOfRange {
+                what: "packed format cannot be re-encoded from an instant",
                 value: 0,
             }),
         }

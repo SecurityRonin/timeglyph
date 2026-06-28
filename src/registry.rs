@@ -10,7 +10,41 @@
 //! cross-validated against the MIT `time_decode` oracle and each spec's worked
 //! example (HANDOFF §"Validation"). NEVER sourced from decompiling DCode.
 
-use crate::{Format, LeapSemantics::PosixIgnored, Strategy, TzSemantics::Utc, Unit};
+use crate::{
+    ChronoError, Format,
+    LeapSemantics::PosixIgnored,
+    PosixNs, Strategy,
+    TzSemantics::{LocalNaive, Utc},
+    Unit,
+};
+
+/// Unpack a 32-bit FAT/DOS packed date+time into an instant. The high 16 bits
+/// are the date word (`(year-1980) << 9 | month << 5 | day`), the low 16 are the
+/// time word (`hour << 11 | minute << 5 | second/2`, i.e. 2-second resolution).
+/// FAT stores LOCAL time with no offset; the value is read as a naive civil
+/// datetime (the [`Format`] carries `LocalNaive` so callers are not misled).
+/// Invalid packed fields (month 0, day 0, …) surface as an error, never a panic.
+fn decode_fat_dos(value: i64) -> Result<PosixNs, ChronoError> {
+    let packed = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "FAT/DOS packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    let date = (packed >> 16) as u16;
+    let time = (packed & 0xFFFF) as u16;
+    let year = 1980 + ((date >> 9) & 0x7F) as i16;
+    let month = ((date >> 5) & 0x0F) as i8;
+    let day = (date & 0x1F) as i8;
+    let hour = ((time >> 11) & 0x1F) as i8;
+    let minute = ((time >> 5) & 0x3F) as i8;
+    let second = ((time & 0x1F) * 2) as i8;
+    let dt = jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0)
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    let ts = dt
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .map_err(|e| ChronoError::Render(e.to_string()))?
+        .timestamp();
+    Ok(PosixNs(ts.as_nanosecond()))
+}
 
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
@@ -229,6 +263,18 @@ pub static FORMATS: &[Format] = &[
         },
         citation: "Discord developer docs (epoch 1420070400000 ms, 22-bit shift)",
         tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "fat",
+        label: "FAT/DOS packed date+time (LOCAL time)",
+        family: "FAT/exFAT, ZIP, DOS",
+        strategy: Strategy::Packed(decode_fat_dos),
+        citation: "Microsoft FAT spec / ECMA-107 (DOS date/time fields)",
+        // FAT stores wall-clock LOCAL time with NO offset — the rendered instant
+        // is naive and must not be assumed UTC.
+        tz: LocalNaive,
         leap: PosixIgnored,
         plausible: W,
     },

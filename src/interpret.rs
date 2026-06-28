@@ -130,7 +130,7 @@ fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
                 (past as f64 / TWO_YEARS_NS as f64).min(1.0)
             }
         }
-        Strategy::LinearInt { .. } | Strategy::LinearFloat { .. } => 1.0,
+        Strategy::LinearInt { .. } | Strategy::LinearFloat { .. } | Strategy::Packed(_) => 1.0,
     }
 }
 
@@ -143,6 +143,8 @@ fn granularity_match(strategy: Strategy, value: i64) -> f64 {
     let unit: Unit = match strategy {
         Strategy::LinearInt { unit, .. } | Strategy::LinearFloat { unit, .. } => unit,
         Strategy::EmbeddedMillis { .. } => Unit::Millis,
+        // Packed civil fields have no linear sub-second unit to mismatch against.
+        Strategy::Packed(_) => return 1.0,
     };
     let ssd = unit.sub_second_digits();
     if ssd == 0 {
