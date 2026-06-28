@@ -34,6 +34,15 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Leap-aware time scales (GPS/TAI), behind the `leap` feature. hifitime carries a
+# built-in leap-second table and is the ONE place we do NOT reinvent (leap math
+# is solved; rolling our own would be wrong). MPL-2.0 (allowed in deny.toml).
+hifitime = { version = "4.3", optional = true }
+
+[features]
+# Off by default: the POSIX-offset majority needs no leap math. Enable for the
+# GPS/TAI/NTP family (`src/leap.rs`).
+leap = ["dep:hifitime"]
 
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and
