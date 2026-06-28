@@ -184,3 +184,35 @@ fn fat_dos_packed_local_time() {
     assert_decodes("fat", 2_162_688, "1980-01-01T00:00:00");
     assert_decodes("fat", 1_391_422_645, "2021-07-15T13:37:42");
 }
+
+// --- Tier-1 spec-worked-example anchors (third party authored value AND answer).
+// See docs/validation.md for the full differential battery and provenance.
+
+#[test]
+fn hfsplus_max_date_tn1150() {
+    // Apple TN1150 states verbatim that the maximum representable HFS+ date is
+    // "February 6, 2040 at 06:28:15 GMT" — the u32-seconds overflow. The value
+    // and the answer are both Apple's, so this is a tier-1 anchor (and the same
+    // result is produced by the independent `time-decode --hfsdec 4294967295`).
+    assert_decodes("hfsplus", 4_294_967_295, "2040-02-06T06:28:15");
+}
+
+#[test]
+fn ole_spec_worked_examples() {
+    // Microsoft's VariantTimeToSystemTime documentation states verbatim:
+    // "2.0 represents January 1, 1900 … 2.5 represents noon on January 1, 1900."
+    // Value and answer are Microsoft's → tier-1.
+    let f = format("ole").unwrap();
+    assert!(f
+        .decode_float(2.0)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("1900-01-01T00:00:00"));
+    assert!(f
+        .decode_float(2.5)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("1900-01-01T12:00:00"));
+}
