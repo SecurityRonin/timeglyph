@@ -11,10 +11,10 @@ fn run(args: &[&str]) -> (String, i32) {
         .args(args)
         .output()
         .unwrap();
-    (
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-        out.status.code().unwrap_or(-1),
-    )
+    // Combine stdout+stderr so tests can assert on warnings too.
+    let mut combined = String::from_utf8_lossy(&out.stdout).into_owned();
+    combined.push_str(&String::from_utf8_lossy(&out.stderr));
+    (combined, out.status.code().unwrap_or(-1))
 }
 
 #[test]
@@ -53,6 +53,21 @@ fn encode_subcommand() {
 fn list_subcommand() {
     let (out, _) = run(&["list"]);
     assert!(out.contains("filetime"), "{out}");
+}
+
+#[test]
+fn decode_of_a_sentinel_warns_and_exits_ambiguous() {
+    // `decode filetime 0` must not be a confident success — it is a sentinel.
+    let (out, code) = run(&["decode", "filetime", "0"]);
+    assert_eq!(code, 2, "decode of sentinel value 0 should exit 2: {out}");
+    assert!(out.to_lowercase().contains("sentinel"), "{out}");
+}
+
+#[test]
+fn hex_of_sentinel_bytes_exits_ambiguous() {
+    // all-zero bytes decode to epoch sentinels under every width.
+    let (_out, code) = run(&["hex", "00000000"]);
+    assert_eq!(code, 2, "hex of all-zero bytes should exit 2 (ambiguous)");
 }
 
 #[test]
