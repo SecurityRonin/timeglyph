@@ -24,3 +24,20 @@ fn fat_on_disk_hex_decodes_to_fat() {
         "expected a FAT on-disk candidate from a45a597a: {groups:?}"
     );
 }
+
+#[test]
+fn fat_hex_offers_both_word_orders() {
+    // The same 4 bytes are ambiguous: the DOS packed convention is date-word then
+    // time-word, but a FAT DIRECTORY entry stores time-word then date-word. Feeding
+    // raw directory bytes under the wrong order silently swaps date and time, so
+    // BOTH orders must be surfaced and clearly labelled (let the analyst choose).
+    let groups = interpret::interpret_hex("a45a597a").unwrap();
+    let date_time = groups
+        .iter()
+        .any(|(l, c)| l.contains("date|time") && c.iter().any(|x| x.format_id == "fat"));
+    let time_date = groups
+        .iter()
+        .any(|(l, c)| l.contains("time|date") && c.iter().any(|x| x.format_id == "fat"));
+    assert!(date_time, "missing date|time order: {groups:?}");
+    assert!(time_date, "missing time|date (directory) order: {groups:?}");
+}
