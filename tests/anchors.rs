@@ -108,3 +108,53 @@ fn hex_decode_le_be() {
         "LE bytes should yield a 2020 FILETIME candidate"
     );
 }
+
+// --- Catalog build-out anchors (HANDOFF §5a) ---------------------------------
+
+#[test]
+fn postgres_micros_since_2000() {
+    // PostgreSQL stores timestamps as int64 microseconds since 2000-01-01 UTC
+    // (POSTGRES_EPOCH_JDATE, src/include/datatype/timestamp.h). Value 0 = epoch;
+    // 631_152_000_000_000 µs (== 20 years) == 2020-01-01.
+    assert_decodes("postgres", 0, "2000-01-01T00:00:00");
+    assert_decodes("postgres", 631_152_000_000_000, "2020-01-01T00:00:00");
+}
+
+#[test]
+fn unix_nanoseconds() {
+    // Nanoseconds since the Unix epoch (Go time.UnixNano; APFS on-disk).
+    assert_decodes("unix_ns", 0, "1970-01-01T00:00:00");
+    assert_decodes("unix_ns", 1_577_836_800_000_000_000, "2020-01-01T00:00:00");
+}
+
+#[test]
+fn cocoa_float_signed_double() {
+    // CFAbsoluteTime is a SIGNED f64 of seconds since 2001-01-01 (negative =
+    // before 2001). 0.0 == 2001; -978_307_200.0 s back == 1970-01-01.
+    let f = format("cocoa_float").unwrap();
+    assert!(f
+        .decode_float(0.0)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("2001-01-01T00:00:00"));
+    assert!(f
+        .decode_float(-978_307_200.0)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("1970-01-01T00:00:00"));
+}
+
+#[test]
+fn sqlite_julian_day_float() {
+    // SQLite julianday(): days since noon, 24 Nov 4714 BC (proleptic Gregorian).
+    // J2000.0 = JD 2451545.0 = 2000-01-01 12:00:00 (chosen at noon to avoid a
+    // midnight-boundary flake from inherent f64 Julian-day precision loss).
+    let f = format("sqlite_julian").unwrap();
+    let rendered = f.decode_float(2_451_545.0).unwrap().to_rfc3339().unwrap();
+    assert!(
+        rendered.starts_with("2000-01-01T12:00:00"),
+        "JD 2451545.0 = {rendered:?}, expected 2000-01-01T12:00:00"
+    );
+}
