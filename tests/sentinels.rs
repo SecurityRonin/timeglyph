@@ -51,3 +51,17 @@ fn real_value_is_not_a_sentinel() {
         "a genuine value must not be flagged sentinel"
     );
 }
+
+#[test]
+fn sentinel_reason_distinguishes_possible_and_known() {
+    // Generic value sentinels (0, -1) are "possible"; a format-specific magic
+    // value like 0x7FFFFFFFFFFFFFFF ('never') is a "known" sentinel.
+    assert!(interpret::sentinel_reason(0)
+        .unwrap()
+        .to_lowercase()
+        .contains("possible"));
+    assert!(interpret::sentinel_reason(i64::MAX)
+        .unwrap()
+        .to_lowercase()
+        .contains("known"));
+}

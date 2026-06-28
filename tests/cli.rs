@@ -77,3 +77,16 @@ fn sentinel_value_signals_ambiguity_via_exit_code() {
     let (_out, code) = run(&["0"]);
     assert_eq!(code, 2, "sentinel value 0 should exit 2 (ambiguous)");
 }
+
+#[test]
+fn identify_of_never_sentinel_surfaces_a_note() {
+    // 0x7FFFFFFFFFFFFFFF ('never') renders out of civil range for every format,
+    // so there are no candidates — but identify must still surface the sentinel
+    // and exit 2 rather than print an unhelpful "no interpretation".
+    let (out, code) = run(&["9223372036854775807"]);
+    assert_eq!(code, 2, "{out}");
+    assert!(
+        out.to_lowercase().contains("sentinel") || out.to_lowercase().contains("never"),
+        "{out}"
+    );
+}
