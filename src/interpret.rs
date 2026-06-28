@@ -417,6 +417,9 @@ fn split_tz(s: &str) -> Option<(String, i64, bool)> {
 }
 
 /// Build an instant from civil fields at a fixed UTC offset (panic-free).
+// A flat civil-fields helper: the broken-out arguments mirror the parsed digit
+// groups one-to-one, which is clearer here than an intermediate struct.
+#[allow(clippy::too_many_arguments)]
 fn civil_to_posix(
     y: i16,
     mo: i8,
@@ -424,48 +427,86 @@ fn civil_to_posix(
     h: i8,
     mi: i8,
     s: i8,
+    subsec_nanos: i32,
     offset_secs: i64,
 ) -> Option<PosixNs> {
-    let dt = jiff::civil::DateTime::new(y, mo, d, h, mi, s, 0).ok()?;
+    let dt = jiff::civil::DateTime::new(y, mo, d, h, mi, s, subsec_nanos).ok()?;
     let off = jiff::tz::Offset::from_seconds(i32::try_from(offset_secs).ok()?).ok()?;
     let zoned = dt.to_zoned(jiff::tz::TimeZone::fixed(off)).ok()?;
     Some(PosixNs(zoned.timestamp().as_nanosecond()))
 }
 
-/// `YYYYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 GeneralizedTime.
-fn parse_asn1_generalizedtime(s: &str) -> Option<(PosixNs, bool)> {
-    let (d, off, had_tz) = split_tz(s)?;
-    if d.len() != 14 || !d.bytes().all(|c| c.is_ascii_digit()) {
+/// Convert an ASN.1 fractional-second digit string to nanoseconds (the first 9
+/// digits, right-padded; further digits truncated).
+fn frac_to_nanos(frac: &str) -> i32 {
+    let mut t: String = frac.chars().take(9).collect();
+    while t.len() < 9 {
+        t.push('0');
+    }
+    t.parse().unwrap_or(0)
+}
+
+/// Shared ASN.1 time parser (ITU-T X.680). `year_digits` is 4 (GeneralizedTime)
+/// or 2 (UTCTime, RFC 5280 pivot). Accepts omitted minutes/seconds and, when
+/// seconds are present, a fractional second (`.fff` / `,fff`).
+fn parse_asn1(s: &str, year_digits: usize) -> Option<(PosixNs, bool)> {
+    let (core, off, had_tz) = split_tz(s)?;
+    let (digits, frac) = match core.split_once(['.', ',']) {
+        Some((d, f)) => (d.to_string(), Some(f.to_string())),
+        None => (core, None),
+    };
+    if !digits.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let instant = civil_to_posix(
-        d[0..4].parse().ok()?,
-        d[4..6].parse().ok()?,
-        d[6..8].parse().ok()?,
-        d[8..10].parse().ok()?,
-        d[10..12].parse().ok()?,
-        d[12..14].parse().ok()?,
-        off,
-    )?;
+    let year = if year_digits == 4 {
+        digits.get(0..4)?.parse().ok()?
+    } else {
+        let yy: i16 = digits.get(0..2)?.parse().ok()?;
+        if yy < 50 {
+            2000 + yy
+        } else {
+            1900 + yy
+        }
+    };
+    let base = year_digits;
+    let len = digits.len();
+    // Required: month, day, hour. Optional: minute, second.
+    let mo = digits.get(base..base + 2)?.parse().ok()?;
+    let d = digits.get(base + 2..base + 4)?.parse().ok()?;
+    let h = digits.get(base + 4..base + 6)?.parse().ok()?;
+    let sec_present = len == base + 10;
+    let min_present = sec_present || len == base + 8;
+    if len != base + 6 && len != base + 8 && len != base + 10 {
+        return None;
+    }
+    let mi = if min_present {
+        digits.get(base + 6..base + 8)?.parse().ok()?
+    } else {
+        0
+    };
+    let s = if sec_present {
+        digits.get(base + 8..base + 10)?.parse().ok()?
+    } else {
+        0
+    };
+    // A fraction is only meaningful when seconds are present.
+    let subsec = match frac {
+        Some(f) if sec_present && !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()) => {
+            frac_to_nanos(&f)
+        }
+        Some(_) => return None,
+        None => 0,
+    };
+    let instant = civil_to_posix(year, mo, d, h, mi, s, subsec, off)?;
     Some((instant, had_tz))
 }
 
-/// `YYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 UTCTime; 2-digit year per RFC 5280.
+/// ASN.1 GeneralizedTime (4-digit year).
+fn parse_asn1_generalizedtime(s: &str) -> Option<(PosixNs, bool)> {
+    parse_asn1(s, 4)
+}
+
+/// ASN.1 UTCTime (2-digit year; RFC 5280 pivot).
 fn parse_asn1_utctime(s: &str) -> Option<(PosixNs, bool)> {
-    let (d, off, had_tz) = split_tz(s)?;
-    if d.len() != 12 || !d.bytes().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    let yy: i16 = d[0..2].parse().ok()?;
-    let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
-    let instant = civil_to_posix(
-        year,
-        d[2..4].parse().ok()?,
-        d[4..6].parse().ok()?,
-        d[6..8].parse().ok()?,
-        d[8..10].parse().ok()?,
-        d[10..12].parse().ok()?,
-        off,
-    )?;
-    Some((instant, had_tz))
+    parse_asn1(s, 2)
 }
