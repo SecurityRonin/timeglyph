@@ -172,3 +172,15 @@ fn snowflake_and_discord_embedded_millis() {
     assert_decodes("discord", 0, "2015-01-01T00:00:00");
     assert_decodes("discord", 175_928_847_299_117_063, "2016-04-30T11:18:25");
 }
+
+#[test]
+fn fat_dos_packed_local_time() {
+    // FAT/DOS pack a date word (high 16 bits: year-1980<<9 | month<<5 | day) and
+    // a time word (low 16 bits: hour<<11 | minute<<5 | second/2) as LOCAL time.
+    // Values computed independently (Python bit-packing):
+    //   1980-01-01 00:00:00 → 0x00210000 = 2_162_688 (the FAT epoch / minimum date)
+    //   2021-07-15 13:37:42 → 0x52EF6CB5 = 1_391_422_645
+    // Rendered as naive civil time (no offset is stored — see tz semantics).
+    assert_decodes("fat", 2_162_688, "1980-01-01T00:00:00");
+    assert_decodes("fat", 1_391_422_645, "2021-07-15T13:37:42");
+}
