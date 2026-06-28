@@ -10,7 +10,7 @@
 //! representable validity, configured-case-window, granularity match, byte-width
 //! match, endian match, artifact-context hint, neighbour-monotonicity.
 
-use crate::{registry::FORMATS, ChronoError, PosixNs, Strategy};
+use crate::{registry::FORMATS, ChronoError, Format, PosixNs, Strategy, Unit};
 
 /// One candidate interpretation of a value. Carries its score *components* and
 /// *assumptions*, not just a rank — transparency over false confidence.
@@ -41,26 +41,24 @@ pub struct Candidate {
 pub fn interpret_int(value: i64) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
     for f in FORMATS {
-        let Strategy::LinearInt { .. } = f.strategy else {
-            continue; // float/packed formats are not numeric-int auto-detected here
-        };
+        // Any integer-decodable strategy is a candidate; float-only strategies
+        // return Err here and are skipped (they are decoded via --from).
         let Ok(instant) = f.decode_int(value) else {
-            continue; // overflow → not a valid reading under this format
+            continue;
         };
-        let rendered = instant.to_rfc3339();
-        if rendered.is_none() {
+        let Some(rendered) = instant.to_rfc3339() else {
             continue; // outside civil range → not a usable reading
-        }
-        let in_window = instant.0 >= f.plausible.0 && instant.0 < f.plausible.1;
-        let score = f64::from(u8::from(in_window));
+        };
+        let components = score_components(f, value, instant);
+        let score = overall_score(&components);
         out.push(Candidate {
             format_id: f.id,
             label: f.label,
             citation: f.citation,
             instant,
-            rendered,
+            rendered: Some(rendered),
             score,
-            components: vec![("in_plausible_window", score)],
+            components,
             assumptions: vec![format!("assumed format: {} [{}]", f.label, f.citation)],
         });
     }
@@ -71,6 +69,73 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
             .then_with(|| a.format_id.cmp(b.format_id))
     });
     out
+}
+
+/// The named plausibility components for one reading (HANDOFF §5b). Each is in
+/// `[0, 1]` and emitted verbatim on the `Candidate` so a reviewer can audit the
+/// rank instead of trusting an opaque number. NEVER a filter — a low component
+/// lowers the rank, it does not hide the reading.
+fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static str, f64)> {
+    // representable: surfaced only when civil-renderable, so always 1.0 here —
+    // emitted explicitly so the component set is complete and self-describing.
+    let representable = 1.0;
+    let in_window = f64::from(u8::from(
+        instant.0 >= f.plausible.0 && instant.0 < f.plausible.1,
+    ));
+    let granularity = granularity_match(f.strategy, value);
+    vec![
+        ("representable", representable),
+        ("in_window", in_window),
+        ("granularity_match", granularity),
+    ]
+}
+
+/// How well the raw value's sub-second resolution fits the format's unit. A
+/// whole-second value read as nanoseconds is suspiciously coarse (`0.0`); a
+/// value carrying real sub-second digits fits perfectly (`1.0`). Coarse units
+/// (seconds/days) never penalise. This is the core seconds-vs-ms-vs-µs-vs-ns
+/// disambiguation, expressed structurally rather than by "looks human".
+fn granularity_match(strategy: Strategy, value: i64) -> f64 {
+    let unit: Unit = match strategy {
+        Strategy::LinearInt { unit, .. } | Strategy::LinearFloat { unit, .. } => unit,
+    };
+    let ssd = unit.sub_second_digits();
+    if ssd == 0 {
+        return 1.0;
+    }
+    let tz = trailing_zeros_base10(value).min(ssd);
+    1.0 - f64::from(tz) / f64::from(ssd)
+}
+
+/// Count of trailing base-10 zeros of `value` (0 for the value `0` itself).
+/// Uses `unsigned_abs` so `i64::MIN` cannot panic.
+fn trailing_zeros_base10(value: i64) -> u32 {
+    let mut n = value.unsigned_abs();
+    if n == 0 {
+        return 0;
+    }
+    let mut z = 0;
+    while n.is_multiple_of(10) {
+        z += 1;
+        n /= 10;
+    }
+    z
+}
+
+/// Weighted mean of the named components. `in_window` carries double weight (it
+/// is the dominant prior on which readings to surface first); the others weigh
+/// one. The result is the overall `[0, 1]` rank.
+fn overall_score(components: &[(&'static str, f64)]) -> f64 {
+    let weight = |name: &str| if name == "in_window" { 2.0 } else { 1.0 };
+    let (num, den) = components.iter().fold((0.0, 0.0), |(num, den), (n, v)| {
+        let w = weight(n);
+        (num + w * v, den + w)
+    });
+    if den == 0.0 {
+        0.0
+    } else {
+        num / den
+    }
 }
 
 /// Decode hex bytes as little- and big-endian integers of common widths, then

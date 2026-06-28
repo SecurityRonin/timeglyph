@@ -91,6 +91,21 @@ impl Unit {
             Self::Days => 86_400 * 1_000_000_000,
         }
     }
+
+    /// Decimal digits of *sub-second* resolution this unit can express
+    /// (seconds/days → 0, millis → 3, micros → 6, 100-nanos → 7, nanos → 9).
+    /// Drives auto-detect granularity scoring: a whole-second raw value is a
+    /// poor fit for a finer unit, so it is penalised, never hidden.
+    #[must_use]
+    pub const fn sub_second_digits(self) -> u32 {
+        match self {
+            Self::Seconds | Self::Days => 0,
+            Self::Millis => 3,
+            Self::Micros => 6,
+            Self::HundredNanos => 7,
+            Self::Nanos => 9,
+        }
+    }
 }
 
 /// How a stored value maps to an instant.

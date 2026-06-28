@@ -43,9 +43,9 @@ fn whole_second_value_is_a_poor_fit_for_a_sub_second_unit() {
         "whole-second ms granularity = {g_round}, want < 0.5"
     );
 
-    // 1_577_836_801_500 ms == 2020-01-01T00:00:01.500 — carries real sub-second
-    // resolution, so it fits the ms unit perfectly.
-    let real_ms = interpret::interpret_int(1_577_836_801_500);
+    // 1_577_836_801_501 ms == 2020-01-01T00:00:01.501 — carries real sub-second
+    // resolution (no trailing zeros), so it fits the ms unit perfectly.
+    let real_ms = interpret::interpret_int(1_577_836_801_501);
     let g_real = component(&real_ms, "unix_ms", "granularity_match");
     assert!(
         (g_real - 1.0).abs() < 1e-9,
@@ -57,7 +57,7 @@ fn whole_second_value_is_a_poor_fit_for_a_sub_second_unit() {
 fn granularity_lifts_the_better_fitting_reading() {
     // Same magnitude, different sub-second content: the higher-resolution value
     // must score the ms reading at least as high as the whole-second value does.
-    let real = interpret::interpret_int(1_577_836_801_500);
+    let real = interpret::interpret_int(1_577_836_801_501);
     let round = interpret::interpret_int(1_577_836_800_000);
     let s_real = real
         .iter()
