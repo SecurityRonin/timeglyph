@@ -22,6 +22,8 @@ jobs:
       # Pin to the same toolchain as rust-toolchain.toml (timeglyph is an app:
       # declared MSRV == the pinned toolchain). Do not float `toolchain: stable`.
       - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
       - run: cargo test --all-features
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --check
