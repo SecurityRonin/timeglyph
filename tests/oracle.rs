@@ -1,11 +1,12 @@
 //! Differential validation against an INDEPENDENT third-party oracle.
 //!
 //! `time-decode` (Corey Forman / digitalsleuth, MIT) is a separate
-//! implementation of the same forensic timestamp formats. Agreement between it
-//! and `timeglyph` raises each anchor from tier-2 (ground truth derived from the
-//! documented construction) to **tier-1** (an independent third party's tool
-//! confirms the answer). See `docs/validation.md` for the full battery, tiers,
-//! and provenance.
+//! implementation of the same forensic timestamp formats. Every input below is
+//! `time-decode`'s OWN published example value for that format (so the input is
+//! authored by an independent third party, not chosen by us), and the expected
+//! answer is `time-decode`'s output. timeglyph agreeing on the third party's
+//! value AND answer is **tier-1** differential validation. See
+//! `docs/validation.md` for the full battery, tiers, and provenance.
 //!
 //! Env-gated (fleet standard): the test SKIPS cleanly when `time-decode` is not
 //! on `PATH`, so it never breaks a normal build. To run it:
@@ -50,7 +51,8 @@ fn civil(rfc3339: &str) -> String {
     rfc3339.replacen('T', " ", 1).chars().take(19).collect()
 }
 
-/// Assert the oracle agrees with an already-rendered timeglyph instant.
+/// Assert the oracle agrees with an already-rendered timeglyph instant (to the
+/// second; sub-second is compared separately by the unit-level anchors).
 fn agree(label: &str, tg_rfc3339: &str, flag: &str, value: &str) {
     let want = civil(tg_rfc3339);
     let got = oracle(flag, value).unwrap_or_else(|| panic!("{label}: no oracle output"));
@@ -81,44 +83,43 @@ fn differential_battery_posix_family() {
         eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
         return;
     }
-    // (timeglyph id, value) ↔ (oracle flag, oracle input). The oracle input may
-    // differ in encoding from timeglyph's (documented in validation.md).
     agree(
         "unix",
-        &render_int("unix", 1_577_836_800),
+        &render_int("unix", 1_746_371_930),
         "--unixsec",
-        "1577836800",
+        "1746371930",
     );
     agree(
         "unix_ms",
-        &render_int("unix_ms", 1_577_836_800_000),
+        &render_int("unix_ms", 1_746_371_930_064),
         "--unixmilli",
-        "1577836800000",
+        "1746371930064",
     );
     agree(
         "unix_us",
-        &render_int("unix_us", 1_577_836_800_000_000),
+        &render_int("unix_us", 1_746_371_930_064_939),
         "--prtime",
-        "1577836800000000",
+        "1746371930064939",
     );
     agree(
         "filetime",
-        &render_int("filetime", 132_223_104_000_000_000),
+        &render_int("filetime", 133_908_455_300_649_390),
         "--active",
-        "132223104000000000",
+        "133908455300649390",
     );
     agree(
         "webkit",
-        &render_int("webkit", 13_222_310_400_000_000),
+        &render_int("webkit", 13_390_845_530_064_940),
         "--chrome",
-        "13222310400000000",
+        "13390845530064940",
     );
     agree(
         "hfsplus",
-        &render_int("hfsplus", 3_660_681_600),
+        &render_int("hfsplus", 3_829_216_730),
         "--hfsdec",
-        "3660681600",
+        "3829216730",
     );
+    // Apple TN1150's stated maximum HFS+ date — third-party answer + oracle.
     agree(
         "hfsplus-max",
         &render_int("hfsplus", 4_294_967_295),
@@ -127,28 +128,33 @@ fn differential_battery_posix_family() {
     );
     agree(
         "dotnet_ticks",
-        &render_int("dotnet_ticks", 630_822_816_000_000_000),
+        &render_int("dotnet_ticks", 638_819_687_300_649_472),
         "--dotnet",
-        "630822816000000000",
+        "638819687300649472",
     );
     agree(
-        "cocoa",
-        &render_int("cocoa", 599_529_600),
+        "cocoa_float",
+        &render_float("cocoa_float", 768_064_730.064_939),
         "--mac",
-        "599529600.0",
+        "768064730.064939",
     );
     agree(
         "sqlite_julian",
-        &render_float("sqlite_julian", 2_451_545.0),
+        &render_float("sqlite_julian", 2_460_800.138_078_703_5),
         "--juliandec",
-        "2451545.0",
+        "2460800.1380787035",
     );
-    // Embedded-ID schemes (real ids; epoch + shift verified by the oracle).
+    agree(
+        "ole",
+        &render_float("ole", 45_781.638_079_455_312),
+        "--oleauto",
+        "45781.638079455312",
+    );
     agree(
         "discord",
-        &render_int("discord", 175_928_847_299_117_063),
+        &render_int("discord", 1_102_608_904_745_127_937),
         "--discord",
-        "175928847299117063",
+        "1102608904745127937",
     );
     agree(
         "snowflake",
@@ -156,6 +162,11 @@ fn differential_battery_posix_family() {
         "--twitter",
         "1189581422684274688",
     );
+    // FAT: time-decode reads the 4 on-disk bytes a4 5a 59 7a as
+    // date = LE(a4,5a) = 0x5AA4, time = LE(59,7a) = 0x7A59; timeglyph takes those
+    // two words packed into one int (date in the high word) = 0x5AA47A59. Same
+    // instant, different input encoding (see validation.md "input conventions").
+    agree("fat", &render_int("fat", 0x5AA4_7A59), "--fat", "a45a597a");
 }
 
 #[cfg(feature = "leap")]
@@ -166,26 +177,27 @@ fn differential_battery_leap_family() {
         eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
         return;
     }
-    // GPS / NTP map directly; TAI64's label is 2^62 + (TAI seconds since 1970),
-    // and the oracle's --tai takes those TAI seconds, so pass (label − 2^62).
     agree(
         "gps",
-        &leap::from_gps_seconds(1_261_872_018.0).utc_rfc3339,
+        &leap::from_gps_seconds(1_430_407_111.0).utc_rfc3339,
         "--gps",
-        "1261872018",
+        "1430407111",
     );
     agree(
         "ntp",
-        &leap::from_ntp_seconds(3_786_825_600).unwrap().utc_rfc3339,
+        &leap::from_ntp_seconds(3_981_841_662).unwrap().utc_rfc3339,
         "--ntp",
-        "3786825600",
+        "3981841662.020607",
     );
-    let label: u64 = 4_611_686_020_005_224_741;
-    let tai_seconds = label - (1u64 << 62);
+    // TAI64's label is 2^62 + (TAI seconds since 1970); the oracle's --tai takes
+    // those TAI seconds directly, so pass (label − 2^62).
+    let tai_seconds: u64 = 1_599_755_800;
     agree(
         "tai64",
-        &leap::from_tai64(label).unwrap().utc_rfc3339,
+        &leap::from_tai64((1u64 << 62) + tai_seconds)
+            .unwrap()
+            .utc_rfc3339,
         "--tai",
-        &tai_seconds.to_string(),
+        "1599755800",
     );
 }
