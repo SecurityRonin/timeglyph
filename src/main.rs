@@ -156,9 +156,17 @@ fn run_decode(format: &str, value: &str) -> u8 {
     };
     // Integer value first; fall back to a float for float-encoded formats.
     if let Ok(v) = value.parse::<i64>() {
+        let sentinel = interpret::sentinel_reason(v);
         if let Ok(instant) = f.decode_int(v) {
-            return print_decode(f, value, instant);
+            print_decode(f, value, instant);
+            return sentinel_exit(v, sentinel);
+        } else if let Some(reason) = sentinel {
+            // e.g. 0x7FFFFFFFFFFFFFFF ("never") overflows the decode but is itself
+            // a meaningful sentinel — report it rather than a generic error.
+            eprintln!("warning: {v} is a likely sentinel ({reason}) — 'unset'/'never', not a real instant");
+            return EXIT_AMBIGUOUS;
         }
+        // a non-sentinel integer that did not decode falls through to the float path.
     }
     if let Ok(v) = value.parse::<f64>() {
         match f.decode_float(v) {
@@ -184,6 +192,19 @@ fn print_decode(f: &timeglyph::Format, value: &str, instant: timeglyph::PosixNs)
     };
     println!("{}  {value}  ->  {rendered}{caveat}", f.id);
     EXIT_OK
+}
+
+/// Exit code for a single-format decode given its sentinel classification: a
+/// sentinel raw value warns and signals "review needed" (`2`), never a confident `0`.
+fn sentinel_exit(value: i64, sentinel: Option<&str>) -> u8 {
+    if let Some(reason) = sentinel {
+        eprintln!(
+            "warning: {value} is a likely sentinel ({reason}) — 'unset'/'never', not a real instant"
+        );
+        EXIT_AMBIGUOUS
+    } else {
+        EXIT_OK
+    }
 }
 
 fn run_encode(format: &str, datetime: &str) -> u8 {
@@ -216,11 +237,20 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
 fn run_hex(bytes: &str) -> u8 {
     match interpret::interpret_hex(bytes) {
         Ok(groups) => {
-            for (layout, cands) in groups {
+            let mut any = false;
+            let mut has_sentinel = false;
+            for (layout, cands) in &groups {
                 println!("# byte layout: {layout}");
-                print_candidates(&cands);
+                print_candidates(cands);
+                any |= !cands.is_empty();
+                has_sentinel |= cands.iter().any(|c| c.sentinel);
             }
-            EXIT_OK
+            // Pipeline safety: no readings, or any sentinel reading → review needed.
+            if any && !has_sentinel {
+                EXIT_OK
+            } else {
+                EXIT_AMBIGUOUS
+            }
         }
         Err(e) => {
             eprintln!("error: {e}");

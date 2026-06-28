@@ -136,8 +136,10 @@ fn assumptions(f: &Format) -> Vec<String> {
 /// Directory `accountExpires = 0x7FFFFFFFFFFFFFFF` "never"). Detecting them is the
 /// front line against silently rendering a sentinel as a plausible date. NOTE:
 /// `0xFFFFFFFF` (u32 max) is deliberately NOT listed — it is the genuine HFS+
-/// maximum date, not a sentinel.
-fn sentinel_reason(value: i64) -> Option<&'static str> {
+/// maximum date, not a sentinel. Public so the CLI can flag a sentinel even on
+/// the single-format `decode` path (which does not build a [`Candidate`]).
+#[must_use]
+pub fn sentinel_reason(value: i64) -> Option<&'static str> {
     match value {
         0 => Some("zero / unset"),
         -1 => Some("-1 / all-ones, commonly unset"),
