@@ -67,7 +67,7 @@ fn ksuid_seconds_since_2014() {
 #[test]
 fn excel_1904_float_days() {
     assert_float("excel1904", 0.0, "1904-01-01T00:00:00");
-    assert_float("excel1904", 44_319.638_079_455_312, "2025-05-04T15:18:50");
+    assert_float("excel1904", 44_319.638_079_455_3, "2025-05-04T15:18:50");
 }
 
 // --- Embedded-ID formats (general unit, not only milliseconds) ----------------

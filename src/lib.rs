@@ -237,15 +237,18 @@ pub enum Strategy {
         /// The tick unit.
         unit: Unit,
     },
-    /// An ID with an embedded millisecond timestamp in its high bits: the low
-    /// `shift_bits` bits are worker/sequence/random, so `value >> shift_bits` is
-    /// milliseconds since `epoch_ns` (Snowflake/Discord/Twitter, and the same
-    /// shape as ObjectId/UUIDv7 once those are byte-decoded).
-    EmbeddedMillis {
+    /// An ID with an embedded timestamp in its high bits: the low `shift_bits`
+    /// bits are worker/sequence/random, so `value >> shift_bits` is a count of
+    /// `unit` ticks since `epoch_ns`. Most snowflake-class IDs count
+    /// milliseconds (Twitter/Discord/Mastodon/LinkedIn), but the unit is part of
+    /// the scheme — TikTok counts whole seconds — so it is carried explicitly.
+    Embedded {
         /// The scheme's epoch as nanoseconds relative to the Unix epoch.
         epoch_ns: i128,
-        /// Number of low bits to discard before reading the ms timestamp.
+        /// Number of low bits to discard before reading the timestamp.
         shift_bits: u32,
+        /// The tick unit of the embedded timestamp.
+        unit: Unit,
     },
     /// A bit-packed civil datetime (FAT/DOS, SYSTEMTIME, exFAT): the integer is
     /// not a linear offset but packed calendar fields, so decoding needs a
@@ -310,7 +313,7 @@ impl Format {
     pub fn storage_bytes(&self) -> u8 {
         match self.strategy {
             Strategy::Packed(_) => 4,
-            Strategy::EmbeddedMillis { .. } | Strategy::LinearFloat { .. } => 8,
+            Strategy::Embedded { .. } | Strategy::LinearFloat { .. } => 8,
             Strategy::LinearInt { unit, .. } => match unit {
                 Unit::Seconds | Unit::Days => 4,
                 Unit::Millis | Unit::Micros | Unit::HundredNanos | Unit::Nanos => 8,
@@ -333,22 +336,23 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::EmbeddedMillis {
+            Strategy::Embedded {
                 epoch_ns,
                 shift_bits,
+                unit,
             } => {
                 // IDs are unsigned; a negative value is not a valid ID encoding.
                 let raw = u64::try_from(value).map_err(|_| ChronoError::OutOfRange {
                     what: "embedded-id (negative)",
                     value: i128::from(value),
                 })?;
-                let ms = i128::from(raw >> shift_bits);
-                let ns = ms
-                    .checked_mul(Unit::Millis.nanos())
+                let ticks = i128::from(raw >> shift_bits);
+                let ns = ticks
+                    .checked_mul(unit.nanos())
                     .and_then(|t| t.checked_add(epoch_ns))
                     .ok_or(ChronoError::OutOfRange {
                         what: "nanoseconds",
-                        value: ms,
+                        value: ticks,
                     })?;
                 Ok(PosixNs(ns))
             }
@@ -389,7 +393,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::LinearInt { .. } | Strategy::EmbeddedMillis { .. } | Strategy::Packed(_) => {
+            Strategy::LinearInt { .. } | Strategy::Embedded { .. } | Strategy::Packed(_) => {
                 Err(ChronoError::OutOfRange {
                     what: "integer format decoded as float",
                     value: 0,
@@ -420,7 +424,7 @@ impl Format {
                 what: "float-format encoded as integer",
                 value: 0,
             }),
-            Strategy::EmbeddedMillis { .. } => Err(ChronoError::OutOfRange {
+            Strategy::Embedded { .. } => Err(ChronoError::OutOfRange {
                 // Encoding would have to invent the worker/sequence low bits; a
                 // round-trip is not defined for ID schemes.
                 what: "embedded-id format cannot be re-encoded from an instant",

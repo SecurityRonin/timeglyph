@@ -5,10 +5,13 @@
 //! all at once. Presenting one as *the* answer would fabricate certainty, which a
 //! forensic tool must never do (epistemics: "consistent with", not a verdict).
 //!
-//! SCAFFOLD scoring is deliberately thin (plausibility-window membership only).
-//! HANDOFF §"Plausibility scoring" lists the full component set to implement:
-//! representable validity, configured-case-window, granularity match, byte-width
-//! match, endian match, artifact-context hint, neighbour-monotonicity.
+//! Scoring is a named component set (HANDOFF §5b): representable validity,
+//! plausibility-window membership, granularity match, magnitude fit, and a
+//! sentinel guard are always emitted; byte-width match, endian match,
+//! artifact-context hint, and neighbour-monotonicity are emitted when an
+//! [`InterpretContext`] supplies their inputs. Every component is surfaced
+//! verbatim on the [`Candidate`] — a low component lowers the rank, never hides
+//! the reading.
 
 use crate::{
     registry::FORMATS, ChronoError, Format, LeapSemantics, PosixNs, Strategy, TzSemantics, Unit,
@@ -345,7 +348,7 @@ const TWO_YEARS_NS: i128 = 730 * 86_400 * 1_000_000_000;
 /// score ramps from `0.0` at the epoch to `1.0` two years past it.
 fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
     match strategy {
-        Strategy::EmbeddedMillis { epoch_ns, .. } => {
+        Strategy::Embedded { epoch_ns, .. } => {
             let past = instant.0 - epoch_ns;
             if past <= 0 {
                 0.0
@@ -364,8 +367,9 @@ fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
 /// disambiguation, expressed structurally rather than by "looks human".
 fn granularity_match(strategy: Strategy, value: i64) -> f64 {
     let unit: Unit = match strategy {
-        Strategy::LinearInt { unit, .. } | Strategy::LinearFloat { unit, .. } => unit,
-        Strategy::EmbeddedMillis { .. } => Unit::Millis,
+        Strategy::LinearInt { unit, .. }
+        | Strategy::LinearFloat { unit, .. }
+        | Strategy::Embedded { unit, .. } => unit,
         // Packed civil fields have no linear sub-second unit to mismatch against.
         Strategy::Packed(_) => return 1.0,
     };
@@ -469,6 +473,16 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
             ));
         }
     }
+    // Microsoft 128-bit SYSTEMTIME: 8 little-endian u16 fields
+    // (year, month, dayOfWeek, day, hour, minute, second, milliseconds).
+    if let Some(sixteen) = bytes.get(..16) {
+        if let Some(c) = systemtime_candidate(sixteen) {
+            out.push((
+                "SYSTEMTIME (16-byte struct, LE u16 fields)".to_string(),
+                vec![c],
+            ));
+        }
+    }
     // An all-ones 64-bit value exceeds i64 (so yields no linear reading) but is a
     // common 'unset'/'never' sentinel — surface it explicitly rather than vanish.
     if bytes
@@ -479,6 +493,33 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
         out.push(("u64 all-ones".to_string(), vec![all_ones_sentinel()]));
     }
     Ok(out)
+}
+
+/// Decode a Microsoft `SYSTEMTIME` struct (16 bytes, 8 little-endian `u16`
+/// fields) into a self-describing candidate. The `dayOfWeek` field (index 2) is
+/// redundant and ignored. `None` if the civil fields are invalid.
+fn systemtime_candidate(b: &[u8]) -> Option<Candidate> {
+    let field = |i: usize| -> Option<u16> {
+        let lo = *b.get(i * 2)?;
+        let hi = *b.get(i * 2 + 1)?;
+        Some(u16::from_le_bytes([lo, hi]))
+    };
+    let year = i16::try_from(field(0)?).ok()?;
+    let month = i8::try_from(field(1)?).ok()?;
+    let day = i8::try_from(field(3)?).ok()?;
+    let hour = i8::try_from(field(4)?).ok()?;
+    let minute = i8::try_from(field(5)?).ok()?;
+    let second = i8::try_from(field(6)?).ok()?;
+    let millis = field(7)?;
+    let subsec_nanos = i32::from(millis) * 1_000_000;
+    let instant = civil_to_posix(year, month, day, hour, minute, second, subsec_nanos, 0)?;
+    Some(string_candidate(
+        "systemtime",
+        "Microsoft 128-bit SYSTEMTIME",
+        "[MS-DTYP] §2.3.13 SYSTEMTIME (8× little-endian WORD fields)",
+        instant,
+        "decoded as a 16-byte SYSTEMTIME struct (UTC unless the source noted local)",
+    ))
 }
 
 /// Decode the first 4 and 8 bytes as LE/BE integers (panic-free, bounds-checked).
@@ -577,7 +618,114 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             ),
         ));
     }
+    if let Some(instant) = parse_ulid(s) {
+        out.push(string_candidate(
+            "ulid",
+            "ULID (first 48 bits = Unix ms)",
+            "ULID spec (Crockford base32; 48-bit ms timestamp)",
+            instant,
+            "parsed as a ULID — the leading 48 bits are milliseconds since the Unix epoch",
+        ));
+    }
+    if let Some(instant) = parse_uuid_v1(s) {
+        out.push(string_candidate(
+            "uuid_v1",
+            "UUID version 1 (100ns since 1582-10-15)",
+            "RFC 9562 §5.1 (UUIDv1 60-bit Gregorian timestamp)",
+            instant,
+            "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
+        ));
+    }
+    if let Some(instant) = parse_rfc2822(s) {
+        out.push(string_candidate(
+            "rfc2822",
+            "RFC 2822 / email date",
+            "RFC 5322 §3.3 (date-time; via jiff)",
+            instant,
+            "parsed as an RFC 2822 date-time (offset normalised to UTC)",
+        ));
+    }
+    if let Some(instant) = parse_exif(s) {
+        out.push(string_candidate(
+            "exif",
+            "EXIF DateTime (YYYY:MM:DD HH:MM:SS)",
+            "CIPA DC-008 (EXIF) DateTime / DateTimeOriginal",
+            instant,
+            "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
+        ));
+    }
     out
+}
+
+/// Decode a 26-character Crockford-base32 ULID; its leading 48 bits are
+/// milliseconds since the Unix epoch (the trailing 80 bits are random). `None`
+/// for any string that is not a well-formed ULID (so it never false-matches).
+fn parse_ulid(s: &str) -> Option<PosixNs> {
+    const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    if s.len() != 26 {
+        return None;
+    }
+    let mut value: u128 = 0;
+    for ch in s.bytes() {
+        let up = ch.to_ascii_uppercase();
+        let idx = ALPHABET.iter().position(|&a| a == up)?;
+        value = value.checked_mul(32)?.checked_add(idx as u128)?;
+    }
+    let ms = i128::from(u64::try_from(value >> 80).ok()?);
+    Some(PosixNs(ms.checked_mul(Unit::Millis.nanos())?))
+}
+
+/// 100ns intervals between the UUID Gregorian epoch (1582-10-15) and the Unix
+/// epoch, ×100 → nanoseconds: −12_219_292_800 s.
+const UUID_V1_EPOCH_NS: i128 = -12_219_292_800 * 1_000_000_000;
+
+/// Decode a UUID **version 1** timestamp: a 60-bit count of 100ns intervals
+/// since 1582-10-15 UTC, split across the time_low/mid/hi fields. Returns `None`
+/// unless the string is a valid UUID whose version nibble is 1 (a v3/4/5 random
+/// or name-based UUID carries no instant and must not be misread as one).
+fn parse_uuid_v1(s: &str) -> Option<PosixNs> {
+    let hex: String = s.chars().filter(|c| *c != '-').collect();
+    if hex.len() != 32 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let time_low = u64::from_str_radix(hex.get(0..8)?, 16).ok()?;
+    let time_mid = u64::from_str_radix(hex.get(8..12)?, 16).ok()?;
+    let time_hi_version = u64::from_str_radix(hex.get(12..16)?, 16).ok()?;
+    if (time_hi_version >> 12) != 1 {
+        return None; // not a version-1 (time-based) UUID
+    }
+    let ts = ((time_hi_version & 0x0FFF) << 48) | (time_mid << 32) | time_low;
+    let ns = i128::from(ts)
+        .checked_mul(100)?
+        .checked_add(UUID_V1_EPOCH_NS)?;
+    Some(PosixNs(ns))
+}
+
+/// Parse an RFC 2822 / email date-time (e.g. `Sun, 04 May 2025 15:18:50 +0000`)
+/// via jiff, normalising to the POSIX instant. `None` if it does not parse.
+fn parse_rfc2822(s: &str) -> Option<PosixNs> {
+    jiff::fmt::rfc2822::parse(s)
+        .ok()
+        .map(|zoned| PosixNs(zoned.timestamp().as_nanosecond()))
+}
+
+/// Parse an EXIF DateTime string `YYYY:MM:DD HH:MM:SS` (colon-separated date,
+/// the EXIF convention). EXIF stores no offset, so the instant is assumed UTC
+/// (surfaced in the assumption). `None` for anything not matching the shape.
+fn parse_exif(text: &str) -> Option<PosixNs> {
+    let (date, time) = text.trim().split_once(' ')?;
+    let date_parts: Vec<&str> = date.split(':').collect();
+    let time_parts: Vec<&str> = time.split(':').collect();
+    if date_parts.len() != 3 || time_parts.len() != 3 {
+        return None;
+    }
+    let year: i16 = date_parts[0].parse().ok()?;
+    let month: i8 = date_parts[1].parse().ok()?;
+    let day: i8 = date_parts[2].parse().ok()?;
+    let hour: i8 = time_parts[0].parse().ok()?;
+    let minute: i8 = time_parts[1].parse().ok()?;
+    let second: i8 = time_parts[2].parse().ok()?;
+    civil_to_posix(year, month, day, hour, minute, second, 0, 0)
 }
 
 /// Build the assumption line for an ASN.1 reading, surfacing the assumed-UTC

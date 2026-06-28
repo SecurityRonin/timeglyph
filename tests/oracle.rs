@@ -167,6 +167,59 @@ fn differential_battery_posix_family() {
     agree("fat", &render_int("fat", 0x5AA4_7A59), "--fat", "a45a597a");
 }
 
+#[test]
+fn differential_battery_catalog_buildout() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
+        return;
+    }
+    // Each input is time-decode's OWN published example for that format; we agree
+    // on the third party's value AND answer (tier-1). HANDOFF §5a build-out.
+    agree(
+        "active",
+        &render_int("active", 133_908_455_300_649_390),
+        "--active",
+        "133908455300649390",
+    );
+    agree(
+        "prtime",
+        &render_int("prtime", 1_746_371_930_064_939),
+        "--prtime",
+        "1746371930064939",
+    );
+    agree(
+        "iostime",
+        &render_int("iostime", 768_064_730_064_939_008),
+        "--iostime",
+        "768064730064939008",
+    );
+    agree(
+        "ksuid",
+        &render_int("ksuid", 346_371_930),
+        "--ksdec",
+        "346371930",
+    );
+    agree_float("excel1904", "excel1904", "--ms1904", "44319.6380794553");
+    agree(
+        "mastodon",
+        &render_int("mastodon", 114_450_230_804_480_000),
+        "--mastodon",
+        "114450230804480000",
+    );
+    agree(
+        "linkedin",
+        &render_int("linkedin", 7_324_176_984_442_343_424),
+        "--linkedin",
+        "7324176984442343424",
+    );
+    agree(
+        "tiktok",
+        &render_int("tiktok", 7_228_142_017_547_750_661),
+        "--tiktok",
+        "7228142017547750661",
+    );
+}
+
 #[cfg(feature = "leap")]
 #[test]
 fn differential_battery_leap_family() {

@@ -98,6 +98,14 @@ Each new format: find the **primary spec**, add the entry with a real `citation`
 write a RED anchor test (value-0 = epoch, plus a worked example from the spec),
 then GREEN. Validate against the MIT `time_decode` oracle (see §6).
 
+**Landed (oracle-validated):** `active` (AD/LDAP FILETIME), `prtime`, `iostime`
+(iOS-11 ns NSDate), `ksuid`, `excel1904`, `mastodon`/`linkedin`/`tiktok` (the
+embedded strategy was generalised to carry a `unit`, so seconds-shift IDs like
+TikTok work), plus string/packed forms `ulid`, `uuid_v1`, `rfc2822`, `exif`, and
+128-bit `SYSTEMTIME`. **Still TODO** — obscure packed-bitfield formats needing
+per-format unpackers (exFAT tz byte, bitdate/dttm/logtime/ns40/moto/symantec/dvr,
+BCD/GSM semi-octet, Sonyflake's 10ms unit); GPS/NTP/TAI remain in `leap.rs`.
+
 Still needed (Codex's gap list + the long tail):
 - **Apple/macOS**: `CFAbsoluteTime` as a **signed double** in plists/NSKeyedArchiver
   (negative = pre-2001); Core Data; APFS nanosecond timestamps; the **HFS+
@@ -122,12 +130,16 @@ Still needed (Codex's gap list + the long tail):
   layouts), embedded-ms-with-bit-shift (Snowflake/ObjectId/UUIDv7), float-signed
   (CFAbsoluteTime), string parsers.
 
-### 5b. Plausibility scoring (replace the scaffold's window-only score)
-Component set (emit each, never just a rank): representable validity; within the
-configured case window; **granularity match** (does the value's resolution fit the
-unit?); byte-width match; endian match; known-artifact context hint; tz/context
-hints; **neighbour monotonicity** (does it order sanely against adjacent values?).
-Never score by "looks human" alone. Default output stays "ranked candidates."
+### 5b. Plausibility scoring — DONE
+All components implemented as a named set (emitted verbatim, never just a rank):
+`representable`, `in_window`, `granularity_match`, `magnitude_fit`,
+`not_sentinel` always; and, behind `interpret::InterpretContext`,
+`byte_width_match`, `endian_match`, `artifact_match`, `neighbour_monotonicity`
+(each appears only when its context — on-disk width/byte-order, an artifact hint,
+or sibling column values — is supplied, so the zero-context default is
+unchanged). The hex path feeds width+endian; CSV auto-detect feeds the column as
+neighbours; `--artifact` feeds the identify path. Never "looks human"; default
+output stays ranked candidates. See `tests/scoring.rs`, `tests/context_scoring.rs`.
 
 ### 5c. Epistemics (mandatory)
 - A single value is usually **underdetermined** — keep the multi-candidate default.
