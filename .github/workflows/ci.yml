@@ -23,7 +23,7 @@ jobs:
       # declared MSRV == the pinned toolchain). Do not float `toolchain: stable`.
       - uses: dtolnay/rust-toolchain@1.96.0
       - run: cargo test --all-features
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --check
 
   coverage:
@@ -37,7 +37,7 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage (library)
-        run: cargo llvm-cov --lib --lcov --output-path lcov.info
+        run: cargo llvm-cov --lib --all-features --lcov --output-path lcov.info
       - name: Upload to Codecov
         uses: codecov/codecov-action@0f8570b1a125f4937846a11fcfa3bcd548bd8c97 # v4.6.0
         with:

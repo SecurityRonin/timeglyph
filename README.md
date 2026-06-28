@@ -37,10 +37,11 @@ Working engine. The `PosixNs(i128)` spine, decode/encode/auto-detect/byte-decode
 component-based plausibility scoring, and epistemic framing (consistent-with +
 leap-smear) are in and tested against primary-spec anchors. The registry covers
 Unix s/ms/µs/ns, FILETIME, WebKit/Chrome, Cocoa (integer and signed-double),
-HFS+, .NET ticks, OLE, PostgreSQL, SQLite Julian day, and Snowflake IDs
-(Twitter/X, Discord). The leap-aware (GPS/TAI/NTP) family and the `Packed`
-(FAT/DOS) strategy are the remaining build-out — see **[HANDOFF.md](HANDOFF.md)**
-for the design record and plan.
+HFS+, .NET ticks, OLE, PostgreSQL, SQLite Julian day, Snowflake IDs (Twitter/X,
+Discord), and FAT/DOS packed local time. The leap-aware GPS/TAI64/NTP family is
+implemented behind the `leap` feature (`--from gps|tai64|ntp`, leap-correct UTC
+via `hifitime`). Remaining build-out (more packed/string forms, distribution) —
+see **[HANDOFF.md](HANDOFF.md)** for the design record and plan.
 
 ## Why another converter?
 
