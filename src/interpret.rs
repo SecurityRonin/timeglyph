@@ -10,7 +10,7 @@
 //! representable validity, configured-case-window, granularity match, byte-width
 //! match, endian match, artifact-context hint, neighbour-monotonicity.
 
-use crate::{registry::FORMATS, ChronoError, Format, PosixNs, Strategy, Unit};
+use crate::{registry::FORMATS, ChronoError, Format, LeapSemantics, PosixNs, Strategy, Unit};
 
 /// One candidate interpretation of a value. Carries its score *components* and
 /// *assumptions*, not just a rank — transparency over false confidence.
@@ -59,7 +59,7 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
             rendered: Some(rendered),
             score,
             components,
-            assumptions: vec![format!("assumed format: {} [{}]", f.label, f.citation)],
+            assumptions: assumptions(f),
         });
     }
     out.sort_by(|a, b| {
@@ -68,6 +68,25 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.format_id.cmp(b.format_id))
     });
+    out
+}
+
+/// The stated assumptions behind one reading (HANDOFF §5c epistemics). A reading
+/// is evidence, not a verdict: it is framed as *consistent with* a format, never
+/// "detected". POSIX-labelled readings additionally carry the leap-smear
+/// disclaimer — a raw value cannot reveal whether its source clock smeared leap
+/// seconds (Google/AWS/Meta smear is invisible without clock-policy metadata).
+fn assumptions(f: &Format) -> Vec<String> {
+    let mut out = vec![format!(
+        "consistent with {} [{}] — a reading, not a determination",
+        f.label, f.citation
+    )];
+    if matches!(f.leap, LeapSemantics::PosixIgnored) {
+        out.push(
+            "indistinguishable from a leap-smeared source without clock-policy metadata"
+                .to_string(),
+        );
+    }
     out
 }
 

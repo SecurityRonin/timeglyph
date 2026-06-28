@@ -92,7 +92,10 @@ fn main() -> ExitCode {
                 }
             }
         }
-        println!("# ranked candidate interpretations of {value} (NOT a single answer):");
+        println!(
+            "# readings consistent with {value} (ranked; a raw value is usually \
+             underdetermined — not a single verdict):"
+        );
         print_candidates(&cands);
         ExitCode::SUCCESS
     } else {
