@@ -81,6 +81,7 @@ $ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
 $ timeglyph hex 0060947C58B2D501              # raw bytes (LE/BE + packed on-disk)
 $ timeglyph string 20200101000000Z           # ASN.1 / ISO / RFC string forms
 $ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
+$ timeglyph csv events.csv                   # enrich a CSV (human-readable timestamp columns)
 $ timeglyph list                             # the registry, with spec citations
 ```
 

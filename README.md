@@ -30,6 +30,7 @@ $ timeglyph decode filetime 132223104000000000
 $ timeglyph encode unix 2020-01-01T00:00:00Z
 $ timeglyph hex 0060947C58B2D501       # raw bytes (LE/BE + packed on-disk)
 $ timeglyph string 20200101000000Z     # ISO / RFC / ASN.1 string forms
+$ timeglyph csv events.csv             # enrich a CSV: human-readable timestamp columns
 $ timeglyph list                       # the format registry, with spec citations
 ```
 

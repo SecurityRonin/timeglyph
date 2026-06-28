@@ -76,6 +76,7 @@ nav:
       - Unix, web & databases: formats/unix-web-db.md
       - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
       - String forms (ISO, RFC, ASN.1): formats/strings.md
+  - CSV enrichment: csv.md
   - Validation: validation.md
   - Glossary: glossary.md
   - References: references.md

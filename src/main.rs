@@ -10,6 +10,7 @@
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use timeglyph::csv_enrich::{Conversion, EnrichOptions};
 use timeglyph::interpret::{self, Candidate};
 
 const EXIT_OK: u8 = 0;
@@ -65,6 +66,23 @@ enum Commands {
     },
     /// List every registered format with its citation.
     List,
+    /// Enrich a CSV: add a human-readable column for each timestamp column.
+    Csv {
+        /// CSV file path, or `-` for stdin.
+        path: String,
+        /// Explicit conversion `COLUMN:FORMAT` (repeatable, e.g. `created:filetime`).
+        #[arg(long = "convert", value_name = "COL:FMT")]
+        convert: Vec<String>,
+        /// Auto-detect numeric timestamp columns (the default when no --convert).
+        #[arg(long)]
+        auto: bool,
+        /// Replace the source column in place instead of adding one to its right.
+        #[arg(long)]
+        replace: bool,
+        /// Write output here instead of stdout.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -76,6 +94,13 @@ fn main() -> ExitCode {
         Some(Commands::Hex { bytes }) => run_hex(&bytes),
         Some(Commands::String { text }) => run_string(&text),
         Some(Commands::List) => run_list(),
+        Some(Commands::Csv {
+            path,
+            convert,
+            auto,
+            replace,
+            output,
+        }) => run_csv(&path, &convert, auto, replace, output.as_deref()),
         None => {
             if let Some(v) = cli.value {
                 run_identify(v, cli.json)
@@ -275,6 +300,64 @@ fn run_list() -> u8 {
         println!("{:<16} {:<48} {}", f.id, f.label, f.citation);
     }
     EXIT_OK
+}
+
+fn run_csv(path: &str, convert: &[String], auto: bool, replace: bool, output: Option<&str>) -> u8 {
+    let input = if path == "-" {
+        let mut s = String::new();
+        if std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).is_err() {
+            eprintln!("error: failed to read stdin");
+            return EXIT_ERR;
+        }
+        s
+    } else {
+        match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: cannot read {path}: {e}");
+                return EXIT_ERR;
+            }
+        }
+    };
+    let mut conversions = Vec::new();
+    for c in convert {
+        match c.split_once(':') {
+            Some((col, fmt)) if !col.is_empty() && !fmt.is_empty() => {
+                conversions.push(Conversion {
+                    column: col.to_string(),
+                    format: fmt.to_string(),
+                });
+            }
+            _ => {
+                eprintln!("error: --convert expects COLUMN:FORMAT, got {c:?}");
+                return EXIT_ERR;
+            }
+        }
+    }
+    // Auto-detect by default when no explicit conversion was requested.
+    let auto = auto || conversions.is_empty();
+    let opts = EnrichOptions {
+        conversions,
+        auto,
+        replace,
+    };
+    match timeglyph::csv_enrich::enrich(&input, &opts) {
+        Ok(out) => {
+            if let Some(path) = output {
+                if let Err(e) = std::fs::write(path, out) {
+                    eprintln!("error: cannot write {path}: {e}");
+                    return EXIT_ERR;
+                }
+            } else {
+                print!("{out}");
+            }
+            EXIT_OK
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            EXIT_ERR
+        }
+    }
 }
 
 fn print_candidates(cands: &[Candidate]) {
