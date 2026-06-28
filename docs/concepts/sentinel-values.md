@@ -32,6 +32,12 @@ silent-wrong-output failure — so timeglyph detects them, flags them
 
 - **A `sentinel` flag on every candidate** — machine-readable, so a pipeline can
   refuse to treat a sentinel reading as authoritative.
+- **Possible vs known** — generic value sentinels (`0`, `-1`) are flagged as
+  *possible* (suggestive across any format), while a format-specific magic value
+  such as `0x7FFFFFFFFFFFFFFF` ("never") is flagged as a *known* sentinel.
+- **All-ones bytes** — a `0xFFFFFFFFFFFFFFFF` hex value exceeds `i64` and yields no
+  linear reading, so it is surfaced explicitly as an all-ones sentinel rather than
+  vanishing.
 - **A `not_sentinel` scoring component** (heavily weighted) pulls sentinel readings
   below any genuine value — `cocoa(0)` no longer outranks a real in-window date.
 - **An explanatory assumption** — e.g. "value 0 is a likely sentinel (zero / unset)
