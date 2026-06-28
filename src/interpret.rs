@@ -36,9 +36,20 @@ pub struct Candidate {
     pub assumptions: Vec<String>,
 }
 
-/// Interpret a raw integer across every `LinearInt` format. Returns ALL readings
-/// that render to a civil date, ranked by score (descending), then by id for
-/// determinism. The caller MUST present these as candidates, not a single answer.
+/// Interpret a raw integer across every integer-decodable format (linear,
+/// embedded-millisecond IDs, and packed). Returns ALL readings that render to a
+/// civil date, ranked by score (descending), then by id for determinism. The
+/// caller MUST present these as candidates, not a single answer.
+///
+/// ```
+/// let candidates = timeglyph::interpret::interpret_int(1_577_836_800);
+/// // A raw value is underdetermined — expect several plausible readings.
+/// assert!(candidates.len() >= 2);
+/// // The top-ranked reading carries its scored components and assumptions.
+/// let top = &candidates[0];
+/// assert!(top.components.iter().any(|(name, _)| *name == "granularity_match"));
+/// assert!(!top.assumptions.is_empty());
+/// ```
 #[must_use]
 pub fn interpret_int(value: i64) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();

@@ -15,6 +15,28 @@
 //! - Calendar/tz math is **reused** (`jiff`), never reinvented. The value-add is
 //!   the cited forensic format registry + scored auto-detection + byte decode.
 //! - Panic-free (Paranoid Gatekeeper): every length/offset/width is checked.
+//!
+//! # Example
+//!
+//! ```
+//! // Identify an unknown value: every plausible reading, ranked and scored —
+//! // never a single verdict (a raw value is usually underdetermined).
+//! let candidates = timeglyph::interpret::interpret_int(1_577_836_800);
+//! let top = &candidates[0];
+//! assert_eq!(top.format_id, "unix");
+//! assert_eq!(top.rendered.as_deref(), Some("2020-01-01T00:00:00Z"));
+//!
+//! // Or decode under one known format by id.
+//! let filetime = timeglyph::format("filetime").unwrap();
+//! let instant = filetime.decode_int(132_223_104_000_000_000).unwrap();
+//! assert_eq!(instant.to_rfc3339().as_deref(), Some("2020-01-01T00:00:00Z"));
+//! ```
+//!
+//! # Further reading
+//!
+//! The authoritative, primary-source-cited reference for every supported format —
+//! epochs, encodings, calendars, leap seconds, and the rollovers that eventually
+//! break them — lives at <https://securityronin.github.io/timeglyph/>.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod interpret;
