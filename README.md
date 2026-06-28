@@ -25,11 +25,16 @@ $ timeglyph 1577836800
   [0.67] hfsplus        1953-12-31T00:00:00Z  (Apple HFS+ (s since 1904))
   ...
 
-$ timeglyph --json 1577836800          # machine-readable ranked candidates
-$ timeglyph --hex 0060947C58B2D501     # raw bytes, LE/BE × 32/64-bit
-$ timeglyph --from filetime 132223104000000000
-$ timeglyph --list                     # the format registry, with spec citations
+$ timeglyph identify --json 1577836800   # machine-readable ranked candidates
+$ timeglyph decode filetime 132223104000000000
+$ timeglyph encode unix 2020-01-01T00:00:00Z
+$ timeglyph hex 0060947C58B2D501       # raw bytes (LE/BE + packed on-disk)
+$ timeglyph string 20200101000000Z     # ISO / RFC / ASN.1 string forms
+$ timeglyph list                       # the format registry, with spec citations
 ```
+
+Exit codes are pipeline-safe: `0` clear top reading, `2` ambiguous or a sentinel
+(review needed), `1` error.
 
 ## Status
 
@@ -39,7 +44,7 @@ leap-smear) are in and tested against primary-spec anchors. The registry covers
 Unix s/ms/µs/ns, FILETIME, WebKit/Chrome, Cocoa (integer and signed-double),
 HFS+, .NET ticks, OLE, PostgreSQL, SQLite Julian day, Snowflake IDs (Twitter/X,
 Discord), and FAT/DOS packed local time. The leap-aware GPS/TAI64/NTP family is
-implemented behind the `leap` feature (`--from gps|tai64|ntp`, leap-correct UTC
+implemented behind the `leap` feature (`decode gps|tai64|ntp`, leap-correct UTC
 via `hifitime`). Remaining build-out (more packed/string forms, distribution) —
 see **[HANDOFF.md](HANDOFF.md)** for the design record and plan.
 

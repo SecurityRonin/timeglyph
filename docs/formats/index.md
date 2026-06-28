@@ -58,9 +58,9 @@ decoded via [`hifitime`](https://docs.rs/hifitime) (GPS/TAI) or additive `jiff` 
 
 ```console
 $ cargo build --features leap
-$ timeglyph --from gps 1261872018      # → 2020-01-01T00:00:00Z (leap-correct UTC)
-$ timeglyph --from tai64 4611686020005224741
-$ timeglyph --from ntp 3786825600
+$ timeglyph decode gps 1261872018      # → 2020-01-01T00:00:00Z (leap-correct UTC)
+$ timeglyph decode tai64 4611686020005224741
+$ timeglyph decode ntp 3786825600
 ```
 
 See [time scales](../concepts/time-scales.md) for the GPS−UTC = 18 s and TAI−UTC = 37 s

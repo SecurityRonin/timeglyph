@@ -74,10 +74,15 @@ standards body), collected on the [References](references.md) page.
 ## Usage
 
 ```console
-$ timeglyph 1577836800                       # identify (auto-detect, ranked)
-$ timeglyph --json 1577836800                # machine-readable candidates
-$ timeglyph --hex 0060947C58B2D501           # raw bytes, LE/BE × 32/64-bit
-$ timeglyph --from filetime 132223104000000000   # decode under one known format
-$ timeglyph --from gps 1261872018            # leap-aware (cargo build --features leap)
-$ timeglyph --list                           # the registry, with spec citations
+$ timeglyph 1577836800                        # identify (auto-detect, ranked)
+$ timeglyph identify --json 1577836800        # machine-readable candidates
+$ timeglyph decode filetime 132223104000000000  # decode under one known format
+$ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
+$ timeglyph hex 0060947C58B2D501              # raw bytes (LE/BE + packed on-disk)
+$ timeglyph string 20200101000000Z           # ASN.1 / ISO / RFC string forms
+$ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
+$ timeglyph list                             # the registry, with spec citations
 ```
+
+Exit codes are pipeline-safe: `0` a clear top reading, `2` ambiguous or a
+[sentinel](concepts/sentinel-values.md) (review needed), `1` error.

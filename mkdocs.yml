@@ -66,6 +66,8 @@ nav:
       - Precision (ms, µs, ns): concepts/precision.md
       - RTC hardware & older clocks: concepts/rtc-hardware.md
       - Epoch rollovers (Y2K, 2038, 2036, 2106): concepts/rollovers.md
+      - Input conventions (encoding, endianness): concepts/input-conventions.md
+      - Sentinel values (unset, never): concepts/sentinel-values.md
       - Methodology & epistemics: concepts/methodology.md
   - Formats:
       - Overview: formats/index.md
@@ -73,7 +75,9 @@ nav:
       - Apple / macOS / iOS: formats/apple.md
       - Unix, web & databases: formats/unix-web-db.md
       - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
+      - String forms (ISO, RFC, ASN.1): formats/strings.md
   - Validation: validation.md
+  - Glossary: glossary.md
   - References: references.md
   - Privacy Policy: privacy.md
   - Terms of Service: terms.md
