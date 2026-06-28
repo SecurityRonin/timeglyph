@@ -59,6 +59,14 @@ fn agree(label: &str, tg_rfc3339: &str, flag: &str, value: &str) {
     assert_eq!(got, want, "{label}: oracle {got:?} vs timeglyph {want:?}");
 }
 
+/// Like [`agree`], for a float-input format: the `f64` is parsed from the same
+/// string passed to the oracle, so there is one source of truth and no
+/// literal-precision drift between the two implementations.
+fn agree_float(label: &str, id: &str, flag: &str, value: &str) {
+    let v: f64 = value.parse().unwrap();
+    agree(label, &render_float(id, v), flag, value);
+}
+
 fn render_int(id: &str, value: i64) -> String {
     timeglyph::format(id)
         .unwrap()
@@ -132,24 +140,14 @@ fn differential_battery_posix_family() {
         "--dotnet",
         "638819687300649472",
     );
-    agree(
-        "cocoa_float",
-        &render_float("cocoa_float", 768_064_730.064_939),
-        "--mac",
-        "768064730.064939",
-    );
-    agree(
+    agree_float("cocoa_float", "cocoa_float", "--mac", "768064730.064939");
+    agree_float(
         "sqlite_julian",
-        &render_float("sqlite_julian", 2_460_800.138_078_703_5),
+        "sqlite_julian",
         "--juliandec",
         "2460800.1380787035",
     );
-    agree(
-        "ole",
-        &render_float("ole", 45_781.638_079_455_312),
-        "--oleauto",
-        "45781.638079455312",
-    );
+    agree_float("ole", "ole", "--oleauto", "45781.638079455312");
     agree(
         "discord",
         &render_int("discord", 1_102_608_904_745_127_937),
