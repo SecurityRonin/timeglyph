@@ -120,6 +120,14 @@ fn unknown_tz_fails_loudly() {
 }
 
 #[test]
+fn artifact_hint_surfaces_in_identify_output() {
+    // A chrome hint must keep identify multi-candidate (never a verdict) and run
+    // without error; the hint adjusts ranking, it does not filter.
+    let (out, _) = run(&["13390845530064940", "--artifact", "chrome history"]);
+    assert!(out.contains("webkit"), "{out}");
+}
+
+#[test]
 fn csv_explicit_conversion_subcommand() {
     let p = std::env::temp_dir().join("tg_csv_explicit.csv");
     std::fs::write(&p, "id,created\n1,1577836800\n").unwrap();

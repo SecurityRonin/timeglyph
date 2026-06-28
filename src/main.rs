@@ -32,6 +32,11 @@ struct Cli {
     /// instant is unchanged — only the displayed offset differs.
     #[arg(long, global = true, value_name = "ZONE")]
     tz: Option<String>,
+    /// An artifact/source hint (e.g. `"chrome history"`, `"ntfs mft"`) that nudges
+    /// identify readings whose format family matches it. A hint never hides a
+    /// reading — it only adjusts the rank.
+    #[arg(long, global = true, value_name = "HINT")]
+    artifact: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -103,7 +108,9 @@ fn main() -> ExitCode {
         }
     };
     let code = match cli.command {
-        Some(Commands::Identify { value, json }) => run_identify(value, json, &zone),
+        Some(Commands::Identify { value, json }) => {
+            run_identify(value, json, &zone, cli.artifact.as_deref())
+        }
         Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
         Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone),
@@ -118,7 +125,7 @@ fn main() -> ExitCode {
         }) => run_csv(&path, &convert, auto, replace, output.as_deref(), &zone),
         None => {
             if let Some(v) = cli.value {
-                run_identify(v, cli.json, &zone)
+                run_identify(v, cli.json, &zone, cli.artifact.as_deref())
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -144,8 +151,12 @@ fn ambiguity_code(cands: &[Candidate]) -> u8 {
     EXIT_OK
 }
 
-fn run_identify(value: i64, json: bool, zone: &RenderZone) -> u8 {
-    let mut cands = interpret::interpret_int(value);
+fn run_identify(value: i64, json: bool, zone: &RenderZone, artifact: Option<&str>) -> u8 {
+    let ctx = interpret::InterpretContext {
+        artifact,
+        ..Default::default()
+    };
+    let mut cands = interpret::interpret_int_with_context(value, &ctx);
     // Re-render each `rendered` field in the requested zone. The canonical
     // `instant` (nanoseconds) stays the absolute anchor; only the human-facing
     // string changes — serialized directly (serde_json's intermediate Value

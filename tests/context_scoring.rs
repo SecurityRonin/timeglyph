@@ -78,7 +78,7 @@ fn endian_match_disambiguates_when_only_one_order_is_in_window() {
 
     // The byte-swapped value, under the same context, is the WRONG order: it is
     // out of window while its flip is in-window → endian_match 0.0.
-    let swapped = (1_577_836_800u32).swap_bytes() as i64; // 0x00E10B5E = 14748510
+    let swapped = i64::from((1_577_836_800u32).swap_bytes()); // 0x00E10B5E = 14748510
     let cands = interpret::interpret_int_with_context(swapped, &ctx);
     assert_eq!(comp(&cands, "unix", "endian_match"), Some(0.0));
 }
@@ -86,14 +86,17 @@ fn endian_match_disambiguates_when_only_one_order_is_in_window() {
 #[test]
 fn artifact_hint_matches_the_right_family() {
     // A "Google Chrome history" hint matches the Chrome/WebKit format, not unix.
+    // Use a value that renders (to *some* civil date) under both, so both are
+    // candidates and the artifact component is comparable across them.
     let ctx = InterpretContext {
         artifact: Some("Google Chrome history database"),
         ..Default::default()
     };
-    let cands = interpret::interpret_int_with_context(13_390_845_530_064_940, &ctx);
+    let cands = interpret::interpret_int_with_context(1_577_836_800, &ctx);
     assert_eq!(comp(&cands, "webkit", "artifact_match"), Some(1.0));
-    assert!(
-        comp(&cands, "unix", "artifact_match").unwrap() < 1.0,
+    assert_eq!(
+        comp(&cands, "unix", "artifact_match"),
+        Some(0.2),
         "a chrome hint should not fully match the generic unix format"
     );
 }

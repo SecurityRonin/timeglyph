@@ -40,6 +40,36 @@ pub struct Candidate {
     pub sentinel: bool,
 }
 
+/// Byte order of a value observed on disk — supplied via [`InterpretContext`] so
+/// the `endian_match` component can reward the order that yields a plausible
+/// date over its byte-swapped alternative.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Endian {
+    /// Least-significant byte first.
+    Little,
+    /// Most-significant byte first.
+    Big,
+}
+
+/// Extra context that sharpens scoring beyond what a bare integer reveals
+/// (HANDOFF §5b). Each field, when present, unlocks one additional named
+/// component; an all-default context (the [`interpret_int`] path) emits none of
+/// them, so the zero-knowledge default is exactly the prior behaviour.
+#[derive(Debug, Clone, Default)]
+pub struct InterpretContext<'a> {
+    /// The observed on-disk storage width in bytes (e.g. the 4 or 8 bytes a hex
+    /// input occupied). Unlocks `byte_width_match`.
+    pub observed_width_bytes: Option<u8>,
+    /// The observed byte order. Unlocks `endian_match` (needs a width too).
+    pub endian: Option<Endian>,
+    /// A free-text artifact/source hint (e.g. `"chrome history"`, `"ntfs mft"`).
+    /// Unlocks `artifact_match`.
+    pub artifact: Option<&'a str>,
+    /// Sibling values from the same column/sequence. Unlocks
+    /// `neighbour_monotonicity` (does this format order the column sanely?).
+    pub neighbours: &'a [i64],
+}
+
 /// Interpret a raw integer across every integer-decodable format (linear,
 /// embedded-millisecond IDs, and packed). Returns ALL readings that render to a
 /// civil date, ranked by score (descending), then by id for determinism. The
@@ -56,11 +86,21 @@ pub struct Candidate {
 /// ```
 #[must_use]
 pub fn interpret_int(value: i64) -> Vec<Candidate> {
+    interpret_int_with_context(value, &InterpretContext::default())
+}
+
+/// Like [`interpret_int`], but with an [`InterpretContext`] supplying the
+/// on-disk width/byte-order, an artifact hint, and/or sibling column values.
+/// Each present context field adds one named component to every candidate; an
+/// empty context reproduces [`interpret_int`] exactly. The ranking is otherwise
+/// identical: ALL civil-renderable readings, scored, never one verdict.
+#[must_use]
+pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
     for f in FORMATS {
         // Any integer-decodable strategy is a candidate; float-only and
         // out-of-range readings are skipped inside build_candidate.
-        if let Some(c) = build_candidate(f, value) {
+        if let Some(c) = build_candidate(f, value, ctx) {
             out.push(c);
         }
     }
@@ -76,10 +116,10 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
 /// Build a scored, assumption-carrying candidate for one format + integer value,
 /// or `None` if the value is not integer-decodable under it or renders outside the
 /// civil range. Shared by [`interpret_int`] and the per-format hex decoders.
-fn build_candidate(f: &Format, value: i64) -> Option<Candidate> {
+fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Candidate> {
     let instant = f.decode_int(value).ok()?;
     let rendered = instant.to_rfc3339()?;
-    let components = score_components(f, value, instant);
+    let components = score_components(f, value, instant, ctx);
     let score = overall_score(&components);
     let mut assumptions = assumptions(f);
     let sentinel = sentinel_reason(value);
@@ -102,8 +142,8 @@ fn build_candidate(f: &Format, value: i64) -> Option<Candidate> {
 }
 
 /// Decode a single named format from an integer value, returning its candidate.
-fn decode_one(format_id: &str, value: i64) -> Option<Candidate> {
-    build_candidate(crate::format(format_id).ok()?, value)
+fn decode_one(format_id: &str, value: i64, ctx: &InterpretContext) -> Option<Candidate> {
+    build_candidate(crate::format(format_id).ok()?, value, ctx)
 }
 
 /// The stated assumptions behind one reading (HANDOFF §5c epistemics). A reading
@@ -154,7 +194,12 @@ pub fn sentinel_reason(value: i64) -> Option<&'static str> {
 /// `[0, 1]` and emitted verbatim on the `Candidate` so a reviewer can audit the
 /// rank instead of trusting an opaque number. NEVER a filter — a low component
 /// lowers the rank, it does not hide the reading.
-fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static str, f64)> {
+fn score_components(
+    f: &Format,
+    value: i64,
+    instant: PosixNs,
+    ctx: &InterpretContext,
+) -> Vec<(&'static str, f64)> {
     // representable: surfaced only when civil-renderable, so always 1.0 here —
     // emitted explicitly so the component set is complete and self-describing.
     let representable = 1.0;
@@ -164,13 +209,129 @@ fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static s
     let granularity = granularity_match(f.strategy, value);
     let magnitude = magnitude_fit(f.strategy, instant);
     let not_sentinel = f64::from(u8::from(sentinel_reason(value).is_none()));
-    vec![
+    let mut components = vec![
         ("representable", representable),
         ("in_window", in_window),
         ("granularity_match", granularity),
         ("magnitude_fit", magnitude),
         ("not_sentinel", not_sentinel),
-    ]
+    ];
+    // Context-unlocked components (HANDOFF §5b): each appears ONLY when its
+    // context is supplied, so the zero-context default is byte-for-byte the old
+    // five-component set.
+    if let Some(width) = ctx.observed_width_bytes {
+        components.push(("byte_width_match", byte_width_match(f, value, width)));
+        if ctx.endian.is_some() {
+            components.push(("endian_match", endian_match(f, value, width)));
+        }
+    }
+    if let Some(hint) = ctx.artifact {
+        components.push(("artifact_match", artifact_match(f, hint)));
+    }
+    if !ctx.neighbours.is_empty() {
+        components.push((
+            "neighbour_monotonicity",
+            neighbour_monotonicity(f, ctx.neighbours),
+        ));
+    }
+    components
+}
+
+/// Number of base-256 (byte) digits needed to store `value` (minimum 1).
+fn significant_bytes(value: i64) -> u8 {
+    let n = value.unsigned_abs();
+    if n == 0 {
+        return 1;
+    }
+    ((64 - n.leading_zeros()).div_ceil(8)) as u8
+}
+
+/// Does the observed on-disk width match the format's natural storage width? An
+/// exact match is full evidence; a value that would still fit the format's
+/// narrower native field (plausibly zero-extended) is a partial fit; a value
+/// that cannot fit the native field at all is a mismatch.
+fn byte_width_match(f: &Format, value: i64, observed: u8) -> f64 {
+    let natural = f.storage_bytes();
+    if observed == natural {
+        1.0
+    } else if significant_bytes(value) <= natural {
+        0.5
+    } else {
+        0.0
+    }
+}
+
+/// Whether `value` decodes to an in-window instant under `f`.
+fn decode_in_window(f: &Format, value: i64) -> bool {
+    f.decode_int(value)
+        .ok()
+        .is_some_and(|inst| inst.0 >= f.plausible.0 && inst.0 < f.plausible.1)
+}
+
+/// The same `value`'s bytes read in the opposite order, at the observed width.
+/// `None` for widths other than 4 or 8 (no meaningful swap).
+fn byte_swapped(value: i64, width: u8) -> Option<i64> {
+    match width {
+        4 => u32::try_from(value).ok().map(|v| i64::from(v.swap_bytes())),
+        8 => Some((value as u64).swap_bytes() as i64),
+        _ => None,
+    }
+}
+
+/// Does the observed byte order yield a plausible date where the byte-swapped
+/// alternative does not? Disambiguated-in-our-favour → 1.0; both orders
+/// plausible (genuinely ambiguous) → 0.5; this order out of window → 0.0.
+fn endian_match(f: &Format, value: i64, width: u8) -> f64 {
+    let this_in = decode_in_window(f, value);
+    let flip_in = byte_swapped(value, width).is_some_and(|v| decode_in_window(f, v));
+    match (this_in, flip_in) {
+        (true, false) => 1.0,
+        (true, true) => 0.5,
+        (false, _) => 0.0,
+    }
+}
+
+/// Does an artifact/source hint name this format's family? A keyword (≥3 chars)
+/// of the hint appearing in the format's id/family/label is a full match; no
+/// overlap is a weak non-match (0.2) — a hint nudges the rank, never a filter.
+fn artifact_match(f: &Format, hint: &str) -> f64 {
+    let haystack = format!("{} {} {}", f.id, f.family, f.label).to_lowercase();
+    let matched = hint
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| t.len() >= 3)
+        .any(|t| haystack.contains(&t.to_lowercase()));
+    if matched {
+        1.0
+    } else {
+        0.2
+    }
+}
+
+/// Across the sibling column values, the fraction of consecutive pairs that this
+/// format orders sanely: both decode in-window AND value order matches time
+/// order. Linear formats keep order trivially, so this rewards a format under
+/// which the WHOLE column lands in plausible range (and penalises one that
+/// scatters it). A lone neighbour falls back to its own in-window membership.
+fn neighbour_monotonicity(f: &Format, neighbours: &[i64]) -> f64 {
+    if neighbours.len() < 2 {
+        return f64::from(u8::from(
+            neighbours.first().is_some_and(|&v| decode_in_window(f, v)),
+        ));
+    }
+    let mut consistent = 0u32;
+    let mut total = 0u32;
+    for pair in neighbours.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        total += 1;
+        let (ia, ib) = (f.decode_int(a).ok(), f.decode_int(b).ok());
+        if let (Some(ta), Some(tb)) = (ia, ib) {
+            let in_window = decode_in_window(f, a) && decode_in_window(f, b);
+            if in_window && ((b >= a) == (tb.0 >= ta.0)) {
+                consistent += 1;
+            }
+        }
+    }
+    f64::from(consistent) / f64::from(total)
 }
 
 /// Two years in nanoseconds — the ramp over which an embedded-ID timestamp is
@@ -235,8 +396,16 @@ fn trailing_zeros_base10(value: i64) -> u32 {
 /// is the dominant prior on which readings to surface first); the others weigh
 /// one. The result is the overall `[0, 1]` rank.
 fn overall_score(components: &[(&'static str, f64)]) -> f64 {
+    // Double-weighted: the plausibility prior, the magnitude/sentinel guards, and
+    // the structural disk-layout/column signals (when present). Everything else
+    // (granularity, representable, the softer artifact hint) weighs one.
     let weight = |name: &str| match name {
-        "in_window" | "magnitude_fit" | "not_sentinel" => 2.0,
+        "in_window"
+        | "magnitude_fit"
+        | "not_sentinel"
+        | "byte_width_match"
+        | "endian_match"
+        | "neighbour_monotonicity" => 2.0,
         _ => 1.0,
     };
     let (num, den) = components.iter().fold((0.0, 0.0), |(num, den), (n, v)| {
@@ -264,8 +433,15 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
         value: 0,
     })?;
     let mut out = Vec::new();
-    for (label, value) in byte_ints(&bytes) {
-        out.push((label, interpret_int(value)));
+    for (label, value, width, endian) in byte_ints(&bytes) {
+        // The hex layer KNOWS the on-disk width and byte order — pass them so the
+        // byte_width_match + endian_match components are scored.
+        let ctx = InterpretContext {
+            observed_width_bytes: Some(width),
+            endian: Some(endian),
+            ..Default::default()
+        };
+        out.push((label, interpret_int_with_context(value, &ctx)));
     }
     // Packed formats have an ON-DISK byte order distinct from a linear integer,
     // and FAT is doubly ambiguous: the DOS packed convention is date-word then
@@ -275,12 +451,18 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
     if let Some(four) = bytes.get(..4).and_then(|s| <[u8; 4]>::try_from(s).ok()) {
         let lo = u16::from_le_bytes([four[0], four[1]]);
         let hi = u16::from_le_bytes([four[2], four[3]]);
+        // Packed FAT/DOS is a 4-byte field; its internal word order is surfaced
+        // explicitly below, so no endian component (it would double-count).
+        let fat_ctx = InterpretContext {
+            observed_width_bytes: Some(4),
+            ..Default::default()
+        };
         // date-word first (DOS packed): date = bytes[0..2], time = bytes[2..4].
-        if let Some(c) = decode_one("fat", (i64::from(lo) << 16) | i64::from(hi)) {
+        if let Some(c) = decode_one("fat", (i64::from(lo) << 16) | i64::from(hi), &fat_ctx) {
             out.push(("FAT/DOS bytes date|time (LE words)".to_string(), vec![c]));
         }
         // time-word first (FAT directory order): time = bytes[0..2], date = bytes[2..4].
-        if let Some(c) = decode_one("fat", (i64::from(hi) << 16) | i64::from(lo)) {
+        if let Some(c) = decode_one("fat", (i64::from(hi) << 16) | i64::from(lo), &fat_ctx) {
             out.push((
                 "FAT/DOS bytes time|date (LE words, directory order)".to_string(),
                 vec![c],
@@ -302,7 +484,7 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
 /// Decode the first 4 and 8 bytes as LE/BE integers (panic-free, bounds-checked).
 /// Labels note when only a prefix of a longer input was used, so trailing bytes
 /// are never silently dropped.
-fn byte_ints(b: &[u8]) -> Vec<(String, i64)> {
+fn byte_ints(b: &[u8]) -> Vec<(String, i64, u8, Endian)> {
     let total = b.len();
     let suffix = |w: usize| {
         if total > w {
@@ -316,18 +498,22 @@ fn byte_ints(b: &[u8]) -> Vec<(String, i64)> {
         v.push((
             format!("u32 LE{}", suffix(4)),
             i64::from(u32::from_le_bytes(four)),
+            4,
+            Endian::Little,
         ));
         v.push((
             format!("u32 BE{}", suffix(4)),
             i64::from(u32::from_be_bytes(four)),
+            4,
+            Endian::Big,
         ));
     }
     if let Some(eight) = b.get(..8).and_then(|s| <[u8; 8]>::try_from(s).ok()) {
         if let Ok(n) = i64::try_from(u64::from_le_bytes(eight)) {
-            v.push((format!("u64 LE{}", suffix(8)), n));
+            v.push((format!("u64 LE{}", suffix(8)), n, 8, Endian::Little));
         }
         if let Ok(n) = i64::try_from(u64::from_be_bytes(eight)) {
-            v.push((format!("u64 BE{}", suffix(8)), n));
+            v.push((format!("u64 BE{}", suffix(8)), n, 8, Endian::Big));
         }
     }
     v

@@ -147,8 +147,10 @@ fn render_cell(cell: &str, fmt: &str, zone: &RenderZone) -> Option<String> {
 /// floor and they all share the same confident (in-window, non-sentinel) top
 /// interpretation; otherwise `None` (the column is left untouched).
 fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<String> {
-    let mut chosen: Option<String> = None;
-    let mut seen = 0usize;
+    // Gather the column's numeric values first: they become each cell's
+    // neighbours, so the column-coherence (`neighbour_monotonicity`) signal can
+    // help disambiguate the per-cell top reading.
+    let mut values: Vec<i64> = Vec::new();
     for rec in records {
         let cell = rec.get(idx).unwrap_or("").trim();
         if cell.is_empty() {
@@ -158,7 +160,18 @@ fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<Str
         if value.abs() < AUTO_MIN_MAGNITUDE {
             return None;
         }
-        let candidates = interpret::interpret_int(value);
+        values.push(value);
+    }
+    if values.is_empty() {
+        return None;
+    }
+    let ctx = interpret::InterpretContext {
+        neighbours: &values,
+        ..Default::default()
+    };
+    let mut chosen: Option<String> = None;
+    for &value in &values {
+        let candidates = interpret::interpret_int_with_context(value, &ctx);
         let top = candidates.first()?;
         if top.sentinel {
             return None;
@@ -175,11 +188,6 @@ fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<Str
             Some(f) if f != top.format_id => return None, // inconsistent column
             _ => {}
         }
-        seen += 1;
     }
-    if seen == 0 {
-        None
-    } else {
-        chosen
-    }
+    chosen
 }

@@ -301,6 +301,23 @@ pub struct Format {
 }
 
 impl Format {
+    /// The natural on-disk storage width, in bytes, of this format's stored
+    /// value. A structural prior for byte-width scoring (HANDOFF §5b), NOT a hard
+    /// rule: second/day-resolution fields are classically 32-bit (Unix `time_t`,
+    /// HFS+, DOS date words), while sub-second and ID fields are 64-bit
+    /// (FILETIME, .NET ticks, ms/µs/ns counts, snowflake IDs, OLE `f64`).
+    #[must_use]
+    pub fn storage_bytes(&self) -> u8 {
+        match self.strategy {
+            Strategy::Packed(_) => 4,
+            Strategy::EmbeddedMillis { .. } | Strategy::LinearFloat { .. } => 8,
+            Strategy::LinearInt { unit, .. } => match unit {
+                Unit::Seconds | Unit::Days => 4,
+                Unit::Millis | Unit::Micros | Unit::HundredNanos | Unit::Nanos => 8,
+            },
+        }
+    }
+
     /// Decode an integer value under this format. Errors (never panics) on
     /// overflow or on a float-only strategy.
     pub fn decode_int(&self, value: i64) -> Result<PosixNs, ChronoError> {
