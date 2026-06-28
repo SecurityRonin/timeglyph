@@ -49,6 +49,27 @@ fn main() -> ExitCode {
             eprintln!("error: --from requires a VALUE to decode");
             return ExitCode::FAILURE;
         };
+        // Leap-aware scales (gps/tai64/ntp) are decoded separately — they must
+        // NOT route through the POSIX spine. Returns None for POSIX registry ids.
+        #[cfg(feature = "leap")]
+        if let Some(result) = timeglyph::leap::decode(id, value) {
+            return match result {
+                Ok(r) => {
+                    println!(
+                        "{}  {value}  ->  {}  (leap-correct UTC)",
+                        r.scale, r.utc_rfc3339
+                    );
+                    for a in &r.assumptions {
+                        println!("    - {a}");
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         match timeglyph::format(id).and_then(|f| f.decode_int(value)) {
             Ok(instant) => {
                 println!(

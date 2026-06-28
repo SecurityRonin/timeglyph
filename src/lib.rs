@@ -18,6 +18,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod interpret;
+/// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
+/// separate from the POSIX [`PosixNs`] spine (HANDOFF §3).
+#[cfg(feature = "leap")]
+pub mod leap;
 pub mod registry;
 
 /// Errors from decoding, encoding, or rendering a timestamp.
