@@ -90,3 +90,25 @@ fn identify_of_never_sentinel_surfaces_a_note() {
         "{out}"
     );
 }
+
+#[test]
+fn csv_explicit_conversion_subcommand() {
+    let p = std::env::temp_dir().join("tg_csv_explicit.csv");
+    std::fs::write(&p, "id,created\n1,1577836800\n").unwrap();
+    let (out, code) = run(&["csv", p.to_str().unwrap(), "--convert", "created:unix"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("created_unix"), "{out}");
+    assert!(out.contains("2020-01-01T00:00:00Z"), "{out}");
+}
+
+#[test]
+fn csv_auto_is_the_default() {
+    let p = std::env::temp_dir().join("tg_csv_auto.csv");
+    std::fs::write(&p, "name,ts\na,1577836800\n").unwrap();
+    let (out, code) = run(&["csv", p.to_str().unwrap()]); // no flags → auto-detect
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("ts_unix") && out.contains("2020-01-01T00:00:00Z"),
+        "{out}"
+    );
+}
