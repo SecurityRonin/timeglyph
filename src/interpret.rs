@@ -34,6 +34,10 @@ pub struct Candidate {
     pub components: Vec<(&'static str, f64)>,
     /// Assumptions made to produce this reading (e.g. the format + citation).
     pub assumptions: Vec<String>,
+    /// True when the raw value is a well-known "magic" sentinel (0/unset, −1,
+    /// `i64::MAX`/never) rather than a real instant. Machine-readable so pipelines
+    /// can refuse to treat it as authoritative (see also [`Candidate::score`]).
+    pub sentinel: bool,
 }
 
 /// Interpret a raw integer across every integer-decodable format (linear,
@@ -64,6 +68,13 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
         };
         let components = score_components(f, value, instant);
         let score = overall_score(&components);
+        let mut assumptions = assumptions(f);
+        let sentinel = sentinel_reason(value);
+        if let Some(reason) = sentinel {
+            assumptions.push(format!(
+                "value {value} is a likely sentinel ({reason}) — an 'unset'/'never' marker, not necessarily a real instant"
+            ));
+        }
         out.push(Candidate {
             format_id: f.id,
             label: f.label,
@@ -72,7 +83,8 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
             rendered: Some(rendered),
             score,
             components,
-            assumptions: assumptions(f),
+            assumptions,
+            sentinel: sentinel.is_some(),
         });
     }
     out.sort_by(|a, b| {
@@ -109,6 +121,21 @@ fn assumptions(f: &Format) -> Vec<String> {
     out
 }
 
+/// Well-known "magic" sentinel values that denote unset/never/error rather than
+/// a real instant (a zero/uninitialized field, an all-ones marker, the Active
+/// Directory `accountExpires = 0x7FFFFFFFFFFFFFFF` "never"). Detecting them is the
+/// front line against silently rendering a sentinel as a plausible date. NOTE:
+/// `0xFFFFFFFF` (u32 max) is deliberately NOT listed — it is the genuine HFS+
+/// maximum date, not a sentinel.
+fn sentinel_reason(value: i64) -> Option<&'static str> {
+    match value {
+        0 => Some("zero / unset"),
+        -1 => Some("-1 / all-ones, commonly unset"),
+        i64::MAX => Some("0x7FFFFFFFFFFFFFFF, commonly 'never'"),
+        _ => None,
+    }
+}
+
 /// The named plausibility components for one reading (HANDOFF §5b). Each is in
 /// `[0, 1]` and emitted verbatim on the `Candidate` so a reviewer can audit the
 /// rank instead of trusting an opaque number. NEVER a filter — a low component
@@ -122,11 +149,13 @@ fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static s
     ));
     let granularity = granularity_match(f.strategy, value);
     let magnitude = magnitude_fit(f.strategy, instant);
+    let not_sentinel = f64::from(u8::from(sentinel_reason(value).is_none()));
     vec![
         ("representable", representable),
         ("in_window", in_window),
         ("granularity_match", granularity),
         ("magnitude_fit", magnitude),
+        ("not_sentinel", not_sentinel),
     ]
 }
 
@@ -193,7 +222,7 @@ fn trailing_zeros_base10(value: i64) -> u32 {
 /// one. The result is the overall `[0, 1]` rank.
 fn overall_score(components: &[(&'static str, f64)]) -> f64 {
     let weight = |name: &str| match name {
-        "in_window" | "magnitude_fit" => 2.0,
+        "in_window" | "magnitude_fit" | "not_sentinel" => 2.0,
         _ => 1.0,
     };
     let (num, den) = components.iter().fold((0.0, 0.0), |(num, den), (n, v)| {
