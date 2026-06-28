@@ -1,0 +1,42 @@
+site_name: timeglyph
+site_description: Forensic timestamp decipherment — scored, cited, ambiguity-first
+site_url: https://securityronin.github.io/timeglyph/
+repo_url: https://github.com/SecurityRonin/timeglyph
+repo_name: SecurityRonin/timeglyph
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Privacy Policy: privacy.md
+  - Terms of Service: terms.md
+
+copyright: © 2026 Security Ronin Ltd
