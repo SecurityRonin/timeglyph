@@ -4,6 +4,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::csv_enrich::{enrich, Conversion, EnrichOptions};
+use timeglyph::RenderZone;
 
 fn header(csv: &str) -> String {
     csv.lines().next().unwrap_or_default().to_string()
@@ -19,6 +20,7 @@ fn explicit_conversion_adds_column_to_the_right() {
         }],
         auto: false,
         replace: false,
+        zone: RenderZone::Utc,
     };
     let out = enrich(input, &opts).unwrap();
     // New column appears immediately to the right of the source column.
@@ -43,6 +45,7 @@ fn replace_option_replaces_the_original_column() {
         }],
         auto: false,
         replace: true,
+        zone: RenderZone::Utc,
     };
     let out = enrich(input, &opts).unwrap();
     assert_eq!(header(&out), "id,created", "header unchanged on replace");
@@ -60,6 +63,7 @@ fn auto_detects_a_unix_seconds_column() {
         conversions: vec![],
         auto: true,
         replace: false,
+        zone: RenderZone::Utc,
     };
     let out = enrich(input, &opts).unwrap();
     assert!(header(&out).contains("ts_unix"), "header: {}", header(&out));
@@ -75,6 +79,7 @@ fn auto_skips_small_numeric_columns() {
         conversions: vec![],
         auto: true,
         replace: false,
+        zone: RenderZone::Utc,
     };
     let out = enrich(input, &opts).unwrap();
     assert_eq!(

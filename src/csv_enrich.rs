@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use crate::{format, interpret, ChronoError};
+use crate::{format, interpret, ChronoError, RenderZone};
 
 /// An explicit column→format conversion request.
 pub struct Conversion {
@@ -33,6 +33,8 @@ pub struct EnrichOptions {
     pub auto: bool,
     /// Replace the source column in place rather than adding a new one.
     pub replace: bool,
+    /// Output timezone for the rendered cells (default [`RenderZone::Utc`]).
+    pub zone: RenderZone,
 }
 
 /// Integers below this are too small to be plausible timestamps (counts, ids,
@@ -103,7 +105,7 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
             let cell = rec.get(idx).unwrap_or("");
             match plan.get(&idx) {
                 Some(fmt) => {
-                    let rendered = render_cell(cell, fmt);
+                    let rendered = render_cell(cell, fmt, &opts.zone);
                     if opts.replace {
                         row.push(rendered.unwrap_or_else(|| cell.to_string()));
                     } else {
@@ -125,16 +127,16 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
 
 /// Render one cell under a known format id → RFC 3339, or `None` if it cannot be
 /// decoded (empty/non-numeric/out of range). Integer first, then float.
-fn render_cell(cell: &str, fmt: &str) -> Option<String> {
+fn render_cell(cell: &str, fmt: &str, zone: &RenderZone) -> Option<String> {
     let f = format(fmt).ok()?;
     if let Ok(v) = cell.trim().parse::<i64>() {
         if let Ok(inst) = f.decode_int(v) {
-            return inst.to_rfc3339();
+            return inst.render(zone);
         }
     }
     if let Ok(v) = cell.trim().parse::<f64>() {
         if let Ok(inst) = f.decode_float(v) {
-            return inst.to_rfc3339();
+            return inst.render(zone);
         }
     }
     None

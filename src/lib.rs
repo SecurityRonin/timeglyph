@@ -61,6 +61,11 @@ pub enum ChronoError {
     /// No format with the given id is registered.
     #[error("unknown format id: {0}")]
     UnknownFormat(String),
+    /// The requested output timezone is neither UTC, a valid fixed offset, nor a
+    /// known IANA zone name. Surfaced (never a silent UTC fallback) so the
+    /// rendered offset is always the one the analyst asked for.
+    #[error("unknown timezone: {0} (expected UTC, a fixed offset like +08:00, or an IANA name like America/New_York)")]
+    UnknownZone(String),
     /// Rendering the instant to a civil string failed (outside jiff's range).
     #[error("cannot render instant: {0}")]
     Render(String),
@@ -86,6 +91,85 @@ impl PosixNs {
             .ok()
             .map(|ts| ts.to_string())
     }
+
+    /// Render this instant in a chosen output [`RenderZone`]. The instant is
+    /// absolute; the zone changes only the *displayed* civil time and offset.
+    /// Returns `None` only when the instant is outside the civil range (same
+    /// contract as [`to_rfc3339`](Self::to_rfc3339)). For a named zone the
+    /// offset is resolved per-instant, so DST is handled correctly.
+    #[must_use]
+    pub fn render(self, zone: &RenderZone) -> Option<String> {
+        let ts = jiff::Timestamp::from_nanosecond(self.0).ok()?;
+        match zone {
+            // UTC keeps the `Z` suffix: "the offset to local time is unknown"
+            // is the honest default for an instant with no recorded locale.
+            RenderZone::Utc => Some(ts.to_string()),
+            RenderZone::Fixed(offset) => Some(ts.display_with_offset(*offset).to_string()),
+            RenderZone::Named(tz) => {
+                let offset = tz.to_offset(ts);
+                Some(ts.display_with_offset(offset).to_string())
+            }
+        }
+    }
+}
+
+/// A target timezone for *rendering* an instant ([`PosixNs`]). Presentation
+/// only — it never changes the underlying instant, just how it is displayed.
+/// The default ([`RenderZone::Utc`]) renders with a `Z` suffix.
+#[derive(Debug, Clone)]
+pub enum RenderZone {
+    /// UTC, rendered with a `Z` suffix (the unambiguous default).
+    Utc,
+    /// A fixed offset from UTC (e.g. `+08:00`), rendered with a numeric offset.
+    Fixed(jiff::tz::Offset),
+    /// A named IANA zone (e.g. `America/New_York`), pre-validated at parse time.
+    /// The offset is resolved per instant, so the rendering is DST-correct.
+    Named(jiff::tz::TimeZone),
+}
+
+impl RenderZone {
+    /// Parse a zone spec: empty / `UTC` / `Z` → UTC; a leading `+`/`-` → a fixed
+    /// offset (`+HH`, `±HH:MM`, `±HHMM`); anything else → an IANA zone name,
+    /// validated against the tz database. An unrecognised name errors loudly
+    /// ([`ChronoError::UnknownZone`]) rather than silently falling back to UTC.
+    pub fn parse(spec: &str) -> Result<Self, ChronoError> {
+        let s = spec.trim();
+        if s.is_empty() || s.eq_ignore_ascii_case("utc") || s.eq_ignore_ascii_case("z") {
+            return Ok(Self::Utc);
+        }
+        if matches!(s.as_bytes().first(), Some(b'+' | b'-')) {
+            return parse_offset(s)
+                .map(Self::Fixed)
+                .ok_or_else(|| ChronoError::UnknownZone(s.to_string()));
+        }
+        jiff::tz::TimeZone::get(s)
+            .map(Self::Named)
+            .map_err(|_| ChronoError::UnknownZone(s.to_string()))
+    }
+}
+
+/// Parse a fixed UTC offset of the form `±HH`, `±HH:MM`, or `±HHMM` into a jiff
+/// [`Offset`](jiff::tz::Offset). Returns `None` on a malformed or out-of-range
+/// offset (never a fabricated zero) so the caller can reject it.
+fn parse_offset(s: &str) -> Option<jiff::tz::Offset> {
+    let (sign, rest) = match s.as_bytes().first()? {
+        b'+' => (1i32, &s[1..]),
+        b'-' => (-1i32, &s[1..]),
+        _ => return None,
+    };
+    let digits: String = rest.chars().filter(|c| *c != ':').collect();
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let (hh, mm) = match digits.len() {
+        1 | 2 => (digits.parse::<i32>().ok()?, 0),
+        4 => (digits[..2].parse().ok()?, digits[2..].parse::<i32>().ok()?),
+        _ => return None,
+    };
+    if hh > 23 || mm > 59 {
+        return None;
+    }
+    jiff::tz::Offset::from_seconds(sign * (hh * 3600 + mm * 60)).ok()
 }
 
 /// The tick unit a format counts in.

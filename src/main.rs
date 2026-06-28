@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use timeglyph::csv_enrich::{Conversion, EnrichOptions};
 use timeglyph::interpret::{self, Candidate};
+use timeglyph::RenderZone;
 
 const EXIT_OK: u8 = 0;
 const EXIT_ERR: u8 = 1;
@@ -26,6 +27,11 @@ struct Cli {
     /// Emit JSON (with the bare-value shortcut).
     #[arg(long)]
     json: bool,
+    /// Render dates in this timezone instead of UTC. Accepts `UTC`, a fixed
+    /// offset (`+08:00`, `-0500`), or an IANA name (`America/New_York`). The
+    /// instant is unchanged — only the displayed offset differs.
+    #[arg(long, global = true, value_name = "ZONE")]
+    tz: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -87,12 +93,21 @@ enum Commands {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // Resolve the output zone once, up front: a bad --tz must fail loudly before
+    // any rendering, never silently fall back to UTC.
+    let zone = match RenderZone::parse(cli.tz.as_deref().unwrap_or("")) {
+        Ok(z) => z,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(EXIT_ERR);
+        }
+    };
     let code = match cli.command {
-        Some(Commands::Identify { value, json }) => run_identify(value, json),
-        Some(Commands::Decode { format, value }) => run_decode(&format, &value),
+        Some(Commands::Identify { value, json }) => run_identify(value, json, &zone),
+        Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
-        Some(Commands::Hex { bytes }) => run_hex(&bytes),
-        Some(Commands::String { text }) => run_string(&text),
+        Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone),
+        Some(Commands::String { text }) => run_string(&text, &zone),
         Some(Commands::List) => run_list(),
         Some(Commands::Csv {
             path,
@@ -100,10 +115,10 @@ fn main() -> ExitCode {
             auto,
             replace,
             output,
-        }) => run_csv(&path, &convert, auto, replace, output.as_deref()),
+        }) => run_csv(&path, &convert, auto, replace, output.as_deref(), &zone),
         None => {
             if let Some(v) = cli.value {
-                run_identify(v, cli.json)
+                run_identify(v, cli.json, &zone)
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -129,8 +144,13 @@ fn ambiguity_code(cands: &[Candidate]) -> u8 {
     EXIT_OK
 }
 
-fn run_identify(value: i64, json: bool) -> u8 {
-    let cands = interpret::interpret_int(value);
+fn run_identify(value: i64, json: bool, zone: &RenderZone) -> u8 {
+    let mut cands = interpret::interpret_int(value);
+    // Re-render each `rendered` field in the requested zone. The canonical
+    // `instant` (nanoseconds) stays the absolute anchor; only the human-facing
+    // string changes — serialized directly (serde_json's intermediate Value
+    // can't hold the i128 instant; the Serializer can).
+    render_candidates_in_zone(&mut cands, zone);
     if json {
         match serde_json::to_string_pretty(&cands) {
             Ok(s) => println!("{s}"),
@@ -145,11 +165,21 @@ fn run_identify(value: i64, json: bool) -> u8 {
         "# readings consistent with {value} (ranked; a raw value is usually \
          underdetermined — not a single verdict):"
     );
-    print_candidates(&cands);
+    print_candidates(&cands, zone);
     ambiguity_code(&cands)
 }
 
-fn run_decode(format: &str, value: &str) -> u8 {
+/// Overwrite each candidate's `rendered` string with its instant rendered in
+/// `zone` (leaving it untouched when the instant is out of civil range).
+fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone) {
+    for c in cands {
+        if let Some(rendered) = c.instant.render(zone) {
+            c.rendered = Some(rendered);
+        }
+    }
+}
+
+fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
     // Leap-aware scales (gps/tai64/ntp) decode separately — never via PosixNs.
     #[cfg(feature = "leap")]
     if let Ok(v) = value.parse::<i64>() {
@@ -183,7 +213,7 @@ fn run_decode(format: &str, value: &str) -> u8 {
     if let Ok(v) = value.parse::<i64>() {
         let sentinel = interpret::sentinel_reason(v);
         if let Ok(instant) = f.decode_int(v) {
-            print_decode(f, value, instant);
+            print_decode(f, value, instant, zone);
             return sentinel_exit(v, sentinel);
         } else if let Some(reason) = sentinel {
             // e.g. 0x7FFFFFFFFFFFFFFF ("never") overflows the decode but is itself
@@ -195,7 +225,7 @@ fn run_decode(format: &str, value: &str) -> u8 {
     }
     if let Ok(v) = value.parse::<f64>() {
         match f.decode_float(v) {
-            Ok(instant) => return print_decode(f, value, instant),
+            Ok(instant) => return print_decode(f, value, instant, zone),
             Err(e) => {
                 eprintln!("error: {e}");
                 return EXIT_ERR;
@@ -206,9 +236,14 @@ fn run_decode(format: &str, value: &str) -> u8 {
     EXIT_ERR
 }
 
-fn print_decode(f: &timeglyph::Format, value: &str, instant: timeglyph::PosixNs) -> u8 {
+fn print_decode(
+    f: &timeglyph::Format,
+    value: &str,
+    instant: timeglyph::PosixNs,
+    zone: &RenderZone,
+) -> u8 {
     let rendered = instant
-        .to_rfc3339()
+        .render(zone)
         .unwrap_or_else(|| "<out of civil range>".into());
     let caveat = if matches!(f.tz, timeglyph::TzSemantics::LocalNaive) {
         "  (LOCAL naive — not UTC)"
@@ -259,14 +294,14 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
     }
 }
 
-fn run_hex(bytes: &str) -> u8 {
+fn run_hex(bytes: &str, zone: &RenderZone) -> u8 {
     match interpret::interpret_hex(bytes) {
         Ok(groups) => {
             let mut any = false;
             let mut has_sentinel = false;
             for (layout, cands) in &groups {
                 println!("# byte layout: {layout}");
-                print_candidates(cands);
+                print_candidates(cands, zone);
                 any |= !cands.is_empty();
                 has_sentinel |= cands.iter().any(|c| c.sentinel);
             }
@@ -284,14 +319,14 @@ fn run_hex(bytes: &str) -> u8 {
     }
 }
 
-fn run_string(text: &str) -> u8 {
+fn run_string(text: &str, zone: &RenderZone) -> u8 {
     let cands = interpret::interpret_string(text);
     if cands.is_empty() {
         eprintln!("error: {text:?} did not parse as any known string timestamp form");
         return EXIT_ERR;
     }
     println!("# readings consistent with {text:?}:");
-    print_candidates(&cands);
+    print_candidates(&cands, zone);
     EXIT_OK
 }
 
@@ -302,7 +337,14 @@ fn run_list() -> u8 {
     EXIT_OK
 }
 
-fn run_csv(path: &str, convert: &[String], auto: bool, replace: bool, output: Option<&str>) -> u8 {
+fn run_csv(
+    path: &str,
+    convert: &[String],
+    auto: bool,
+    replace: bool,
+    output: Option<&str>,
+    zone: &RenderZone,
+) -> u8 {
     let input = if path == "-" {
         let mut s = String::new();
         if std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).is_err() {
@@ -340,6 +382,7 @@ fn run_csv(path: &str, convert: &[String], auto: bool, replace: bool, output: Op
         conversions,
         auto,
         replace,
+        zone: zone.clone(),
     };
     match timeglyph::csv_enrich::enrich(&input, &opts) {
         Ok(out) => {
@@ -360,18 +403,19 @@ fn run_csv(path: &str, convert: &[String], auto: bool, replace: bool, output: Op
     }
 }
 
-fn print_candidates(cands: &[Candidate]) {
+fn print_candidates(cands: &[Candidate], zone: &RenderZone) {
     if cands.is_empty() {
         println!("  (no plausible interpretation)");
         return;
     }
     for c in cands {
         let flag = if c.sentinel { " [sentinel]" } else { "" };
+        let rendered = c.instant.render(zone).or_else(|| c.rendered.clone());
         println!(
             "  [{:.2}] {:<16} {}  ({}){flag}",
             c.score,
             c.format_id,
-            c.rendered.as_deref().unwrap_or("<out of range>"),
+            rendered.as_deref().unwrap_or("<out of range>"),
             c.label,
         );
     }
