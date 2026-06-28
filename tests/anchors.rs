@@ -158,3 +158,17 @@ fn sqlite_julian_day_float() {
         "JD 2451545.0 = {rendered:?}, expected 2000-01-01T12:00:00"
     );
 }
+
+#[test]
+fn snowflake_and_discord_embedded_millis() {
+    // Snowflake IDs embed a millisecond timestamp in the high bits: the low 22
+    // bits are worker/sequence, so `id >> 22` = ms since the scheme's epoch.
+    // Twitter/X epoch = 1_288_834_974_657 ms (2010-11-04T01:42:54.657Z); value 0
+    // therefore renders the epoch itself.
+    assert_decodes("snowflake", 0, "2010-11-04T01:42:54");
+    // Discord epoch = 1_420_070_400_000 ms (2015-01-01). The documented worked
+    // example id 175928847299117063 → 2016-04-30T11:18:25.796Z (verified with an
+    // independent Python oracle, matching Discord's published example).
+    assert_decodes("discord", 0, "2015-01-01T00:00:00");
+    assert_decodes("discord", 175_928_847_299_117_063, "2016-04-30T11:18:25");
+}

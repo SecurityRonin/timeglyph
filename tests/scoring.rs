@@ -74,3 +74,37 @@ fn granularity_lifts_the_better_fitting_reading() {
         "real-resolution {s_real} should beat round {s_round}"
     );
 }
+
+#[test]
+fn id_schemes_do_not_outrank_a_plain_unix_seconds_value() {
+    // A 10-digit unix-seconds value, read as a Snowflake, lands essentially AT
+    // the scheme's own epoch (id >> 22 ≈ 0) — implausible. magnitude_fit must
+    // sink the ID readings below the plain unix-seconds reading (ranked, never
+    // hidden).
+    let cands = interpret::interpret_int(1_577_836_800);
+    let unix = cands.iter().find(|c| c.format_id == "unix").unwrap().score;
+    for id in ["snowflake", "discord"] {
+        if let Some(c) = cands.iter().find(|c| c.format_id == id) {
+            assert!(
+                unix > c.score,
+                "{id} ({}) must not outrank unix ({unix})",
+                c.score
+            );
+        }
+    }
+}
+
+#[test]
+fn real_discord_id_surfaces_a_confident_discord_reading() {
+    let cands = interpret::interpret_int(175_928_847_299_117_063);
+    let d = cands
+        .iter()
+        .find(|c| c.format_id == "discord")
+        .expect("discord candidate");
+    assert!(d.rendered.as_deref().unwrap().starts_with("2016-04-30"));
+    assert_eq!(component(&cands, "discord", "in_window"), 1.0);
+    assert!(
+        component(&cands, "discord", "magnitude_fit") > 0.5,
+        "a real id sits well past the epoch → high magnitude_fit"
+    );
+}
