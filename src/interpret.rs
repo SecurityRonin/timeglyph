@@ -273,3 +273,139 @@ fn byte_ints(b: &[u8]) -> Vec<(String, i64)> {
     }
     v
 }
+
+/// Parse a STRING timestamp form: ISO 8601 / RFC 3339, and ASN.1 UTCTime /
+/// GeneralizedTime (ITU-T X.680, RFC 5280) as found in X.509 certificates and
+/// PKI structures. Returns every form that parses — a string is usually
+/// self-describing, so these readings score high. Empty for unparseable input.
+#[must_use]
+pub fn interpret_string(text: &str) -> Vec<Candidate> {
+    let s = text.trim();
+    let mut out = Vec::new();
+    // RFC 3339 / ISO 8601: jiff parses the offset (or `Z`) and normalises to UTC.
+    if let Ok(ts) = s.parse::<jiff::Timestamp>() {
+        out.push(string_candidate(
+            "iso8601",
+            "ISO 8601 / RFC 3339 string",
+            "ISO 8601:2019 / RFC 3339",
+            PosixNs(ts.as_nanosecond()),
+            "parsed as an ISO 8601 / RFC 3339 string (offset normalised to UTC)",
+        ));
+    }
+    if let Some(instant) = parse_asn1_generalizedtime(s) {
+        out.push(string_candidate(
+            "asn1_generalizedtime",
+            "ASN.1 GeneralizedTime",
+            "ITU-T X.680 / RFC 5280 §4.1.2.5.2",
+            instant,
+            "parsed as ASN.1 GeneralizedTime (4-digit year)",
+        ));
+    }
+    if let Some(instant) = parse_asn1_utctime(s) {
+        out.push(string_candidate(
+            "asn1_utctime",
+            "ASN.1 UTCTime",
+            "ITU-T X.680 / RFC 5280 §4.1.2.5.1",
+            instant,
+            "parsed as ASN.1 UTCTime (2-digit year; RFC 5280 pivot: <50 => 20YY, else 19YY)",
+        ));
+    }
+    out
+}
+
+/// Build a candidate for a self-describing string form. Such inputs are
+/// unambiguous once parsed, so they carry a `self_describing` component.
+fn string_candidate(
+    format_id: &'static str,
+    label: &'static str,
+    citation: &'static str,
+    instant: PosixNs,
+    assumption: &str,
+) -> Candidate {
+    Candidate {
+        format_id,
+        label,
+        citation,
+        instant,
+        rendered: instant.to_rfc3339(),
+        score: 1.0,
+        components: vec![
+            ("representable", 1.0),
+            ("self_describing", 1.0),
+            ("not_sentinel", 1.0),
+        ],
+        assumptions: vec![assumption.to_string()],
+        sentinel: false,
+    }
+}
+
+/// Split a trailing timezone designator (`Z`, `±HHMM`, or none → assume UTC) off
+/// a numeric ASN.1 time string, returning the digit core and the offset seconds.
+fn split_tz(s: &str) -> (String, i64) {
+    if let Some(core) = s.strip_suffix('Z').or_else(|| s.strip_suffix('z')) {
+        return (core.to_string(), 0);
+    }
+    if s.len() >= 5 {
+        let (core, suf) = s.split_at(s.len() - 5);
+        let b = suf.as_bytes();
+        if (b[0] == b'+' || b[0] == b'-') && suf[1..].bytes().all(|c| c.is_ascii_digit()) {
+            if let (Ok(hh), Ok(mm)) = (suf[1..3].parse::<i64>(), suf[3..5].parse::<i64>()) {
+                let mag = hh * 3600 + mm * 60;
+                return (core.to_string(), if b[0] == b'-' { -mag } else { mag });
+            }
+        }
+    }
+    (s.to_string(), 0)
+}
+
+/// Build an instant from civil fields at a fixed UTC offset (panic-free).
+fn civil_to_posix(
+    y: i16,
+    mo: i8,
+    d: i8,
+    h: i8,
+    mi: i8,
+    s: i8,
+    offset_secs: i64,
+) -> Option<PosixNs> {
+    let dt = jiff::civil::DateTime::new(y, mo, d, h, mi, s, 0).ok()?;
+    let off = jiff::tz::Offset::from_seconds(i32::try_from(offset_secs).ok()?).ok()?;
+    let zoned = dt.to_zoned(jiff::tz::TimeZone::fixed(off)).ok()?;
+    Some(PosixNs(zoned.timestamp().as_nanosecond()))
+}
+
+/// `YYYYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 GeneralizedTime.
+fn parse_asn1_generalizedtime(s: &str) -> Option<PosixNs> {
+    let (d, off) = split_tz(s);
+    if d.len() != 14 || !d.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    civil_to_posix(
+        d[0..4].parse().ok()?,
+        d[4..6].parse().ok()?,
+        d[6..8].parse().ok()?,
+        d[8..10].parse().ok()?,
+        d[10..12].parse().ok()?,
+        d[12..14].parse().ok()?,
+        off,
+    )
+}
+
+/// `YYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 UTCTime; 2-digit year per RFC 5280.
+fn parse_asn1_utctime(s: &str) -> Option<PosixNs> {
+    let (d, off) = split_tz(s);
+    if d.len() != 12 || !d.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let yy: i16 = d[0..2].parse().ok()?;
+    let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
+    civil_to_posix(
+        year,
+        d[2..4].parse().ok()?,
+        d[4..6].parse().ok()?,
+        d[6..8].parse().ok()?,
+        d[8..10].parse().ok()?,
+        d[10..12].parse().ok()?,
+        off,
+    )
+}
