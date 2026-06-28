@@ -313,25 +313,40 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             "parsed as an ISO 8601 / RFC 3339 string (offset normalised to UTC)",
         ));
     }
-    if let Some(instant) = parse_asn1_generalizedtime(s) {
+    if let Some((instant, had_tz)) = parse_asn1_generalizedtime(s) {
         out.push(string_candidate(
             "asn1_generalizedtime",
             "ASN.1 GeneralizedTime",
             "ITU-T X.680 / RFC 5280 §4.1.2.5.2",
             instant,
-            "parsed as ASN.1 GeneralizedTime (4-digit year)",
+            &asn1_assumption("GeneralizedTime (4-digit year)", had_tz),
         ));
     }
-    if let Some(instant) = parse_asn1_utctime(s) {
+    if let Some((instant, had_tz)) = parse_asn1_utctime(s) {
         out.push(string_candidate(
             "asn1_utctime",
             "ASN.1 UTCTime",
             "ITU-T X.680 / RFC 5280 §4.1.2.5.1",
             instant,
-            "parsed as ASN.1 UTCTime (2-digit year; RFC 5280 pivot: <50 => 20YY, else 19YY)",
+            &asn1_assumption(
+                "UTCTime (2-digit year; RFC 5280 pivot: <50 => 20YY, else 19YY)",
+                had_tz,
+            ),
         ));
     }
     out
+}
+
+/// Build the assumption line for an ASN.1 reading, surfacing the assumed-UTC
+/// caveat when the string carried no explicit `Z`/offset (it may be local time).
+fn asn1_assumption(kind: &str, had_tz: bool) -> String {
+    if had_tz {
+        format!("parsed as ASN.1 {kind}")
+    } else {
+        format!(
+            "parsed as ASN.1 {kind}; NO timezone designator — assumed UTC, but may be local time"
+        )
+    }
 }
 
 /// Build a candidate for a self-describing string form. Such inputs are
@@ -362,21 +377,32 @@ fn string_candidate(
 
 /// Split a trailing timezone designator (`Z`, `±HHMM`, or none → assume UTC) off
 /// a numeric ASN.1 time string, returning the digit core and the offset seconds.
-fn split_tz(s: &str) -> (String, i64) {
+/// Returns `None` when a present offset is malformed or out of range (e.g.
+/// `+1260`) — such input must not be silently normalised into a fabricated
+/// instant. A `had_tz` flag distinguishes an explicit `Z`/offset from an
+/// assumed-UTC fallback so the caller can surface that assumption.
+fn split_tz(s: &str) -> Option<(String, i64, bool)> {
     if let Some(core) = s.strip_suffix('Z').or_else(|| s.strip_suffix('z')) {
-        return (core.to_string(), 0);
+        return Some((core.to_string(), 0, true));
     }
     if s.len() >= 5 {
         let (core, suf) = s.split_at(s.len() - 5);
         let b = suf.as_bytes();
         if (b[0] == b'+' || b[0] == b'-') && suf[1..].bytes().all(|c| c.is_ascii_digit()) {
-            if let (Ok(hh), Ok(mm)) = (suf[1..3].parse::<i64>(), suf[3..5].parse::<i64>()) {
-                let mag = hh * 3600 + mm * 60;
-                return (core.to_string(), if b[0] == b'-' { -mag } else { mag });
+            let hh: i64 = suf[1..3].parse().ok()?;
+            let mm: i64 = suf[3..5].parse().ok()?;
+            if hh > 23 || mm > 59 {
+                return None; // out-of-range offset — reject, do not fabricate
             }
+            let mag = hh * 3600 + mm * 60;
+            return Some((
+                core.to_string(),
+                if b[0] == b'-' { -mag } else { mag },
+                true,
+            ));
         }
     }
-    (s.to_string(), 0)
+    Some((s.to_string(), 0, false))
 }
 
 /// Build an instant from civil fields at a fixed UTC offset (panic-free).
@@ -396,12 +422,12 @@ fn civil_to_posix(
 }
 
 /// `YYYYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 GeneralizedTime.
-fn parse_asn1_generalizedtime(s: &str) -> Option<PosixNs> {
-    let (d, off) = split_tz(s);
+fn parse_asn1_generalizedtime(s: &str) -> Option<(PosixNs, bool)> {
+    let (d, off, had_tz) = split_tz(s)?;
     if d.len() != 14 || !d.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    civil_to_posix(
+    let instant = civil_to_posix(
         d[0..4].parse().ok()?,
         d[4..6].parse().ok()?,
         d[6..8].parse().ok()?,
@@ -409,18 +435,19 @@ fn parse_asn1_generalizedtime(s: &str) -> Option<PosixNs> {
         d[10..12].parse().ok()?,
         d[12..14].parse().ok()?,
         off,
-    )
+    )?;
+    Some((instant, had_tz))
 }
 
 /// `YYMMDDHHMMSS` (+ `Z`/offset) — ASN.1 UTCTime; 2-digit year per RFC 5280.
-fn parse_asn1_utctime(s: &str) -> Option<PosixNs> {
-    let (d, off) = split_tz(s);
+fn parse_asn1_utctime(s: &str) -> Option<(PosixNs, bool)> {
+    let (d, off, had_tz) = split_tz(s)?;
     if d.len() != 12 || !d.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
     let yy: i16 = d[0..2].parse().ok()?;
     let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
-    civil_to_posix(
+    let instant = civil_to_posix(
         year,
         d[2..4].parse().ok()?,
         d[4..6].parse().ok()?,
@@ -428,5 +455,6 @@ fn parse_asn1_utctime(s: &str) -> Option<PosixNs> {
         d[8..10].parse().ok()?,
         d[10..12].parse().ok()?,
         off,
-    )
+    )?;
+    Some((instant, had_tz))
 }

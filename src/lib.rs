@@ -262,10 +262,30 @@ impl Format {
     pub fn decode_float(&self, value: f64) -> Result<PosixNs, ChronoError> {
         match self.strategy {
             Strategy::LinearFloat { epoch_ns, unit } => {
-                // f64 days × ns/day, then the epoch offset. Precision loss is
-                // inherent to the source encoding (documented, not hidden).
-                let ns = (value * unit.nanos() as f64).round() as i128;
-                Ok(PosixNs(ns + epoch_ns))
+                // Reject non-finite or absurd magnitudes rather than let the
+                // float→int cast saturate into a plausible-but-wrong instant.
+                if !value.is_finite() {
+                    return Err(ChronoError::OutOfRange {
+                        what: "non-finite float value",
+                        value: 0,
+                    });
+                }
+                let scaled = (value * unit.nanos() as f64).round();
+                // 1e38 < i128::MAX (~1.7e38): a safe ceiling below the saturating
+                // cast boundary, well past any civil-range date.
+                if !scaled.is_finite() || scaled.abs() >= 1.0e38 {
+                    return Err(ChronoError::OutOfRange {
+                        what: "float value out of representable range",
+                        value: 0,
+                    });
+                }
+                let ns = (scaled as i128)
+                    .checked_add(epoch_ns)
+                    .ok_or(ChronoError::OutOfRange {
+                        what: "nanoseconds",
+                        value: scaled as i128,
+                    })?;
+                Ok(PosixNs(ns))
             }
             Strategy::LinearInt { .. } | Strategy::EmbeddedMillis { .. } | Strategy::Packed(_) => {
                 Err(ChronoError::OutOfRange {
