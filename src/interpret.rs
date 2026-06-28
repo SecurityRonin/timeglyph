@@ -58,34 +58,11 @@ pub struct Candidate {
 pub fn interpret_int(value: i64) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
     for f in FORMATS {
-        // Any integer-decodable strategy is a candidate; float-only strategies
-        // return Err here and are skipped (they are decoded via --from).
-        let Ok(instant) = f.decode_int(value) else {
-            continue;
-        };
-        let Some(rendered) = instant.to_rfc3339() else {
-            continue; // outside civil range → not a usable reading
-        };
-        let components = score_components(f, value, instant);
-        let score = overall_score(&components);
-        let mut assumptions = assumptions(f);
-        let sentinel = sentinel_reason(value);
-        if let Some(reason) = sentinel {
-            assumptions.push(format!(
-                "value {value} is a likely sentinel ({reason}) — an 'unset'/'never' marker, not necessarily a real instant"
-            ));
+        // Any integer-decodable strategy is a candidate; float-only and
+        // out-of-range readings are skipped inside build_candidate.
+        if let Some(c) = build_candidate(f, value) {
+            out.push(c);
         }
-        out.push(Candidate {
-            format_id: f.id,
-            label: f.label,
-            citation: f.citation,
-            instant,
-            rendered: Some(rendered),
-            score,
-            components,
-            assumptions,
-            sentinel: sentinel.is_some(),
-        });
     }
     out.sort_by(|a, b| {
         b.score
@@ -94,6 +71,39 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
             .then_with(|| a.format_id.cmp(b.format_id))
     });
     out
+}
+
+/// Build a scored, assumption-carrying candidate for one format + integer value,
+/// or `None` if the value is not integer-decodable under it or renders outside the
+/// civil range. Shared by [`interpret_int`] and the per-format hex decoders.
+fn build_candidate(f: &Format, value: i64) -> Option<Candidate> {
+    let instant = f.decode_int(value).ok()?;
+    let rendered = instant.to_rfc3339()?;
+    let components = score_components(f, value, instant);
+    let score = overall_score(&components);
+    let mut assumptions = assumptions(f);
+    let sentinel = sentinel_reason(value);
+    if let Some(reason) = sentinel {
+        assumptions.push(format!(
+            "value {value} is a likely sentinel ({reason}) — an 'unset'/'never' marker, not necessarily a real instant"
+        ));
+    }
+    Some(Candidate {
+        format_id: f.id,
+        label: f.label,
+        citation: f.citation,
+        instant,
+        rendered: Some(rendered),
+        score,
+        components,
+        assumptions,
+        sentinel: sentinel.is_some(),
+    })
+}
+
+/// Decode a single named format from an integer value, returning its candidate.
+fn decode_one(format_id: &str, value: i64) -> Option<Candidate> {
+    build_candidate(crate::format(format_id).ok()?, value)
 }
 
 /// The stated assumptions behind one reading (HANDOFF §5c epistemics). A reading
@@ -252,6 +262,17 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
     let mut out = Vec::new();
     for (label, value) in byte_ints(&bytes) {
         out.push((label, interpret_int(value)));
+    }
+    // Packed formats have an ON-DISK byte order distinct from a linear integer:
+    // FAT/DOS stores a date word then a time word, each little-endian. Decode that
+    // layout explicitly so an analyst with raw bytes gets the right instant.
+    if let Some(four) = bytes.get(..4).and_then(|s| <[u8; 4]>::try_from(s).ok()) {
+        let date = u16::from_le_bytes([four[0], four[1]]);
+        let time = u16::from_le_bytes([four[2], four[3]]);
+        let packed = (i64::from(date) << 16) | i64::from(time);
+        if let Some(c) = decode_one("fat", packed) {
+            out.push(("FAT/DOS on-disk (date|time LE words)".to_string(), vec![c]));
+        }
     }
     Ok(out)
 }
