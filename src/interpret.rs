@@ -10,7 +10,9 @@
 //! representable validity, configured-case-window, granularity match, byte-width
 //! match, endian match, artifact-context hint, neighbour-monotonicity.
 
-use crate::{registry::FORMATS, ChronoError, Format, LeapSemantics, PosixNs, Strategy, Unit};
+use crate::{
+    registry::FORMATS, ChronoError, Format, LeapSemantics, PosixNs, Strategy, TzSemantics, Unit,
+};
 
 /// One candidate interpretation of a value. Carries its score *components* and
 /// *assumptions*, not just a rank — transparency over false confidence.
@@ -84,6 +86,12 @@ fn assumptions(f: &Format) -> Vec<String> {
     if matches!(f.leap, LeapSemantics::PosixIgnored) {
         out.push(
             "indistinguishable from a leap-smeared source without clock-policy metadata"
+                .to_string(),
+        );
+    }
+    if matches!(f.tz, TzSemantics::LocalNaive) {
+        out.push(
+            "stored as LOCAL wall-clock time with no offset — the instant is naive, not UTC"
                 .to_string(),
         );
     }
