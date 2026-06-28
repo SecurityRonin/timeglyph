@@ -41,3 +41,25 @@ fn fat_hex_offers_both_word_orders() {
     assert!(date_time, "missing date|time order: {groups:?}");
     assert!(time_date, "missing time|date (directory) order: {groups:?}");
 }
+
+#[test]
+fn hex_notes_trailing_bytes() {
+    // 6 bytes: the width decoders use the first 4/8; trailing bytes must be
+    // surfaced, not silently dropped.
+    let groups = interpret::interpret_hex("a45a597affff").unwrap();
+    assert!(
+        groups.iter().any(|(label, _)| label.contains("of 6")),
+        "expected a 'first N of 6' note: {groups:?}"
+    );
+}
+
+#[test]
+fn hex_all_ones_u64_is_flagged_sentinel() {
+    // 0xFFFFFFFFFFFFFFFF exceeds i64 so no linear candidate is produced; it must
+    // still surface as an all-ones sentinel rather than vanish silently.
+    let groups = interpret::interpret_hex("ffffffffffffffff").unwrap();
+    assert!(
+        groups.iter().any(|(_, cands)| cands.iter().any(|c| c.sentinel)),
+        "expected an all-ones sentinel candidate: {groups:?}"
+    );
+}
