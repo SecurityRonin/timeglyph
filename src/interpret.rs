@@ -83,11 +83,36 @@ fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static s
         instant.0 >= f.plausible.0 && instant.0 < f.plausible.1,
     ));
     let granularity = granularity_match(f.strategy, value);
+    let magnitude = magnitude_fit(f.strategy, instant);
     vec![
         ("representable", representable),
         ("in_window", in_window),
         ("granularity_match", granularity),
+        ("magnitude_fit", magnitude),
     ]
+}
+
+/// Two years in nanoseconds — the ramp over which an embedded-ID timestamp is
+/// considered to have a "realistic" distance from its scheme epoch.
+const TWO_YEARS_NS: i128 = 730 * 86_400 * 1_000_000_000;
+
+/// Whether the value's magnitude is consistent with the format's encoding. For
+/// linear formats the window already governs magnitude (→ `1.0`). For embedded
+/// IDs it is diagnostic: a tiny value decodes to an instant essentially AT the
+/// scheme epoch (`id >> shift ≈ 0`), which is implausible for a real ID — so the
+/// score ramps from `0.0` at the epoch to `1.0` two years past it.
+fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
+    match strategy {
+        Strategy::EmbeddedMillis { epoch_ns, .. } => {
+            let past = instant.0 - epoch_ns;
+            if past <= 0 {
+                0.0
+            } else {
+                (past as f64 / TWO_YEARS_NS as f64).min(1.0)
+            }
+        }
+        Strategy::LinearInt { .. } | Strategy::LinearFloat { .. } => 1.0,
+    }
 }
 
 /// How well the raw value's sub-second resolution fits the format's unit. A
@@ -98,6 +123,7 @@ fn score_components(f: &Format, value: i64, instant: PosixNs) -> Vec<(&'static s
 fn granularity_match(strategy: Strategy, value: i64) -> f64 {
     let unit: Unit = match strategy {
         Strategy::LinearInt { unit, .. } | Strategy::LinearFloat { unit, .. } => unit,
+        Strategy::EmbeddedMillis { .. } => Unit::Millis,
     };
     let ssd = unit.sub_second_digits();
     if ssd == 0 {
@@ -126,7 +152,10 @@ fn trailing_zeros_base10(value: i64) -> u32 {
 /// is the dominant prior on which readings to surface first); the others weigh
 /// one. The result is the overall `[0, 1]` rank.
 fn overall_score(components: &[(&'static str, f64)]) -> f64 {
-    let weight = |name: &str| if name == "in_window" { 2.0 } else { 1.0 };
+    let weight = |name: &str| match name {
+        "in_window" | "magnitude_fit" => 2.0,
+        _ => 1.0,
+    };
     let (num, den) = components.iter().fold((0.0, 0.0), |(num, den), (n, v)| {
         let w = weight(n);
         (num + w * v, den + w)

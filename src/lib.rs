@@ -126,8 +126,18 @@ pub enum Strategy {
         /// The tick unit.
         unit: Unit,
     },
+    /// An ID with an embedded millisecond timestamp in its high bits: the low
+    /// `shift_bits` bits are worker/sequence/random, so `value >> shift_bits` is
+    /// milliseconds since `epoch_ns` (Snowflake/Discord/Twitter, and the same
+    /// shape as ObjectId/UUIDv7 once those are byte-decoded).
+    EmbeddedMillis {
+        /// The scheme's epoch as nanoseconds relative to the Unix epoch.
+        epoch_ns: i128,
+        /// Number of low bits to discard before reading the ms timestamp.
+        shift_bits: u32,
+    },
     // TODO(HANDOFF): Packed(fn) for FAT/DOS/SYSTEMTIME/exFAT bit-packed structs;
-    // Snowflake/ObjectId/UUIDv7 (embedded-ms with bit shifts); ASN.1 string forms.
+    // ASN.1 / EXIF / RFC-2822 string forms.
 }
 
 /// Timezone semantics of a format's stored value — NOT garnish: FAT stores local
@@ -190,6 +200,25 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
+            Strategy::EmbeddedMillis {
+                epoch_ns,
+                shift_bits,
+            } => {
+                // IDs are unsigned; a negative value is not a valid ID encoding.
+                let raw = u64::try_from(value).map_err(|_| ChronoError::OutOfRange {
+                    what: "embedded-id (negative)",
+                    value: i128::from(value),
+                })?;
+                let ms = i128::from(raw >> shift_bits);
+                let ns = ms
+                    .checked_mul(Unit::Millis.nanos())
+                    .and_then(|t| t.checked_add(epoch_ns))
+                    .ok_or(ChronoError::OutOfRange {
+                        what: "nanoseconds",
+                        value: ms,
+                    })?;
+                Ok(PosixNs(ns))
+            }
             Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format decoded as integer",
                 value: i128::from(value),
@@ -206,10 +235,12 @@ impl Format {
                 let ns = (value * unit.nanos() as f64).round() as i128;
                 Ok(PosixNs(ns + epoch_ns))
             }
-            Strategy::LinearInt { .. } => Err(ChronoError::OutOfRange {
-                what: "integer format decoded as float",
-                value: 0,
-            }),
+            Strategy::LinearInt { .. } | Strategy::EmbeddedMillis { .. } => {
+                Err(ChronoError::OutOfRange {
+                    what: "integer format decoded as float",
+                    value: 0,
+                })
+            }
         }
     }
 
@@ -233,6 +264,12 @@ impl Format {
             }
             Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format encoded as integer",
+                value: 0,
+            }),
+            Strategy::EmbeddedMillis { .. } => Err(ChronoError::OutOfRange {
+                // Encoding would have to invent the worker/sequence low bits; a
+                // round-trip is not defined for ID schemes.
+                what: "embedded-id format cannot be re-encoded from an instant",
                 value: 0,
             }),
         }

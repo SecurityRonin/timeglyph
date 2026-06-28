@@ -24,6 +24,10 @@ const POSTGRES_EPOCH_NS: i128 = 946_684_800 * NS; //     2000-01-01  (PostgreSQL
                                                   // Julian Day 0 = noon, 24 Nov 4714 BC (proleptic Gregorian). unix_seconds(JD 0)
                                                   // = (0 - 2440587.5) × 86400, since JD 2440587.5 == the Unix epoch (SQLite docs).
 const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
+// Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
+const MS: i128 = 1_000_000;
+const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
+const DISCORD_EPOCH_NS: i128 = 1_420_070_400_000 * MS; // 2015-01-01 (Discord)
 
 // Plausibility window for auto-detect ranking: 1990-01-01 .. 2040-01-01.
 // NOT a filter on truth — only a prior on which readings to surface first.
@@ -198,6 +202,32 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::Days,
         },
         citation: "SQLite date-and-time functions (Julian day number)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "snowflake",
+        label: "Twitter/X Snowflake ID (ms since 2010, <<22)",
+        family: "Twitter/X object IDs",
+        strategy: Strategy::EmbeddedMillis {
+            epoch_ns: TWITTER_EPOCH_NS,
+            shift_bits: 22,
+        },
+        citation: "Twitter Snowflake (epoch 1288834974657 ms, 22-bit shift)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "discord",
+        label: "Discord Snowflake ID (ms since 2015, <<22)",
+        family: "Discord object IDs",
+        strategy: Strategy::EmbeddedMillis {
+            epoch_ns: DISCORD_EPOCH_NS,
+            shift_bits: 22,
+        },
+        citation: "Discord developer docs (epoch 1420070400000 ms, 22-bit shift)",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,

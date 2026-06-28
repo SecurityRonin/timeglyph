@@ -102,7 +102,7 @@ fn real_discord_id_surfaces_a_confident_discord_reading() {
         .find(|c| c.format_id == "discord")
         .expect("discord candidate");
     assert!(d.rendered.as_deref().unwrap().starts_with("2016-04-30"));
-    assert_eq!(component(&cands, "discord", "in_window"), 1.0);
+    assert!((component(&cands, "discord", "in_window") - 1.0).abs() < 1e-9);
     assert!(
         component(&cands, "discord", "magnitude_fit") > 0.5,
         "a real id sits well past the epoch → high magnitude_fit"
