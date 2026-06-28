@@ -141,9 +141,11 @@ fn assumptions(f: &Format) -> Vec<String> {
 #[must_use]
 pub fn sentinel_reason(value: i64) -> Option<&'static str> {
     match value {
-        0 => Some("zero / unset"),
-        -1 => Some("-1 / all-ones, commonly unset"),
-        i64::MAX => Some("0x7FFFFFFFFFFFFFFF, commonly 'never'"),
+        // Generic value sentinels: suggestive across any format ("possible").
+        0 => Some("possible sentinel: zero / unset"),
+        -1 => Some("possible sentinel: -1 / all-ones (unset)"),
+        // Format-specific magic value with a documented meaning ("known").
+        i64::MAX => Some("known sentinel: 0x7FFFFFFFFFFFFFFF (e.g. AD accountExpires 'never')"),
         _ => None,
     }
 }
