@@ -1,5 +1,9 @@
 site_name: timeglyph
-site_description: Forensic timestamp decipherment — scored, cited, ambiguity-first
+site_description: >-
+  The authoritative, cited reference for forensic timestamp decipherment — every
+  epoch, encoding, calendar, leap second, and rollover, with primary-source
+  citations. Decode FILETIME, Unix, Cocoa, Snowflake, GPS, TAI64, NTP and more.
+site_author: Security Ronin Ltd
 site_url: https://securityronin.github.io/timeglyph/
 repo_url: https://github.com/SecurityRonin/timeglyph
 repo_name: SecurityRonin/timeglyph
@@ -22,20 +26,54 @@ theme:
         name: Switch to light mode
   features:
     - navigation.instant
+    - navigation.tracking
     - navigation.top
+    - navigation.indexes
     - content.code.copy
     - search.suggest
+    - search.highlight
+    - toc.follow
 
 markdown_extensions:
+  - abbr
   - admonition
-  - pymdownx.highlight
-  - pymdownx.superfences
+  - attr_list
+  - footnotes
+  - md_in_html
   - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.smartsymbols
   - toc:
       permalink: true
 
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SecurityRonin/timeglyph
+
 nav:
   - Home: index.md
+  - Concepts:
+      - Time scales & leap seconds: concepts/time-scales.md
+      - Calendars (Julian, Gregorian, Julian Day): concepts/calendars.md
+      - Precision (ms, µs, ns): concepts/precision.md
+      - RTC hardware & older clocks: concepts/rtc-hardware.md
+      - Epoch rollovers (Y2K, 2038, 2036, 2106): concepts/rollovers.md
+      - Methodology & epistemics: concepts/methodology.md
+  - Formats:
+      - Overview: formats/index.md
+      - Microsoft / Windows: formats/windows.md
+      - Apple / macOS / iOS: formats/apple.md
+      - Unix, web & databases: formats/unix-web-db.md
+      - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
+  - References: references.md
   - Privacy Policy: privacy.md
   - Terms of Service: terms.md
 
