@@ -1,2 +1,10 @@
 /target
-Cargo.lock
+
+# cargo-fuzz build/run artifacts (the targets themselves are committed)
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/Cargo.lock
+
+# timeglyph is a binary/app: Cargo.lock IS committed (reproducible shipped graph
+# + CI `cargo update --locked` freshness gate). It is deliberately NOT ignored.

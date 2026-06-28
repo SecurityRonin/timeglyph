@@ -1,0 +1,54 @@
+# cargo-deny configuration for timeglyph
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+# ---------------------------------------------------------------------------
+# Advisories — check against the RustSec advisory database
+# ---------------------------------------------------------------------------
+[advisories]
+unmaintained = "workspace"
+ignore = []
+
+# ---------------------------------------------------------------------------
+# Licenses — only allow known permissive licenses
+# ---------------------------------------------------------------------------
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "CC0-1.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+# ---------------------------------------------------------------------------
+# Bans — surface duplicate or unwanted crates
+# ---------------------------------------------------------------------------
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+# ---------------------------------------------------------------------------
+# Sources — only allow crates.io
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

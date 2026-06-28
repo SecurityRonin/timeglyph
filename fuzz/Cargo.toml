@@ -1,0 +1,30 @@
+[package]
+name = "timeglyph-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.timeglyph]
+path = ".."
+
+# One target per parser strategy; the invariant for every target is: NO PANIC on
+# any input (timeglyph parses attacker-influenced forensic values — see SECURITY.md).
+[[bin]]
+name = "interpret_int"
+path = "fuzz_targets/interpret_int.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "interpret_hex"
+path = "fuzz_targets/interpret_hex.rs"
+test = false
+doc = false
+bench = false

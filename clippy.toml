@@ -1,0 +1,5 @@
+# clippy configuration for timeglyph.
+# MSRV is the pinned toolchain (see rust-toolchain.toml); timeglyph is an
+# application/binary, so its declared MSRV equals what it is built and tested
+# with — nothing pins it as a library dependency.
+msrv = "1.96.0"
