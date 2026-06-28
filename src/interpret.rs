@@ -285,25 +285,69 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
             ));
         }
     }
+    // An all-ones 64-bit value exceeds i64 (so yields no linear reading) but is a
+    // common 'unset'/'never' sentinel — surface it explicitly rather than vanish.
+    if bytes
+        .get(..8)
+        .and_then(|s| <[u8; 8]>::try_from(s).ok())
+        .is_some_and(|e| u64::from_le_bytes(e) == u64::MAX)
+    {
+        out.push(("u64 all-ones".to_string(), vec![all_ones_sentinel()]));
+    }
     Ok(out)
 }
 
 /// Decode the first 4 and 8 bytes as LE/BE integers (panic-free, bounds-checked).
+/// Labels note when only a prefix of a longer input was used, so trailing bytes
+/// are never silently dropped.
 fn byte_ints(b: &[u8]) -> Vec<(String, i64)> {
+    let total = b.len();
+    let suffix = |w: usize| {
+        if total > w {
+            format!(" (first {w} of {total})")
+        } else {
+            String::new()
+        }
+    };
     let mut v = Vec::new();
     if let Some(four) = b.get(..4).and_then(|s| <[u8; 4]>::try_from(s).ok()) {
-        v.push(("u32 LE".to_string(), i64::from(u32::from_le_bytes(four))));
-        v.push(("u32 BE".to_string(), i64::from(u32::from_be_bytes(four))));
+        v.push((
+            format!("u32 LE{}", suffix(4)),
+            i64::from(u32::from_le_bytes(four)),
+        ));
+        v.push((
+            format!("u32 BE{}", suffix(4)),
+            i64::from(u32::from_be_bytes(four)),
+        ));
     }
     if let Some(eight) = b.get(..8).and_then(|s| <[u8; 8]>::try_from(s).ok()) {
         if let Ok(n) = i64::try_from(u64::from_le_bytes(eight)) {
-            v.push(("u64 LE".to_string(), n));
+            v.push((format!("u64 LE{}", suffix(8)), n));
         }
         if let Ok(n) = i64::try_from(u64::from_be_bytes(eight)) {
-            v.push(("u64 BE".to_string(), n));
+            v.push((format!("u64 BE{}", suffix(8)), n));
         }
     }
     v
+}
+
+/// A sentinel candidate for an all-ones value, which does not fit `i64` and so
+/// produces no linear reading — surfaced (never hidden) and flagged.
+fn all_ones_sentinel() -> Candidate {
+    Candidate {
+        format_id: "sentinel",
+        label: "all-ones value (0xFFFFFFFFFFFFFFFF)",
+        citation: "",
+        instant: PosixNs(0),
+        rendered: None,
+        score: 0.0,
+        components: vec![("not_sentinel", 0.0)],
+        assumptions: vec![
+            "0xFFFFFFFFFFFFFFFF — all-ones; commonly an 'unset'/'never' marker, not a real instant"
+                .to_string(),
+        ],
+        sentinel: true,
+    }
 }
 
 /// Parse a STRING timestamp form: ISO 8601 / RFC 3339, and ASN.1 UTCTime /

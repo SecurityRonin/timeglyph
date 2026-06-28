@@ -59,7 +59,9 @@ fn hex_all_ones_u64_is_flagged_sentinel() {
     // still surface as an all-ones sentinel rather than vanish silently.
     let groups = interpret::interpret_hex("ffffffffffffffff").unwrap();
     assert!(
-        groups.iter().any(|(_, cands)| cands.iter().any(|c| c.sentinel)),
+        groups
+            .iter()
+            .any(|(_, cands)| cands.iter().any(|c| c.sentinel)),
         "expected an all-ones sentinel candidate: {groups:?}"
     );
 }
