@@ -14,7 +14,7 @@ use crate::{registry::FORMATS, ChronoError, PosixNs, Strategy};
 
 /// One candidate interpretation of a value. Carries its score *components* and
 /// *assumptions*, not just a rank — transparency over false confidence.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Candidate {
     /// Format id (e.g. `"filetime"`).
     pub format_id: &'static str,

@@ -81,9 +81,16 @@ fn main() -> ExitCode {
     } else if let Some(value) = cli.value {
         let cands = interpret::interpret_int(value);
         if cli.json {
-            // SCAFFOLD: a minimal hand-rolled JSON (no serde wiring on Candidate
-            // yet — HANDOFF: derive Serialize on Candidate for real --json).
-            println!("{{\"value\": {value}, \"candidates\": {}}}", cands.len());
+            match serde_json::to_string_pretty(&cands) {
+                Ok(s) => {
+                    println!("{s}");
+                    return ExitCode::SUCCESS;
+                }
+                Err(e) => {
+                    eprintln!("error: serializing candidates: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
         }
         println!("# ranked candidate interpretations of {value} (NOT a single answer):");
         print_candidates(&cands);

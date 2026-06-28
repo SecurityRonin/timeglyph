@@ -43,7 +43,7 @@ pub enum ChronoError {
 /// (leap-ignoring), proleptic Gregorian**. `i128` because some source epochs sit
 /// >1e19 ns from Unix (FILETIME's 1601 epoch alone is ~1.16e19 ns), which
 /// overflows `i64` — the wide spine is load-bearing, not luxury.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 pub struct PosixNs(pub i128);
 
 impl PosixNs {
