@@ -35,6 +35,8 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# CSV enrichment (the `csv` subcommand): robust RFC 4180 reader/writer.
+csv = "1"
 # Leap-aware time scales (GPS/TAI), behind the `leap` feature. hifitime carries a
 # built-in leap-second table and is the ONE place we do NOT reinvent (leap math
 # is solved; rolling our own would be wrong). MPL-2.0 (allowed in deny.toml).

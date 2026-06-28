@@ -39,6 +39,7 @@
 //! break them — lives at <https://securityronin.github.io/timeglyph/>.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod csv_enrich;
 pub mod interpret;
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
 /// separate from the POSIX [`PosixNs`] spine (HANDOFF §3).
