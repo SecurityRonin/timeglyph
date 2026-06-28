@@ -87,6 +87,11 @@ could not be reached or does not exist, that is stated plainly.
 
 - **OSDev wiki** (community reference; live host blocks bots, archive snapshots cited): [CMOS](https://web.archive.org/web/20241222182649/https://wiki.osdev.org/CMOS), [RTC](https://web.archive.org/web/20241204080709/https://wiki.osdev.org/RTC), [PIT](https://web.archive.org/web/20241229071829/https://wiki.osdev.org/Programmable_Interval_Timer), [Time And Date](https://web.archive.org/web/20241227171812/https://wiki.osdev.org/Time_And_Date)
 
+## Validation oracle
+
+- **time-decode** (Corey Forman / digitalsleuth, MIT) — the independent
+  third-party differential oracle used in [Validation](validation.md) — [github.com/digitalsleuth/time_decode](https://github.com/digitalsleuth/time_decode)
+
 ## Libraries timeglyph builds on
 
 - **jiff** (civil time, IANA tz) — [docs.rs/jiff](https://docs.rs/jiff)

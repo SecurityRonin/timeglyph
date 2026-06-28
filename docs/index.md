@@ -51,6 +51,8 @@ standards body), collected on the [References](references.md) page.
   rollover, Year 2106, and the epoch + width + signedness model behind them all.
 - **[Format reference](formats/index.md)** — every supported format with its epoch,
   layout, citation, evolution, and forensic gotchas.
+- **[Validation](validation.md)** — the tier-1 differential battery: every format
+  cross-checked against an independent third-party oracle, with provenance.
 
 </div>
 

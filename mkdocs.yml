@@ -73,6 +73,7 @@ nav:
       - Apple / macOS / iOS: formats/apple.md
       - Unix, web & databases: formats/unix-web-db.md
       - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
+  - Validation: validation.md
   - References: references.md
   - Privacy Policy: privacy.md
   - Terms of Service: terms.md
