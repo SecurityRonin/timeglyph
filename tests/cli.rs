@@ -92,6 +92,34 @@ fn identify_of_never_sentinel_surfaces_a_note() {
 }
 
 #[test]
+fn tz_flag_renders_identify_in_requested_zone() {
+    // --tz changes the displayed offset; the unix reading of the 2020 instant
+    // shows Tokyo local time (+09:00) instead of UTC `Z`.
+    let (out, _) = run(&["1577836800", "--tz", "Asia/Tokyo"]);
+    assert!(out.contains("2020-01-01T09:00:00+09:00"), "{out}");
+}
+
+#[test]
+fn tz_flag_applies_to_decode() {
+    let (out, code) = run(&["decode", "filetime", "132223104000000000", "--tz", "+08:00"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("2020-01-01T08:00:00+08:00"), "{out}");
+}
+
+#[test]
+fn tz_flag_in_json_rewrites_rendered_field() {
+    let (out, _) = run(&["1577836800", "--json", "--tz", "+08:00"]);
+    assert!(out.contains("2020-01-01T08:00:00+08:00"), "{out}");
+}
+
+#[test]
+fn unknown_tz_fails_loudly() {
+    let (out, code) = run(&["1577836800", "--tz", "Not/AZone"]);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.to_lowercase().contains("zone"), "{out}");
+}
+
+#[test]
 fn csv_explicit_conversion_subcommand() {
     let p = std::env::temp_dir().join("tg_csv_explicit.csv");
     std::fs::write(&p, "id,created\n1,1577836800\n").unwrap();
