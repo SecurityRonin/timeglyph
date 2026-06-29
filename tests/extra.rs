@@ -55,3 +55,31 @@ fn uuid_version_6() {
     let c = interpret::interpret_string("1ede857d-9302-66f0-8000-000000000000");
     assert!(form(&c, "uuid_v6").starts_with("2023-05-01T19:39:12"));
 }
+
+#[test]
+fn sql_server_datetime() {
+    // 8 bytes: int32 days since 1900-01-01 + uint32 ticks of 1/300 s. value 0 =
+    // 1900-01-01; 43829 days (high word 0xAB35) = 2020-01-01.
+    let f = format("sqlserver").unwrap();
+    assert!(f
+        .decode_int(0)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("1900-01-01"));
+    assert!(f
+        .decode_int(0xAB35_0000_0000)
+        .unwrap()
+        .to_rfc3339()
+        .unwrap()
+        .starts_with("2020-01-01"));
+}
+
+#[test]
+fn iso_ordinal_and_week_dates() {
+    // ISO 8601 ordinal (day-of-year) and week dates: both 2025-05-04.
+    let o = interpret::interpret_string("2025-124");
+    assert!(form(&o, "iso_ordinal").starts_with("2025-05-04"));
+    let w = interpret::interpret_string("2025-W18-7");
+    assert!(form(&w, "iso_week").starts_with("2025-05-04"));
+}
