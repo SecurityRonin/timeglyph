@@ -91,6 +91,21 @@ output (never "the detected format").
 - CLI: `timeglyph <value>` (auto-detect, ranked), `--from <id>`, `--hex`, `--list`,
   `--json` (stub).
 
+## 4b. Added beyond the scaffold
+
+- **Selectable output timezone** (`RenderZone`, `--tz`): UTC / fixed offset /
+  IANA, DST-correct, presentation-only (the instant is unchanged). Reused as the
+  *meridian* input for the lunisolar feature.
+- **Lunisolar calendar + 干支 four pillars** (`src/lunisolar.rs`, `lunisolar`
+  feature): delegates the ephemeris + calendar rules to `lunar-lite` (MIT;
+  reuse, don't reinvent). **Key design fact** — the conversion is
+  *convention-relative*: a UTC instant has no single Chinese date without a
+  reference meridian (China UTC+8, Vietnam UTC+7, Korea UTC+9), so `--tz` is
+  REQUIRED; `--longitude` optionally corrects the hour pillar to local mean solar
+  time (真太陽時, equation of time not applied). Year pillar via 立春, month via 节,
+  lunar date via 正月初一 — divergences surfaced as assumptions, never hidden.
+  Validated against the independent `cnlunar` oracle.
+
 ## 5. What's NEXT (build-out, strict TDD — RED then GREEN, separate commits)
 
 ### 5a. Format catalog (the bulk) — add to `src/registry.rs`

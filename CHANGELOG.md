@@ -8,12 +8,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Selectable output timezone** (`--tz`): render dates in `UTC` (default, `Z`),
+  a fixed offset (`+08:00`), or an IANA zone (`America/New_York`, DST-correct per
+  instant). Threaded through identify/decode/hex/string/csv and `--json`; the
+  instant is unchanged, only the displayed offset. An unknown zone errors loudly.
+- **Lunisolar calendar + 干支 four pillars** (`lunisolar` feature, CLI
+  `lunisolar <datetime> --tz <zone> [--longitude <°E>]`): Chinese lunar date
+  (incl. leap months) and the sexagenary year/month/day/hour pillars via the
+  `lunar-lite` ephemeris. The conversion is convention-relative, so a meridian
+  (`--tz`) is **required** and an optional longitude corrects the hour pillar to
+  local mean solar time; conventions (立春 year, 节 month, 正月初一 lunar date) are
+  surfaced as assumptions. Validated against the independent `cnlunar` oracle.
+- **Context-aware scoring components** (HANDOFF §5b): `byte_width_match`,
+  `endian_match`, `artifact_match`, `neighbour_monotonicity`, each emitted only
+  when an `InterpretContext` supplies its input (hex width/endian, `--artifact`
+  hint, CSV column neighbours); the zero-context default is unchanged.
 - **Format catalog**: PostgreSQL (µs since 2000), Unix nanoseconds, Cocoa
-  `CFAbsoluteTime` as a signed double, SQLite Julian-day float, and Snowflake IDs
-  (Twitter/X and Discord) — each with a primary-spec citation and spec-anchored
-  tests.
-- **`EmbeddedMillis` strategy** for ID schemes that embed a millisecond timestamp
-  in their high bits (`value >> shift_bits`).
+  `CFAbsoluteTime` as a signed double, SQLite Julian-day float, Snowflake IDs
+  (Twitter/X and Discord), plus AD/LDAP, Mozilla PRTime, iOS-11 NSDate (ns),
+  KSUID, Excel-1904, Mastodon/LinkedIn/TikTok IDs, ULID, UUIDv1, RFC 2822, EXIF,
+  and 128-bit SYSTEMTIME — each cross-checked against the MIT `time-decode`
+  oracle.
+- **Generalised embedded-ID strategy** (`Embedded { epoch_ns, shift_bits, unit }`,
+  was `EmbeddedMillis`): supports seconds-shift IDs (TikTok) as well as the
+  millisecond snowflake family.
 - **`Packed` strategy + FAT/DOS format**: unpacks the 32-bit FAT/DOS date+time
   words as LOCAL naive time, with a no-offset/naive caveat surfaced on the
   reading (FAT's local-time semantics are forensically significant).
@@ -32,8 +50,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Privacy/Terms, and GitHub Actions CI (test/clippy/fmt/coverage/deny/freshness),
   Docs, and a tag-driven Release workflow.
 
+### Changed
+
+- `EmbeddedMillis` strategy renamed/generalised to `Embedded { …, unit }`.
+
 ### Notes
 
-- Remaining build-out in `HANDOFF.md`: more `Packed` layouts (SYSTEMTIME, exFAT
-  with its offset field), string forms (ASN.1 / EXIF / RFC-2822), and the
-  distribution fan-out (Homebrew/apt/winget).
+- Remaining build-out in `HANDOFF.md`: the obscure packed-bitfield formats
+  (exFAT offset byte, bitdate/dttm/logtime/ns40/moto/symantec/dvr, BCD/GSM
+  semi-octet, Sonyflake's 10ms unit) and the distribution fan-out
+  (Homebrew/apt/winget).
