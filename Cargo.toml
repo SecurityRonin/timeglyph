@@ -42,24 +42,19 @@ csv = "1"
 # is solved; rolling our own would be wrong). MPL-2.0 (allowed in deny.toml).
 hifitime = { version = "4.3", optional = true }
 # Chinese lunisolar calendar + 干支 (Heavenly-Stem/Earthly-Branch) four pillars,
-# behind the `lunisolar` feature. The ephemeris (new-moon / solar-term astronomy)
-# and calendar rules are SOLVED — reuse, don't reinvent. The meridian and any
-# true-solar-time longitude correction are applied in timeglyph (this crate takes
-# a civil date with no tz), matching the convention-relative model. MIT.
-lunar-lite = { version = "1.2", optional = true }
-# Solar ephemeris (VSOP87D + DE441-fit + IAU2000B nutation): the Sun's apparent
-# ecliptic longitude drives the solar-term boundaries that the 干支 year (立春)
-# and month (the 12 节) pillars are defined by. lunar-lite supplies the lunar
-# (moon) calendar date that stem-branch's solar-only core does not. Apache-2.0.
-stem-branch = { version = "0.1", optional = true }
+# behind the `lunisolar` feature. The full ephemeris (VSOP87D solar + ELP/MPP02
+# moon + DE441-fit + IAU2000B nutation), new-moon / solar-term / 中氣-leap-month
+# astronomy, ΔT, and Julian-day math are SOLVED — reuse, don't reinvent. The
+# meridian and the optional true-solar-time longitude correction are applied in
+# timeglyph (the convention-relative layer). Apache-2.0.
+stem-branch = { version = "0.3", optional = true }
 
 [features]
 # Off by default: the POSIX-offset majority needs no leap math. Enable for the
 # GPS/TAI/NTP family (`src/leap.rs`).
 leap = ["dep:hifitime"]
-# Off by default: only the Chinese-calendar rendering needs the ephemeris deps.
-# stem-branch = solar terms (year/month pillars); lunar-lite = lunar date (moon).
-lunisolar = ["dep:lunar-lite", "dep:stem-branch"]
+# Off by default: only the Chinese-calendar rendering needs the ephemeris dep.
+lunisolar = ["dep:stem-branch"]
 
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and

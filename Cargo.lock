@@ -342,15 +342,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
-name = "lunar-lite"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "170300468f30ff06a474bb5cf2d4a82b47b67b495323884d133c58dec0920a5b"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -523,9 +514,9 @@ dependencies = [
 
 [[package]]
 name = "stem-branch"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40e50b348b04cc910405aa9f02d606219c93056477a6d1758f443b068fb5394c"
+checksum = "e8a8dad47840e3980babcb76d30bc73e770ed1c278d4a6ad0092a9339723c08a"
 
 [[package]]
 name = "strsim"
@@ -573,7 +564,6 @@ dependencies = [
  "hex",
  "hifitime",
  "jiff",
- "lunar-lite",
  "serde",
  "serde_json",
  "stem-branch",

@@ -9,19 +9,19 @@
 //! HOUR pillar to local mean solar time (真太陽時); the equation of time is NOT
 //! applied (stated in the reading's assumptions).
 //!
-//! Engines (reuse, don't reinvent):
-//! - **`stem-branch`** — the Sun's apparent ecliptic longitude (VSOP87D +
-//!   DE441-fit + IAU2000B nutation). The solar terms it defines drive the 干支
-//!   YEAR pillar (立春 = 315°) and MONTH pillar (the 12 节, every 30°). These are
-//!   meridian-INDEPENDENT (a solar term is one absolute instant worldwide).
-//! - **`lunar-lite`** — the lunar (moon) calendar DATE (year/month/day, leap
-//!   months), which needs new-moon astronomy the solar-only core does not carry.
-//!
-//! The day pillar is Julian-day arithmetic and the hour pillar is 五鼠遁; both
-//! are validated, with everything above, against the independent `cnlunar`
-//! oracle (tests/lunisolar.rs).
+//! All astronomy is delegated to the **`stem-branch`** crate (reuse, don't
+//! reinvent): the VSOP87D solar + ELP/MPP02 lunar ephemeris, new-moon /
+//! solar-term / 中氣 leap-month rules, ΔT, and Julian-day math. timeglyph adds
+//! only the convention layer — the meridian, the optional longitude correction,
+//! and the day/hour pillar arithmetic (Julian-day count + 五鼠遁). The whole
+//! reading is validated against the independent `cnlunar` oracle
+//! (tests/lunisolar.rs).
 
-use lunar_lite::{solar_to_lunar, SolarDate};
+use std::panic::AssertUnwindSafe;
+
+use stem_branch::{
+    delta_t_for_year, gregorian_to_lunisolar, jd_from_ymd, solar_ecliptic_state, CivilDate,
+};
 
 use crate::{ChronoError, PosixNs, RenderZone};
 
@@ -103,9 +103,8 @@ pub fn render(
     // --- Solar ephemeris (stem-branch): apparent longitude → solar terms ------
     #[allow(clippy::cast_precision_loss)]
     let jd_ut = instant.0 as f64 / 1e9 / 86_400.0 + UNIX_EPOCH_JD;
-    let jde_tt = jd_ut + delta_t_seconds(f64::from(year)) / 86_400.0;
-    let lambda =
-        normalize_deg(stem_branch::solar_ecliptic_state(jde_tt).apparent_longitude_degrees);
+    let jde_tt = jd_ut + delta_t_for_year(f64::from(year)) / 86_400.0;
+    let lambda = normalize_deg(solar_ecliptic_state(jde_tt).apparent_longitude_degrees);
     let solar_term = SOLAR_TERMS[((lambda / 15.0).floor() as usize) % 24].to_string();
 
     // --- Year pillar: flips at 立春 (315°). Jan is always before it; in Feb the
@@ -128,7 +127,7 @@ pub fn render(
 
     // --- Day pillar: civil Julian-day number, anchored so 2020-01-25 = 丁卯; the
     // late-子 (23:00) civil hour rolls the displayed day forward. --------------
-    let base_jdn = julian_day_number(year, month, day);
+    let base_jdn = noon_jdn(year, month, day);
     let day_jdn = base_jdn + i64::from(civil_hour == 23);
     let day_cycle = (day_jdn + 49).rem_euclid(60);
     let day_pillar = pillar((day_cycle % 10) as usize, (day_cycle % 12) as usize);
@@ -158,23 +157,34 @@ pub fn render(
     let hour_stem = (hour_day_cycle as usize % 10 % 5 * 2 + hour_branch) % 10;
     let hour_pillar = pillar(hour_stem, hour_branch);
 
-    // --- Lunar (moon) calendar date: lunar-lite. ------------------------------
-    let lunar = solar_to_lunar(SolarDate { year, month, day })
-        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    // --- Lunar (moon) calendar date: stem-branch (中氣 leap-month rule). The
+    // upstream conversion panics outside its supported range; guard it into a
+    // loud error so a far-out instant degrades gracefully, never crashes. ------
+    let civil = CivilDate {
+        year,
+        month: u32::from(month),
+        day: u32::from(day),
+    };
+    let lunar = std::panic::catch_unwind(AssertUnwindSafe(|| gregorian_to_lunisolar(civil)))
+        .map_err(|_| {
+            ChronoError::Render(format!(
+            "lunisolar conversion is outside the supported range for {year}-{month:02}-{day:02}"
+        ))
+        })?;
 
     let assumptions = vec![
         format!(
             "Chinese reading computed for the {ref_lon:.1}°E meridian (UTC offset {} h); a different tradition (e.g. Vietnam UTC+7, Korea UTC+9) can differ by a day or a leap month",
             offset.seconds() / 3600
         ),
-        "year pillar via 立春 and month pillar via the 12 节 (apparent solar longitude, stem-branch ephemeris); the lunar DATE uses the 正月初一 new-year boundary (lunar-lite), so the year pillar and lunar year may differ near 立春".to_string(),
+        "year pillar via 立春 and month pillar via the 12 节 (apparent solar longitude); the lunar DATE uses the 正月初一 new-year boundary (中氣 leap-month rule), so the year pillar and lunar year may differ near 立春".to_string(),
         solar_note,
     ];
 
     Ok(LunisolarReading {
         lunar_year: lunar.year,
-        lunar_month: lunar.month,
-        lunar_day: lunar.day,
+        lunar_month: lunar.month as u8,
+        lunar_day: lunar.day as u8,
         is_leap_month: lunar.is_leap_month,
         year_pillar,
         month_pillar,
@@ -202,30 +212,9 @@ fn normalize_deg(deg: f64) -> f64 {
     deg.rem_euclid(360.0)
 }
 
-/// The integer Julian Day Number for a proleptic-Gregorian civil date
-/// (Fliegel–Van Flandern). Day boundary at noon, matching the day-pillar anchor.
-fn julian_day_number(year: i32, month: u8, day: u8) -> i64 {
-    let a = i64::from((14 - i32::from(month)) / 12);
-    let y = i64::from(year) + 4800 - a;
-    let m = i64::from(month) + 12 * a - 3;
-    i64::from(day) + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32_045
-}
-
-/// ΔT (TT − UT1) in seconds, from the Espenak–Meeus polynomials. Two modern
-/// segments cover 1986–2050 (the forensic-relevant range); outside, the nearest
-/// segment is used. ΔT precision is non-critical here — it shifts the apparent
-/// solar longitude by < 0.001° (a solar term moves ~1° per day), so it only
-/// matters within seconds of a term boundary.
-fn delta_t_seconds(year: f64) -> f64 {
-    let t = year - 2000.0;
-    if year < 2005.0 {
-        // 1986–2005 segment (clamped below 1986).
-        63.86 + 0.334_5 * t - 0.060_374 * t.powi(2)
-            + 0.001_727_5 * t.powi(3)
-            + 0.000_651_814 * t.powi(4)
-            + 0.000_023_735_99 * t.powi(5)
-    } else {
-        // 2005–2050 segment (clamped above 2050).
-        62.92 + 0.322_17 * t + 0.005_589 * t.powi(2)
-    }
+/// The integer (noon) Julian Day Number of a civil date, via stem-branch's
+/// `jd_from_ymd` (JD at 00:00 UT) + 0.5. Day boundary at noon, matching the
+/// day-pillar anchor (2020-01-25 = 丁卯).
+fn noon_jdn(year: i32, month: u8, day: u8) -> i64 {
+    (jd_from_ymd(year, u32::from(month), u32::from(day)) + 0.5).floor() as i64
 }
