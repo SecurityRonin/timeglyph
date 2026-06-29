@@ -53,6 +53,123 @@ fn decode_fat_dos(value: i64) -> Result<PosixNs, ChronoError> {
     Ok(PosixNs(ts.as_nanosecond()))
 }
 
+/// Build an instant from packed civil fields read as naive UTC (the [`Format`]
+/// carries `LocalNaive` so callers know it is wall-clock, not real UTC). Invalid
+/// fields surface as an error, never a panic. Shared by the packed decoders.
+fn packed_civil(
+    year: i16,
+    month: i8,
+    day: i8,
+    hour: i8,
+    minute: i8,
+    second: i8,
+) -> Result<PosixNs, ChronoError> {
+    let dt = jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0)
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    let ts = dt
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        // cov:unreachable: to_zoned(UTC) of an already-valid civil datetime cannot fail.
+        .map_err(|e| ChronoError::Render(e.to_string()))?
+        .timestamp();
+    Ok(PosixNs(ts.as_nanosecond()))
+}
+
+/// exFAT 32-bit packed timestamp (MSB-first): year(7,+1980) month(4) day(5)
+/// hour(5) minute(6) 2-second(5). LOCAL time. [Microsoft exFAT spec]
+fn decode_exfat(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "exFAT packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        1980 + ((p >> 25) & 0x7F) as i16,
+        ((p >> 21) & 0x0F) as i8,
+        ((p >> 16) & 0x1F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 5) & 0x3F) as i8,
+        ((p & 0x1F) * 2) as i8,
+    )
+}
+
+/// Microsoft DTTM 32-bit packed date (MSB-first): dayOfWeek(3, ignored)
+/// year(9,+1900) month(4) day(5) hour(5) minute(6); no seconds. LOCAL time.
+fn decode_dttm(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "DTTM packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        1900 + ((p >> 20) & 0x1FF) as i16,
+        ((p >> 16) & 0x0F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 6) & 0x1F) as i8,
+        (p & 0x3F) as i8,
+        0,
+    )
+}
+
+/// Samsung/LG BitDate: the 4 bytes are byte-reversed, then MSB-first year(12)
+/// month(4) day(5) hour(5) minute(6); no seconds. LOCAL time.
+fn decode_bitdate(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value)
+        .map_err(|_| ChronoError::OutOfRange {
+            what: "BitDate packed value (not a u32)",
+            value: i128::from(value),
+        })?
+        .swap_bytes();
+    packed_civil(
+        ((p >> 20) & 0xFFF) as i16,
+        ((p >> 16) & 0x0F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 6) & 0x1F) as i8,
+        (p & 0x3F) as i8,
+        0,
+    )
+}
+
+/// Bitwise Decimal: a decimal value bit-packed year(>>20) month(&15 at >>16)
+/// day(&31 at >>11) hour(&31 at >>6) minute(&63); no seconds. LOCAL time.
+fn decode_bitdec(value: i64) -> Result<PosixNs, ChronoError> {
+    if value < 0 {
+        return Err(ChronoError::OutOfRange {
+            what: "Bitwise Decimal value (negative)",
+            value: i128::from(value),
+        });
+    }
+    packed_civil(
+        i16::try_from(value >> 20).map_err(|_| ChronoError::OutOfRange {
+            what: "Bitwise Decimal year",
+            value: i128::from(value),
+        })?,
+        ((value >> 16) & 15) as i8,
+        ((value >> 11) & 31) as i8,
+        ((value >> 6) & 31) as i8,
+        (value & 63) as i8,
+        0,
+    )
+}
+
+/// Binary-Coded-Decimal: 12 decimal digits as pairs YY(+2000) MM DD HH MM SS,
+/// LOCAL time. The value is read as its zero-padded 12-digit decimal string.
+fn decode_bcd(value: i64) -> Result<PosixNs, ChronoError> {
+    if !(0..1_000_000_000_000).contains(&value) {
+        return Err(ChronoError::OutOfRange {
+            what: "BCD value (not 12 decimal digits)",
+            value: i128::from(value),
+        });
+    }
+    let s = format!("{value:012}");
+    let pair = |i: usize| -> i8 { s[i..i + 2].parse().unwrap_or(-1) };
+    packed_civil(
+        2000 + i16::from(pair(0)),
+        pair(2),
+        pair(4),
+        pair(6),
+        pair(8),
+        pair(10),
+    )
+}
+
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
 const NS: i128 = 1_000_000_000;
@@ -395,6 +512,58 @@ pub static FORMATS: &[Format] = &[
         },
         citation: "TikTok ID (Unix-seconds epoch, 32-bit shift); vs time-decode",
         tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    // --- Packed bit-field formats (HANDOFF §5a long tail), LOCAL/naive time,
+    // each cross-checked vs the MIT time-decode oracle (tests/packed.rs). ------
+    Format {
+        id: "exfat",
+        label: "exFAT packed timestamp (LOCAL time)",
+        family: "exFAT filesystem",
+        strategy: Strategy::Packed(decode_exfat),
+        citation: "Microsoft exFAT spec (32-bit packed timestamp); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "dttm",
+        label: "Microsoft DTTM packed date (LOCAL time)",
+        family: "Microsoft Compound File / Office DTTM",
+        strategy: Strategy::Packed(decode_dttm),
+        citation: "Microsoft DTTM packed date (year since 1900); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bitdate",
+        label: "Samsung/LG BitDate (byte-reversed packed, LOCAL time)",
+        family: "Samsung / LG device timestamps",
+        strategy: Strategy::Packed(decode_bitdate),
+        citation: "Samsung/LG BitDate (byte-reversed 32-bit packed); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bitdec",
+        label: "Bitwise Decimal packed date (LOCAL time)",
+        family: "Bitwise Decimal packed timestamps",
+        strategy: Strategy::Packed(decode_bitdec),
+        citation: "Bitwise Decimal (decimal bit-packed date); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bcd",
+        label: "Binary-Coded-Decimal YYMMDDHHMMSS (LOCAL time)",
+        family: "BCD digit-pair timestamps",
+        strategy: Strategy::Packed(decode_bcd),
+        citation: "Binary-Coded-Decimal (YY+2000 MM DD HH MM SS pairs); vs time-decode",
+        tz: LocalNaive,
         leap: PosixIgnored,
         plausible: W,
     },
