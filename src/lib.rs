@@ -45,6 +45,11 @@ pub mod interpret;
 /// separate from the POSIX [`PosixNs`] spine (HANDOFF §3).
 #[cfg(feature = "leap")]
 pub mod leap;
+/// Chinese lunisolar calendar + 干支 four-pillar rendering, behind the
+/// `lunisolar` feature. Convention-relative: needs a meridian (and optional
+/// longitude), unlike the instant↔instant rest of the crate.
+#[cfg(feature = "lunisolar")]
+pub mod lunisolar;
 pub mod registry;
 
 /// Errors from decoding, encoding, or rendering a timestamp.

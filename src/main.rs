@@ -94,6 +94,16 @@ enum Commands {
         #[arg(short, long, value_name = "FILE")]
         output: Option<String>,
     },
+    /// Render an instant in the Chinese lunisolar calendar + 干支 four pillars.
+    /// Requires `--tz` (the conversion is meridian-relative).
+    #[cfg(feature = "lunisolar")]
+    Lunisolar {
+        /// The instant: an ISO 8601 / RFC 3339 datetime, or a Unix-seconds integer.
+        datetime: String,
+        /// Longitude °E for the hour pillar's true-solar-time correction (optional).
+        #[arg(long, allow_hyphen_values = true)]
+        longitude: Option<f64>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -123,6 +133,11 @@ fn main() -> ExitCode {
             replace,
             output,
         }) => run_csv(&path, &convert, auto, replace, output.as_deref(), &zone),
+        #[cfg(feature = "lunisolar")]
+        Some(Commands::Lunisolar {
+            datetime,
+            longitude,
+        }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
                 run_identify(v, cli.json, &zone, cli.artifact.as_deref())
@@ -339,6 +354,55 @@ fn run_string(text: &str, zone: &RenderZone) -> u8 {
     println!("# readings consistent with {text:?}:");
     print_candidates(&cands, zone);
     EXIT_OK
+}
+
+#[cfg(feature = "lunisolar")]
+fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_given: bool) -> u8 {
+    if !tz_given {
+        eprintln!(
+            "error: lunisolar conversion requires a timezone (--tz) — the Chinese calendar is \
+             meridian-relative (China UTC+8, Vietnam UTC+7, Korea UTC+9)"
+        );
+        return EXIT_ERR;
+    }
+    // Accept a Unix-seconds integer or any self-describing string form (ISO 8601
+    // / RFC 3339 / ASN.1) that interpret_string can parse.
+    let instant = if let Ok(secs) = datetime.parse::<i64>() {
+        match timeglyph::format("unix").and_then(|f| f.decode_int(secs)) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return EXIT_ERR;
+            }
+        }
+    } else if let Some(c) = interpret::interpret_string(datetime).first() {
+        c.instant
+    } else {
+        eprintln!("error: could not parse {datetime:?} as a datetime (try ISO 8601 / RFC 3339)");
+        return EXIT_ERR;
+    };
+    match timeglyph::lunisolar::render(instant, zone, longitude) {
+        Ok(r) => {
+            let leap = if r.is_leap_month { "閏" } else { "" };
+            println!("{}", r.civil_local);
+            println!(
+                "  lunisolar: {}年 {leap}{}月 {}日",
+                r.lunar_year, r.lunar_month, r.lunar_day
+            );
+            println!(
+                "  四柱 pillars: 年 {}  月 {}  日 {}  時 {}",
+                r.year_pillar, r.month_pillar, r.day_pillar, r.hour_pillar
+            );
+            for a in &r.assumptions {
+                println!("    - {a}");
+            }
+            EXIT_OK
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            EXIT_ERR
+        }
+    }
 }
 
 fn run_list() -> u8 {
