@@ -1,0 +1,34 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1" # weekly deeper run
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # cargo-fuzz needs nightly (`-Z` flags). rust-toolchain.toml pins a stable
+      # version that would win over the @nightly channel, so force `cargo +nightly`
+      # on every fuzz command (see CLAUDE.md "Rust MSRV & Toolchain Policy").
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@a402910a723481c4c80d006d75298c796a9c8695 # cargo-fuzz
+        with:
+          tool: cargo-fuzz
+      - name: Build all fuzz targets
+        run: cargo +nightly fuzz build
+      - name: Smoke-run each target (no-panic invariant)
+        run: |
+          for t in interpret_int interpret_hex interpret_string csv_enrich; do
+            echo "::group::fuzz $t"
+            cargo +nightly fuzz run "$t" -- -max_total_time=30 -runs=200000
+            echo "::endgroup::"
+          done

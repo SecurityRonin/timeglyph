@@ -38,14 +38,32 @@ jobs:
       - uses: taiki-e/install-action@a402910a723481c4c80d006d75298c796a9c8695 # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov
-      - name: Generate coverage (library)
-        run: cargo llvm-cov --lib --all-features --lcov --output-path lcov.info
+      # Collect once (all test targets, all features — integration tests carry
+      # the coverage here, so NOT --lib), then report against a hard 100%
+      # function gate and emit lcov from the same run.
+      - name: Collect coverage
+        run: cargo llvm-cov --all-features --no-report
+      - name: Coverage gate (100% functions)
+        run: cargo llvm-cov report --fail-under-functions 100 --show-missing-lines
+      - name: Emit lcov
+        run: cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload to Codecov
         uses: codecov/codecov-action@0f8570b1a125f4937846a11fcfa3bcd548bd8c97 # v4.6.0
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3 # v2.3.7
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   deny:
     runs-on: ubuntu-latest

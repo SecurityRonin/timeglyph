@@ -1,0 +1,13 @@
+# gitleaks configuration for timeglyph. Extends the bundled default ruleset;
+# allowlists generated / build-output trees (all gitignored, never source) so a
+# full `gitleaks dir .` stays clean and fast. The pre-commit hook scans only
+# staged files regardless.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-specific allowlist"
+paths = [
+    '''(^|/)target/''',
+    '''(^|/)site/''',
+]

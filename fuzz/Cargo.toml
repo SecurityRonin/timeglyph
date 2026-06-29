@@ -28,3 +28,17 @@ path = "fuzz_targets/interpret_hex.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "interpret_string"
+path = "fuzz_targets/interpret_string.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "csv_enrich"
+path = "fuzz_targets/csv_enrich.rs"
+test = false
+doc = false
+bench = false

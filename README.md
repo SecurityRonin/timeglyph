@@ -16,6 +16,8 @@ writes to mean an instant. `timeglyph` deciphers those inscriptions. Given an
 with its assumptions** — never a single "detected" answer, because a raw value is
 usually ambiguous.
 
+**[Full documentation →](https://securityronin.github.io/timeglyph/)**
+
 ```console
 $ timeglyph 1577836800
 # readings consistent with 1577836800 (ranked; a raw value is usually underdetermined — not a single verdict):
@@ -37,17 +39,48 @@ $ timeglyph list                       # the format registry, with spec citation
 Exit codes are pipeline-safe: `0` clear top reading, `2` ambiguous or a sentinel
 (review needed), `1` error.
 
+Render in any timezone with `--tz` (`UTC`, a fixed offset, or an IANA name,
+DST-correct), and pass `--artifact "<hint>"` to nudge readings toward a known
+source family.
+
+## Install
+
+**macOS / Linux**
+```bash
+brew install securityronin/tap/timeglyph
+```
+
+**Cargo** (any platform with a Rust toolchain)
+```bash
+cargo install timeglyph                       # core registry
+cargo install timeglyph --features leap       # + leap-aware GPS / TAI64 / NTP
+cargo install timeglyph --features lunisolar  # + Chinese lunisolar calendar / 干支
+```
+
+**Prebuilt binaries** — grab a static build from the [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest):
+macOS (Apple Silicon + Intel), Linux (x86-64 + ARM64, musl), and Windows (x86-64).
+Verify against `checksums.txt`, then put it on your `PATH`:
+```bash
+tar xzf timeglyph-*-aarch64-apple-darwin.tar.gz
+install timeglyph /usr/local/bin/
+```
+
 ## Status
 
 Working engine. The `PosixNs(i128)` spine, decode/encode/auto-detect/byte-decode,
-component-based plausibility scoring, and epistemic framing (consistent-with +
-leap-smear) are in and tested against primary-spec anchors. The registry covers
-Unix s/ms/µs/ns, FILETIME, WebKit/Chrome, Cocoa (integer and signed-double),
-HFS+, .NET ticks, OLE, PostgreSQL, SQLite Julian day, Snowflake IDs (Twitter/X,
-Discord), and FAT/DOS packed local time. The leap-aware GPS/TAI64/NTP family is
-implemented behind the `leap` feature (`decode gps|tai64|ntp`, leap-correct UTC
-via `hifitime`). Remaining build-out (more packed/string forms, distribution) —
-see **[HANDOFF.md](HANDOFF.md)** for the design record and plan.
+the full named-component plausibility scoring (window, granularity, magnitude,
+byte-width, endian, artifact-context, neighbour-monotonicity), and epistemic
+framing (consistent-with + leap-smear) are in and tested against primary-spec
+anchors and the MIT `time-decode` oracle. The registry covers Unix s/ms/µs/ns,
+FILETIME (incl. AD/LDAP), WebKit/Chrome, Cocoa (integer / signed-double / iOS-11
+ns), HFS+, .NET ticks, OLE, Excel-1904, PostgreSQL, Mozilla PRTime, SQLite Julian
+day, KSUID, Snowflake-class IDs (Twitter/X, Discord, Mastodon, LinkedIn, TikTok),
+FAT/DOS + SYSTEMTIME packed forms, and the ULID / UUIDv1 / RFC 2822 / EXIF / ISO /
+ASN.1 string forms. The leap-aware GPS/TAI64/NTP family is behind the `leap`
+feature (`decode gps|tai64|ntp`, leap-correct UTC via `hifitime`); the Chinese
+lunisolar calendar + 干支 four pillars are behind the `lunisolar` feature
+(`lunisolar <datetime> --tz <zone>`, via the `stem-branch` ephemeris). See
+**[HANDOFF.md](HANDOFF.md)** for the design record.
 
 ## Why another converter?
 
