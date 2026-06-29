@@ -1,6 +1,6 @@
 [package]
 name = "timeglyph"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.96.0"
 license = "Apache-2.0"
