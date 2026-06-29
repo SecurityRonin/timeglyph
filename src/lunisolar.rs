@@ -20,26 +20,11 @@
 use std::panic::AssertUnwindSafe;
 
 use stem_branch::{
-    delta_t_for_year, gregorian_to_lunisolar, jd_from_ymd, solar_ecliptic_state, CivilDate,
-    SOLAR_TERM_LONGITUDES,
+    delta_t_for_year, gregorian_to_lunisolar, jd_from_ymd, solar_ecliptic_state,
+    solar_term_for_longitude, CivilDate, EARTHLY_BRANCHES, HEAVENLY_STEMS,
 };
 
 use crate::{ChronoError, PosixNs, RenderZone};
-
-/// The ten Heavenly Stems (天干), indexed 0..=9.
-const STEMS: [char; 10] = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
-/// The twelve Earthly Branches (地支), indexed 0..=11.
-const BRANCHES: [char; 12] = [
-    '子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥',
-];
-/// Traditional-Chinese names for the 24 solar terms, keyed **by the same index**
-/// as stem-branch's [`SOLAR_TERM_LONGITUDES`] (index 0 = 小寒 @ 285°). The crate
-/// owns the longitudes; only the name strings live here, because stem-branch
-/// 0.3 exposes no labels. (If a future stem-branch adds names, drop this array.)
-const SOLAR_TERMS: [&str; 24] = [
-    "小寒", "大寒", "立春", "雨水", "驚蟄", "春分", "清明", "穀雨", "立夏", "小滿", "芒種", "夏至",
-    "小暑", "大暑", "立秋", "處暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至",
-];
 
 /// Julian Day of the Unix epoch (1970-01-01T00:00:00Z).
 const UNIX_EPOCH_JD: f64 = 2_440_587.5;
@@ -109,11 +94,7 @@ pub fn render(
     let jd_ut = instant.0 as f64 / 1e9 / 86_400.0 + UNIX_EPOCH_JD;
     let jde_tt = jd_ut + delta_t_for_year(f64::from(year)) / 86_400.0;
     let lambda = normalize_deg(solar_ecliptic_state(jde_tt).apparent_longitude_degrees);
-    // Index into the crate's longitude table (its terms are every 15° from
-    // SOLAR_TERM_LONGITUDES[0] = 小寒 @ 285°); the name array is keyed the same.
-    let term_idx =
-        (((lambda - SOLAR_TERM_LONGITUDES[0]).rem_euclid(360.0)) / 15.0).floor() as usize % 24;
-    let solar_term = SOLAR_TERMS[term_idx].to_string();
+    let solar_term = solar_term_for_longitude(lambda).to_string();
 
     // --- Year pillar: flips at 立春 (315°). Jan is always before it; in Feb the
     // longitude disambiguates; Mar..Dec are after. (Meridian month only picks the
@@ -207,12 +188,14 @@ pub fn render(
     })
 }
 
-/// A two-character 干支 string from stem index (0..=9) and branch index (0..=11).
+/// A two-character 干支 string from stem index (0..=9) and branch index (0..=11),
+/// using stem-branch's [`HEAVENLY_STEMS`] / [`EARTHLY_BRANCHES`] labels.
 fn pillar(stem: usize, branch: usize) -> String {
-    let mut s = String::with_capacity(6);
-    s.push(STEMS[stem % 10]);
-    s.push(BRANCHES[branch % 12]);
-    s
+    format!(
+        "{}{}",
+        HEAVENLY_STEMS[stem % 10],
+        EARTHLY_BRANCHES[branch % 12]
+    )
 }
 
 /// Normalise degrees into `[0, 360)`.

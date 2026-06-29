@@ -514,9 +514,9 @@ dependencies = [
 
 [[package]]
 name = "stem-branch"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a8dad47840e3980babcb76d30bc73e770ed1c278d4a6ad0092a9339723c08a"
+checksum = "d6359b4f4bbc07680d63a49cac8991d2e0acced7d24b5624aad174e5a8629cfd"
 
 [[package]]
 name = "strsim"

@@ -47,7 +47,7 @@ hifitime = { version = "4.3", optional = true }
 # astronomy, ΔT, and Julian-day math are SOLVED — reuse, don't reinvent. The
 # meridian and the optional true-solar-time longitude correction are applied in
 # timeglyph (the convention-relative layer). Apache-2.0.
-stem-branch = { version = "0.3", optional = true }
+stem-branch = { version = "0.4", optional = true }
 
 [features]
 # Off by default: the POSIX-offset majority needs no leap math. Enable for the
