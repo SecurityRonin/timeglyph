@@ -97,14 +97,19 @@ output (never "the detected format").
   IANA, DST-correct, presentation-only (the instant is unchanged). Reused as the
   *meridian* input for the lunisolar feature.
 - **Lunisolar calendar + 干支 four pillars** (`src/lunisolar.rs`, `lunisolar`
-  feature): delegates the ephemeris + calendar rules to `lunar-lite` (MIT;
-  reuse, don't reinvent). **Key design fact** — the conversion is
-  *convention-relative*: a UTC instant has no single Chinese date without a
-  reference meridian (China UTC+8, Vietnam UTC+7, Korea UTC+9), so `--tz` is
-  REQUIRED; `--longitude` optionally corrects the hour pillar to local mean solar
-  time (真太陽時, equation of time not applied). Year pillar via 立春, month via 节,
-  lunar date via 正月初一 — divergences surfaced as assumptions, never hidden.
-  Validated against the independent `cnlunar` oracle.
+  feature). Two engines (reuse, don't reinvent): the **`stem-branch`** solar
+  ephemeris (Apache-2.0, h4x0r) supplies the Sun's apparent ecliptic longitude →
+  the YEAR pillar (立春=315°) and MONTH pillar (the 12 节, every 30°), which are
+  meridian-independent; **`lunar-lite`** (MIT) supplies the lunar (moon) calendar
+  DATE its solar-only core can't. Day pillar = Julian-day arithmetic; hour pillar
+  = 五鼠遁. **Key design fact** — the conversion is *convention-relative*: a UTC
+  instant has no single Chinese date without a reference meridian (China UTC+8,
+  Vietnam UTC+7, Korea UTC+9), so `--tz` is REQUIRED; `--longitude` optionally
+  corrects the hour pillar to local mean solar time (真太陽時, equation of time not
+  applied). Divergences (立春 vs 正月初一) surfaced as assumptions, never hidden.
+  Validated against the independent `cnlunar` oracle. NOTE: ΔT uses the
+  Espenak–Meeus modern segments (1986–2050); if stem-branch later ports its lunar
+  ephemeris, `lunar-lite` could be dropped.
 
 ## 5. What's NEXT (build-out, strict TDD — RED then GREEN, separate commits)
 

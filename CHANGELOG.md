@@ -13,9 +13,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instant). Threaded through identify/decode/hex/string/csv and `--json`; the
   instant is unchanged, only the displayed offset. An unknown zone errors loudly.
 - **Lunisolar calendar + 干支 four pillars** (`lunisolar` feature, CLI
-  `lunisolar <datetime> --tz <zone> [--longitude <°E>]`): Chinese lunar date
-  (incl. leap months) and the sexagenary year/month/day/hour pillars via the
-  `lunar-lite` ephemeris. The conversion is convention-relative, so a meridian
+  `lunisolar <datetime> --tz <zone> [--longitude <°E>]`): the Chinese lunar date
+  (incl. leap months) plus the sexagenary year/month/day/hour pillars, the Sun's
+  apparent ecliptic longitude, and the current solar term. The year (立春) and
+  month (the 12 节) pillars are driven by the `stem-branch` solar ephemeris; the
+  lunar (moon) date by `lunar-lite`; the day pillar by Julian-day arithmetic and
+  the hour pillar by 五鼠遁. The conversion is convention-relative, so a meridian
   (`--tz`) is **required** and an optional longitude corrects the hour pillar to
   local mean solar time; conventions (立春 year, 节 month, 正月初一 lunar date) are
   surfaced as assumptions. Validated against the independent `cnlunar` oracle.
