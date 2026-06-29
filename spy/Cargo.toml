@@ -1,0 +1,40 @@
+[package]
+name = "timeglyph-spy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.0"
+license = "Apache-2.0"
+description = "Spy++-style Windows inspector — hover any UI element and see timeglyph's ranked datetime readings for any number it contains."
+authors = ["Albert Hui <albert@securityronin.com>"]
+repository = "https://github.com/SecurityRonin/timeglyph"
+# Windows-only companion tool (the cross-platform scan core is library-testable).
+publish = false
+
+[lib]
+name = "timeglyph_spy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "timeglyph-spy"
+path = "src/main.rs"
+
+[dependencies]
+timeglyph = { path = ".." }
+
+# UI Automation (element-under-cursor) + a layered Win32 overlay. The `windows`
+# crate compiles to an empty shim off-Windows, so the lib + scan tests build
+# everywhere; the real picker/overlay are behind `#[cfg(windows)]`.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+
+# The Win32 / UIA shell is FFI — unsafe is required here (unlike the engine,
+# which forbids it). The scan core stays safe.
+[lints.rust]
+unsafe_code = "allow"
