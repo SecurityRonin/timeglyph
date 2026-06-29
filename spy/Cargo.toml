@@ -20,6 +20,9 @@ path = "src/main.rs"
 
 [dependencies]
 timeglyph = { path = ".." }
+# Cross-platform always-on-top overlay window (the same GUI on Windows + macOS);
+# the platform-specific part is only the element picker.
+eframe = { version = "0.29", default-features = false, features = ["glow", "wayland", "x11"] }
 
 # UI Automation (element-under-cursor) + a layered Win32 overlay. The `windows`
 # crate compiles to an empty shim off-Windows, so the lib + scan tests build
@@ -33,6 +36,13 @@ windows = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
 ] }
+
+# macOS Accessibility API (AXUIElementCopyElementAtPosition) — the direct analog
+# of Windows UI Automation — plus CoreGraphics for the cursor position.
+[target.'cfg(target_os = "macos")'.dependencies]
+accessibility-sys = "0.1"
+core-foundation = "0.10"
+core-graphics = "0.24"
 
 # The Win32 / UIA shell is FFI — unsafe is required here (unlike the engine,
 # which forbids it). The scan core stays safe.

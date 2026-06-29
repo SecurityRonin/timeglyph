@@ -9,33 +9,59 @@
 
 use timeglyph_spy::scan;
 
-#[cfg(windows)]
 mod overlay;
-#[cfg(windows)]
 mod picker;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if !args.is_empty() {
-        for nr in scan::inspect_text(&args.join(" "), 6) {
-            println!("{}", nr.number);
-            for r in &nr.readings {
-                println!("    {r}");
+    match args.first().map(String::as_str) {
+        // Live console mode (Windows/macOS): print the element under the cursor
+        // and its readings a few times — handy for verifying the picker.
+        Some("--live") => live_console(),
+        // Text mode (any platform): decode every number in the argument string.
+        Some(_) => {
+            for nr in scan::inspect_text(&args.join(" "), 6) {
+                println!("{}", nr.number);
+                for r in &nr.readings {
+                    println!("    {r}");
+                }
             }
         }
-        return;
+        // No args: launch the always-on-top GUI overlay (the default).
+        None => {
+            if let Err(e) = overlay::run() {
+                eprintln!("timeglyph-spy: {e}");
+                eprintln!("(try `timeglyph-spy --live` for the console inspector, or pass text)");
+                std::process::exit(1);
+            }
+        }
     }
+}
 
-    #[cfg(windows)]
-    if let Err(e) = overlay::run() {
-        eprintln!("timeglyph-spy: {e}");
-        std::process::exit(1);
-    }
-
-    #[cfg(not(windows))]
-    {
-        eprintln!("timeglyph-spy: the live cursor inspector is Windows-only.");
-        eprintln!("Pass text to decode the numbers in it, e.g.:");
-        eprintln!("    timeglyph-spy \"cookie value 13390845530064940\"");
+/// Poll the element under the cursor and print its timeglyph readings.
+fn live_console() {
+    let picker = match picker::Picker::new() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("timeglyph-spy: {e}");
+            std::process::exit(1);
+        }
+    };
+    eprintln!("timeglyph-spy: watching the cursor (Ctrl-C to stop)…");
+    let mut last = String::new();
+    loop {
+        let text = picker.text_under_cursor().unwrap_or_default();
+        if text != last {
+            last.clone_from(&text);
+            let hits = scan::inspect_text(&text, 4);
+            println!("\nelement: {text:?}");
+            for nr in hits {
+                println!("  {}", nr.number);
+                for r in nr.readings {
+                    println!("      {r}");
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }

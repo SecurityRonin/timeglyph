@@ -1,8 +1,8 @@
 # timeglyph-spy
 
-A Spy++-style **Windows** inspector for [timeglyph](../). Hover any UI element
-and, if its text contains a number, see timeglyph's ranked datetime readings —
-right where the cursor is.
+A Spy++-style desktop inspector for [timeglyph](../), on **macOS and Windows**.
+Hover any UI element and, if its text contains a number, see timeglyph's ranked
+datetime readings — in an always-on-top window that follows your cursor.
 
 ```text
 element: lastVisitTime  13390845530064940
@@ -13,39 +13,46 @@ element: lastVisitTime  13390845530064940
 
 ## Modes
 
-- **Live (Windows, no args)** — opens a small always-on-top window that follows
-  the cursor. It uses UI Automation (`IUIAutomation::ElementFromPoint`) to read
-  the element under the pointer (native, Win32, WPF, browsers, Electron), scans
-  its text for long numbers, and shows the top readings via the timeglyph engine.
+- **Live overlay (no args)** — an always-on-top egui window that follows the
+  cursor, reads the element under it via the OS accessibility tree, scans its
+  text for long numbers, and shows the top readings live.
 
-  ```powershell
+  ```bash
   timeglyph-spy
   ```
 
-- **Text (any platform)** — decode the numbers in an argument string. This is
+- **Live console (`--live`)** — the same, printed to the terminal (no window).
+
+- **Text (any platform)** — decode the numbers in an argument string; this is
   how the cross-platform scan core is exercised without a desktop:
 
   ```bash
   timeglyph-spy "cookie value 13390845530064940 and ts 1577836800"
   ```
 
+> **macOS**: the live modes need **Accessibility** permission — grant your
+> terminal (or the `timeglyph-spy` binary) access in *System Settings → Privacy
+> & Security → Accessibility*. Without it, the element under the cursor reads as
+> empty (no crash).
+
 ## Architecture (Humble Object)
 
 | Module | Platform | Role |
 |--------|----------|------|
 | `scan` | all | extract long numbers → `timeglyph::interpret::interpret_int` → top in-window readings. **Unit-tested.** |
-| `picker` | Windows | `IUIAutomation` element-under-cursor → its text |
-| `overlay` | Windows | always-on-top window + cursor timer, refreshing a label |
+| `picker` | macOS (`AXUIElementCopyElementAtPosition`) · Windows (`IUIAutomation::ElementFromPoint`) | element under cursor → its text |
+| `overlay` | all (eframe/egui) | always-on-top window, polls the picker, renders readings |
 
-All the logic lives in the testable `scan` core; the Win32/UIA shell is thin and
-behind `#[cfg(windows)]`, so the library and `scan` tests build on every
-platform while the live inspector is compiled on Windows.
+All the logic lives in the testable `scan` core; the accessibility picker is the
+only platform-specific code, and the overlay is one cross-platform egui window.
 
 ## Build
 
 ```bash
-cargo build --release            # on Windows: full live inspector
+cargo run                        # the always-on-top overlay
+cargo run -- --live              # console inspector
 cargo run -- "ts 1577836800"     # text mode, any platform
+cargo build --release
 ```
 
 This crate is a companion tool (`publish = false`); it is excluded from the
