@@ -51,3 +51,31 @@ fn bcd_packed() {
     // BCD pairs YY(+2000) MM DD HH MM SS.
     assert_packed("bcd", 250_506_232_221, "2025-05-06T23:22:21");
 }
+
+#[test]
+fn moto_packed() {
+    // oracle: --moto 3705040f1232 -> 2025-05-04 15:18:50 (UTC). 6 bytes, one
+    // per field: year(+1970) month day hour minute second.
+    assert_packed("moto", 0x3705_040F_1232, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn symantec_packed() {
+    // oracle: --symantec 3704040f1232 -> 2025-05-04 15:18:50 (UTC). Like moto,
+    // but the month byte is +1.
+    assert_packed("symantec", 0x3704_040F_1232, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn dvr_packed() {
+    // oracle: --dvr 3f06f000 -> 2015-12-03 15:00:00. 32-bit MSB-first:
+    // year(6,+2000) month(4) day(5) hour(5) minute(6) second(6).
+    assert_packed("dvr", 0x3F06_F000, "2015-12-03T15:00:00");
+}
+
+#[test]
+fn sony_packed() {
+    // oracle: --sony 65dd4bb89000001 -> 2023-05-01 19:37:45 (UTC). Sonyflake:
+    // (id >> 24) counts 10ms units since the 2014-09-01 scheme epoch.
+    assert_packed("sony", 0x065D_D4BB_8900_0001, "2023-05-01T19:37:45");
+}
