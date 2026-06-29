@@ -636,6 +636,33 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
         ));
     }
+    if let Some(instant) = parse_uuid_v6(s) {
+        out.push(string_candidate(
+            "uuid_v6",
+            "UUID version 6 (reordered 100ns since 1582-10-15)",
+            "RFC 9562 §5.6 (UUIDv6 60-bit Gregorian timestamp)",
+            instant,
+            "parsed as a UUIDv6 — the v1 Gregorian timestamp reordered most-significant-first",
+        ));
+    }
+    if let Some(instant) = parse_uuid_v7(s) {
+        out.push(string_candidate(
+            "uuid_v7",
+            "UUID version 7 (Unix ms in the high 48 bits)",
+            "RFC 9562 §5.7 (UUIDv7 48-bit Unix-ms timestamp)",
+            instant,
+            "parsed as a UUIDv7 — the leading 48 bits are milliseconds since the Unix epoch",
+        ));
+    }
+    if let Some(instant) = parse_objectid(s) {
+        out.push(string_candidate(
+            "objectid",
+            "MongoDB ObjectId (Unix seconds in the first 4 bytes)",
+            "MongoDB ObjectId spec (4-byte big-endian Unix-seconds prefix)",
+            instant,
+            "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
+        ));
+    }
     if let Some(instant) = parse_rfc2822(s) {
         out.push(string_candidate(
             "rfc2822",
@@ -699,6 +726,55 @@ fn parse_uuid_v1(s: &str) -> Option<PosixNs> {
         .checked_mul(100)?
         .checked_add(UUID_V1_EPOCH_NS)?;
     Some(PosixNs(ns))
+}
+
+/// Strip hyphens and validate a 32-hex-digit UUID, returning its 16 bytes' worth
+/// of hex. `None` for anything that is not a well-formed UUID.
+fn uuid_hex(s: &str) -> Option<String> {
+    let hex: String = s.chars().filter(|c| *c != '-').collect();
+    (hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
+}
+
+/// Decode a UUID **version 6** timestamp: the same 60-bit Gregorian 100ns count
+/// as v1, but laid out most-significant-first as time_high(32) time_mid(16)
+/// time_low(12). `None` unless the version nibble is 6.
+fn parse_uuid_v6(s: &str) -> Option<PosixNs> {
+    let hex = uuid_hex(s)?;
+    let time_high = u64::from_str_radix(hex.get(0..8)?, 16).ok()?;
+    let time_mid = u64::from_str_radix(hex.get(8..12)?, 16).ok()?;
+    let time_low_ver = u64::from_str_radix(hex.get(12..16)?, 16).ok()?;
+    if (time_low_ver >> 12) != 6 {
+        return None;
+    }
+    let ts = (time_high << 28) | (time_mid << 12) | (time_low_ver & 0x0FFF);
+    let ns = i128::from(ts)
+        .checked_mul(100)?
+        .checked_add(UUID_V1_EPOCH_NS)?;
+    Some(PosixNs(ns))
+}
+
+/// Decode a UUID **version 7** timestamp: the high 48 bits are milliseconds
+/// since the Unix epoch. `None` unless the version nibble is 7.
+fn parse_uuid_v7(s: &str) -> Option<PosixNs> {
+    let hex = uuid_hex(s)?;
+    let high32 = u64::from_str_radix(hex.get(0..8)?, 16).ok()?;
+    let mid16 = u64::from_str_radix(hex.get(8..12)?, 16).ok()?;
+    let ver = u64::from_str_radix(hex.get(12..16)?, 16).ok()? >> 12;
+    if ver != 7 {
+        return None;
+    }
+    let ms = i128::from((high32 << 16) | mid16);
+    Some(PosixNs(ms.checked_mul(Unit::Millis.nanos())?))
+}
+
+/// Decode a MongoDB ObjectId (24 hex chars): the first 4 bytes are a big-endian
+/// Unix-seconds timestamp. `None` for anything that is not a 24-hex ObjectId.
+fn parse_objectid(s: &str) -> Option<PosixNs> {
+    if s.len() != 24 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let secs = i128::from(u32::from_str_radix(s.get(0..8)?, 16).ok()?);
+    Some(PosixNs(secs.checked_mul(Unit::Seconds.nanos())?))
 }
 
 /// Parse an RFC 2822 / email date-time (e.g. `Sun, 04 May 2025 15:18:50 +0000`)

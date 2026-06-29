@@ -356,6 +356,9 @@ const POSTGRES_EPOCH_NS: i128 = 946_684_800 * NS; //     2000-01-01  (PostgreSQL
                                                   // Julian Day 0 = noon, 24 Nov 4714 BC (proleptic Gregorian). unix_seconds(JD 0)
                                                   // = (0 - 2440587.5) × 86400, since JD 2440587.5 == the Unix epoch (SQLite docs).
 const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
+// Modified Julian Day 0 = 1858-11-17 00:00 UTC (= JD − 2400000.5). MJD 40587 =
+// 1970-01-01, so MJD day 0 is 40587 days before the Unix epoch.
+const MJD_EPOCH_NS: i128 = -3_506_716_800 * NS;
 // Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
 const MS: i128 = 1_000_000;
 const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
@@ -842,6 +845,19 @@ pub static FORMATS: &[Format] = &[
         family: "Nokia devices",
         strategy: Strategy::Packed(decode_nokiale),
         citation: "Nokia LE (byte-reversed two's-complement seconds before 2050); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "mjd",
+        label: "Modified Julian Day (float days since 1858-11-17)",
+        family: "astronomy / VMS / scientific timestamps",
+        strategy: Strategy::LinearFloat {
+            epoch_ns: MJD_EPOCH_NS,
+            unit: Unit::Days,
+        },
+        citation: "Modified Julian Day (JD − 2400000.5; day 0 = 1858-11-17)",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,
