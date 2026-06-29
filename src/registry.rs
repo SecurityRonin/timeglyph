@@ -344,6 +344,25 @@ fn decode_nokiale(value: i64) -> Result<PosixNs, ChronoError> {
     Ok(PosixNs(i128::from(unix) * 1_000_000_000))
 }
 
+/// SQL Server `datetime`: 8 bytes = int32 days since 1900-01-01 + uint32 ticks
+/// of 1/300 second. UTC.
+fn decode_sqlserver(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = value as u64;
+    let days = i128::from((v >> 32) as i32);
+    let ticks = v & 0xFFFF_FFFF;
+    if ticks >= 25_920_000 {
+        // 300 ticks/s × 86400 s — a tick count of a full day or more is invalid.
+        return Err(ChronoError::OutOfRange {
+            what: "SQL Server datetime ticks (>= one day)",
+            value: i128::from(ticks),
+        });
+    }
+    let ns = SQLSERVER_EPOCH_NS
+        + days * 86_400 * 1_000_000_000
+        + (i128::from(ticks) * 1_000_000_000) / 300;
+    Ok(PosixNs(ns))
+}
+
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
 const NS: i128 = 1_000_000_000;
@@ -359,7 +378,8 @@ const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
 // Modified Julian Day 0 = 1858-11-17 00:00 UTC (= JD − 2400000.5). MJD 40587 =
 // 1970-01-01, so MJD day 0 is 40587 days before the Unix epoch.
 const MJD_EPOCH_NS: i128 = -3_506_716_800 * NS;
-// Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
+const SQLSERVER_EPOCH_NS: i128 = -2_208_988_800 * NS; // 1900-01-01 (SQL Server datetime)
+                                                      // Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
 const MS: i128 = 1_000_000;
 const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
 const DISCORD_EPOCH_NS: i128 = 1_420_070_400_000 * MS; // 2015-01-01 (Discord)
@@ -858,6 +878,16 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::Days,
         },
         citation: "Modified Julian Day (JD − 2400000.5; day 0 = 1858-11-17)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "sqlserver",
+        label: "SQL Server datetime (days since 1900 + 1/300s ticks)",
+        family: "Microsoft SQL Server datetime",
+        strategy: Strategy::Packed(decode_sqlserver),
+        citation: "SQL Server datetime (int32 days since 1900-01-01 + uint32 1/300s ticks)",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,

@@ -583,6 +583,9 @@ fn all_ones_sentinel() -> Candidate {
 /// GeneralizedTime (ITU-T X.680, RFC 5280) as found in X.509 certificates and
 /// PKI structures. Returns every form that parses — a string is usually
 /// self-describing, so these readings score high. Empty for unparseable input.
+// A flat sequence of independent string-form parse attempts (ISO/RFC/ASN.1/
+// ULID/UUID/EXIF/ordinal/week); long by nature, not complex.
+#[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let s = text.trim();
@@ -681,7 +684,56 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
         ));
     }
+    if let Some(instant) = parse_iso_ordinal(s) {
+        out.push(string_candidate(
+            "iso_ordinal",
+            "ISO 8601 ordinal date (YYYY-DDD)",
+            "ISO 8601 §5.2.2.1 (ordinal date)",
+            instant,
+            "parsed as an ISO 8601 ordinal date (day-of-year), midnight UTC assumed",
+        ));
+    }
+    if let Some(instant) = parse_iso_week(s) {
+        out.push(string_candidate(
+            "iso_week",
+            "ISO 8601 week date (YYYY-Www-D)",
+            "ISO 8601 §5.2.3 (week date)",
+            instant,
+            "parsed as an ISO 8601 week date, midnight UTC assumed",
+        ));
+    }
     out
+}
+
+/// Parse an ISO 8601 ordinal date `YYYY-DDD` (day-of-year) to midnight UTC.
+fn parse_iso_ordinal(s: &str) -> Option<PosixNs> {
+    let (y, d) = s.split_once('-')?;
+    if y.len() != 4 || d.len() != 3 || !d.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let year: i16 = y.parse().ok()?;
+    let doy: i64 = d.parse().ok()?;
+    let date = jiff::civil::Date::new(year, 1, 1)
+        .ok()?
+        .checked_add(jiff::Span::new().days(doy - 1))
+        .ok()?;
+    civil_to_posix(date.year(), date.month(), date.day(), 0, 0, 0, 0, 0)
+}
+
+/// Parse an ISO 8601 week date `YYYY-Www-D` (D = 1 Mon .. 7 Sun) to midnight UTC.
+fn parse_iso_week(s: &str) -> Option<PosixNs> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 3 || parts[0].len() != 4 {
+        return None;
+    }
+    let year: i16 = parts[0].parse().ok()?;
+    let week: i8 = parts[1].strip_prefix('W')?.parse().ok()?;
+    let day: i8 = parts[2].parse().ok()?;
+    let weekday = jiff::civil::Weekday::from_monday_one_offset(day).ok()?;
+    let date = jiff::civil::ISOWeekDate::new(year, week, weekday)
+        .ok()?
+        .date();
+    civil_to_posix(date.year(), date.month(), date.day(), 0, 0, 0, 0, 0)
 }
 
 /// Decode a 26-character Crockford-base32 ULID; its leading 48 bits are
