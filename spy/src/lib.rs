@@ -5,3 +5,5 @@
 //! cross-platform, and unit-tested; the Win32 + UI-Automation shell (the
 //! element picker and the layered overlay window) lives behind `#[cfg(windows)]`
 //! in the binary.
+
+pub mod scan;
