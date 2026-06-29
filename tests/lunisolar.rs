@@ -85,6 +85,21 @@ fn longitude_shifts_the_hour_pillar_via_true_solar_time() {
 }
 
 #[test]
+fn solar_ephemeris_drives_terms() {
+    // The stem-branch solar ephemeris: on 2020-06-01 the Sun's apparent ecliptic
+    // longitude is ~71° (independently: 小满 = 60° on ~May 20, 芒种 = 75° on
+    // ~Jun 5, sun ~0.96°/day), so the current solar term is 小满. λ is
+    // instant-based (meridian-independent).
+    let r = render(1_590_969_600, "+08:00", None);
+    assert!(
+        (70.0..72.0).contains(&r.solar_longitude_deg),
+        "λ = {}, expected ~71°",
+        r.solar_longitude_deg
+    );
+    assert_eq!(r.solar_term, "小满");
+}
+
+#[test]
 fn reading_surfaces_its_assumptions() {
     let r = render(1_590_969_600, "+08:00", None);
     assert!(!r.assumptions.is_empty());

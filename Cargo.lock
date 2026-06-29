@@ -522,6 +522,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stem-branch"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40e50b348b04cc910405aa9f02d606219c93056477a6d1758f443b068fb5394c"
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -570,6 +576,7 @@ dependencies = [
  "lunar-lite",
  "serde",
  "serde_json",
+ "stem-branch",
  "thiserror",
 ]
 
