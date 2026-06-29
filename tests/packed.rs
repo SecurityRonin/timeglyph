@@ -121,3 +121,14 @@ fn nokiale_packed() {
     // reversed, then a two's-complement count of seconds before 2050.
     assert_packed("nokiale", 0x5A0F_9DD1, "2025-05-04T15:18:51");
 }
+
+#[test]
+fn packed_error_paths() {
+    // A ns40 year field exceeding i16, and a negative LogTime value, must each
+    // surface a loud error rather than panic.
+    assert!(format("ns40")
+        .unwrap()
+        .decode_int(0x00FF_FF00_0000_0000)
+        .is_err());
+    assert!(format("logtime").unwrap().decode_int(-1).is_err());
+}

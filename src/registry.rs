@@ -228,6 +228,122 @@ fn decode_dvr(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Nokia S40 7-byte timestamp: year(BE u16) then month/day/hour/minute/second,
+/// each a raw byte value. UTC.
+fn decode_ns40(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Nokia S40 (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = i16::try_from((v >> 40) & 0xFFFF).map_err(|_| ChronoError::OutOfRange {
+        what: "Nokia S40 year",
+        value: i128::from(value),
+    })?;
+    packed_civil(yr, byte(32), byte(24), byte(16), byte(8), byte(0))
+}
+
+/// Nokia S40 LE: like ns40 but the year u16 is little-endian. UTC.
+fn decode_ns40le(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Nokia S40 LE (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = i16::try_from((((v >> 40) & 0xFFFF) as u16).swap_bytes()).map_err(|_| {
+        ChronoError::OutOfRange {
+            what: "Nokia S40 LE year",
+            value: i128::from(value),
+        }
+    })?;
+    packed_civil(yr, byte(32), byte(24), byte(16), byte(8), byte(0))
+}
+
+/// JET LogTime 8-byte timestamp, reversed field order: sec min hour day month
+/// year(+1900), then 2 filler bytes. UTC.
+fn decode_logtime(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "JET LogTime (negative)",
+        value: i128::from(value),
+    })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = 1900 + ((v >> 16) & 0xFF) as i16;
+    packed_civil(yr, byte(24), byte(32), byte(40), byte(48), byte(56))
+}
+
+/// Decode one nibble-swapped semi-octet byte/pair to its decimal value, or -1
+/// (an invalid field that `packed_civil` will reject) when a nibble exceeds 9.
+fn semi_pair(low: u8, high: u8) -> i8 {
+    i8::try_from(low * 10 + high).unwrap_or(-1)
+}
+
+/// Semi-Octet decimal: 12 digits, each pair nibble-swapped → YY(+2000) MM DD HH
+/// MM SS. LOCAL time.
+fn decode_semioctet(value: i64) -> Result<PosixNs, ChronoError> {
+    if !(0..1_000_000_000_000).contains(&value) {
+        return Err(ChronoError::OutOfRange {
+            what: "Semi-Octet (not 12 decimal digits)",
+            value: i128::from(value),
+        });
+    }
+    let s = format!("{value:012}");
+    let b = s.as_bytes();
+    let pair = |i: usize| semi_pair(b[i + 1] - b'0', b[i] - b'0');
+    packed_civil(
+        2000 + i16::from(pair(0)),
+        pair(2),
+        pair(4),
+        pair(6),
+        pair(8),
+        pair(10),
+    )
+}
+
+/// GSM 7-byte semi-octet timestamp: per byte nibble-swap → decimal, YY(+2000)
+/// MM DD HH MM SS, then a timezone byte (ignored). UTC.
+fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "GSM (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let semi = |sh: u32| {
+        let byte = ((v >> sh) & 0xFF) as u8;
+        semi_pair(byte & 0x0F, byte >> 4)
+    };
+    packed_civil(
+        2000 + i16::from(semi(48)),
+        semi(40),
+        semi(32),
+        semi(24),
+        semi(16),
+        semi(8),
+    )
+}
+
+/// Nokia time LE: 4 bytes reversed, then a two's-complement count of seconds
+/// remaining before 2050 (`to_int − 0xFFFF_FFFF + secs(1970→2050)`). UTC.
+fn decode_nokiale(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = i64::from(
+        u32::try_from(value)
+            .map_err(|_| ChronoError::OutOfRange {
+                what: "Nokia LE (not a u32)",
+                value: i128::from(value),
+            })?
+            .swap_bytes(),
+    );
+    let unix = p - 0xFFFF_FFFF + 2_524_608_000; // secs(1970→2050)
+    Ok(PosixNs(i128::from(unix) * 1_000_000_000))
+}
+
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
 const NS: i128 = 1_000_000_000;
@@ -666,6 +782,66 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::CentiSecond,
         },
         citation: "Sonyflake (id>>24 in 10ms units, 2014-09-01 epoch); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "ns40",
+        label: "Nokia S40 7-byte timestamp",
+        family: "Nokia S40 devices",
+        strategy: Strategy::Packed(decode_ns40),
+        citation: "Nokia S40 7-byte (year BE u16 + field bytes); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "ns40le",
+        label: "Nokia S40 7-byte timestamp (LE year)",
+        family: "Nokia S40 devices",
+        strategy: Strategy::Packed(decode_ns40le),
+        citation: "Nokia S40 7-byte, little-endian year u16; vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "logtime",
+        label: "JET LogTime 8-byte timestamp",
+        family: "Microsoft JET / ESE database logs",
+        strategy: Strategy::Packed(decode_logtime),
+        citation: "JET LogTime (reversed field bytes, year+1900); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "semioctet",
+        label: "Semi-Octet decimal (LOCAL time)",
+        family: "Semi-octet (nibble-swapped) timestamps",
+        strategy: Strategy::Packed(decode_semioctet),
+        citation: "Semi-Octet decimal (nibble-swapped pairs, YY+2000); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "gsm",
+        label: "GSM 7-byte semi-octet timestamp",
+        family: "GSM mobile timestamps",
+        strategy: Strategy::Packed(decode_gsm),
+        citation: "GSM semi-octet (per-byte nibble swap + tz byte); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "nokiale",
+        label: "Nokia time LE (seconds before 2050)",
+        family: "Nokia devices",
+        strategy: Strategy::Packed(decode_nokiale),
+        citation: "Nokia LE (byte-reversed two's-complement seconds before 2050); vs time-decode",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,
