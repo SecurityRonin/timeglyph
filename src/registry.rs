@@ -170,6 +170,64 @@ fn decode_bcd(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Motorola 6-byte timestamp: one byte per field — year(+1970) month day hour
+/// minute second. UTC.
+fn decode_moto(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Motorola (not a 6-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    packed_civil(
+        1970 + i16::from(((v >> 40) & 0xFF) as u8),
+        byte(32),
+        byte(24),
+        byte(16),
+        byte(8),
+        byte(0),
+    )
+}
+
+/// Symantec AV 6-byte timestamp: like Motorola, but the month byte is +1. UTC.
+fn decode_symantec(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Symantec (not a 6-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    packed_civil(
+        1970 + i16::from(((v >> 40) & 0xFF) as u8),
+        byte(32).wrapping_add(1),
+        byte(24),
+        byte(16),
+        byte(8),
+        byte(0),
+    )
+}
+
+/// DVR (WFS/DHFS) 32-bit packed timestamp (MSB-first): year(6,+2000) month(4)
+/// day(5) hour(5) minute(6) second(6). LOCAL time.
+fn decode_dvr(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "DVR packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        2000 + ((p >> 26) & 0x3F) as i16,
+        ((p >> 22) & 0x0F) as i8,
+        ((p >> 17) & 0x1F) as i8,
+        ((p >> 12) & 0x1F) as i8,
+        ((p >> 6) & 0x3F) as i8,
+        (p & 0x3F) as i8,
+    )
+}
+
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
 const NS: i128 = 1_000_000_000;
@@ -186,7 +244,8 @@ const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
 const MS: i128 = 1_000_000;
 const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
 const DISCORD_EPOCH_NS: i128 = 1_420_070_400_000 * MS; // 2015-01-01 (Discord)
-                                                       // KSUID epoch: Unix second 1_400_000_000 == 2014-05-13T16:53:20Z (Segment KSUID).
+const SONY_EPOCH_NS: i128 = 1_409_529_600 * NS; //        2014-09-01 (Sonyflake, 10ms units)
+                                                // KSUID epoch: Unix second 1_400_000_000 == 2014-05-13T16:53:20Z (Segment KSUID).
 const KSUID_EPOCH_NS: i128 = 1_400_000_000 * NS;
 
 // Plausibility window for auto-detect ranking: 1990-01-01 .. 2040-01-01.
@@ -564,6 +623,50 @@ pub static FORMATS: &[Format] = &[
         strategy: Strategy::Packed(decode_bcd),
         citation: "Binary-Coded-Decimal (YY+2000 MM DD HH MM SS pairs); vs time-decode",
         tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "moto",
+        label: "Motorola 6-byte timestamp",
+        family: "Motorola device timestamps",
+        strategy: Strategy::Packed(decode_moto),
+        citation: "Motorola 6-byte (one byte per field, year+1970); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "symantec",
+        label: "Symantec AV 6-byte timestamp",
+        family: "Symantec antivirus logs",
+        strategy: Strategy::Packed(decode_symantec),
+        citation: "Symantec AV 6-byte (year+1970, month+1); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "dvr",
+        label: "DVR (WFS/DHFS) packed timestamp (LOCAL time)",
+        family: "DVR WFS / DHFS filesystems",
+        strategy: Strategy::Packed(decode_dvr),
+        citation: "DVR WFS/DHFS 32-bit packed (year since 2000); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "sony",
+        label: "Sonyflake ID (10ms units since 2014-09-01, <<24)",
+        family: "Sonyflake distributed IDs",
+        strategy: Strategy::Embedded {
+            epoch_ns: SONY_EPOCH_NS,
+            shift_bits: 24,
+            unit: Unit::CentiSecond,
+        },
+        citation: "Sonyflake (id>>24 in 10ms units, 2014-09-01 epoch); vs time-decode",
+        tz: Utc,
         leap: PosixIgnored,
         plausible: W,
     },
