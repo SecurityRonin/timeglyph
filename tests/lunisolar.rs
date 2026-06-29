@@ -185,3 +185,11 @@ fn differential_vs_cnlunar_oracle() {
         assert_eq!(r.month_pillar, f[5], "month pillar @ {unix}");
     }
 }
+
+#[test]
+fn out_of_range_instant_errors_not_panics() {
+    // An instant outside jiff's civil range must degrade to a loud error, never
+    // a panic (covers the from_nanosecond guard at the top of render()).
+    let zone = RenderZone::parse("+08:00").unwrap();
+    assert!(lunisolar::render(PosixNs(i128::MAX), &zone, None).is_err());
+}

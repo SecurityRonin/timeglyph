@@ -61,3 +61,17 @@ fn gps_reading_states_its_assumptions() {
     assert!(!r.citation.is_empty());
     assert!(!r.assumptions.is_empty());
 }
+
+#[test]
+fn leap_error_paths() {
+    // Negative values are not valid TAI64/NTP encodings (unsigned) → loud error.
+    assert!(leap::decode("tai64", -1).unwrap().is_err());
+    assert!(leap::decode("ntp", -1).unwrap().is_err());
+    // A TAI64 label whose seconds offset exceeds i64 → out of range.
+    assert!(leap::from_tai64(u64::MAX).is_err());
+    // NTP seconds beyond i64, and seconds that land outside the civil range.
+    assert!(leap::from_ntp_seconds(u64::MAX).is_err());
+    assert!(leap::from_ntp_seconds(400_000_000_000).is_err());
+    // A non-leap id returns None from the dispatch (falls through to POSIX).
+    assert!(leap::decode("filetime", 0).is_none());
+}

@@ -41,6 +41,8 @@ pub struct EnrichOptions {
 /// years). ~1e8 ≈ Unix-seconds year 1973; ms/µs/ns timestamps are far larger.
 const AUTO_MIN_MAGNITUDE: i64 = 100_000_000;
 
+// cov:unreachable: only maps a `csv::Error`, which a flexible reader over a
+// valid-UTF-8 in-memory &str never produces (no Utf8/UnequalLengths/Io error).
 fn csv_err(e: &csv::Error) -> ChronoError {
     ChronoError::Render(format!("csv: {e}"))
 }
@@ -53,12 +55,14 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
         .from_reader(csv_text.as_bytes());
     let headers: Vec<String> = rdr
         .headers()
+        // cov:unreachable: a flexible reader over a valid-UTF-8 &str never errors.
         .map_err(|e| csv_err(&e))?
         .iter()
         .map(String::from)
         .collect();
     let mut records: Vec<csv::StringRecord> = Vec::new();
     for rec in rdr.records() {
+        // cov:unreachable: a flexible reader over a valid-UTF-8 &str never errors.
         records.push(rec.map_err(|e| csv_err(&e))?);
     }
 
@@ -97,6 +101,7 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
             _ => out_header.push(h.clone()),
         }
     }
+    // cov:unreachable: an in-memory Vec writer never fails on write.
     wtr.write_record(&out_header).map_err(|e| csv_err(&e))?;
 
     for rec in &records {
@@ -116,12 +121,15 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
                 None => row.push(cell.to_string()),
             }
         }
+        // cov:unreachable: an in-memory Vec writer never fails on write.
         wtr.write_record(&row).map_err(|e| csv_err(&e))?;
     }
 
     let bytes = wtr
         .into_inner()
+        // cov:unreachable: flushing an in-memory Vec writer never fails.
         .map_err(|e| ChronoError::Render(format!("csv: {e}")))?;
+    // cov:unreachable: every cell written is valid UTF-8, so this never errors.
     String::from_utf8(bytes).map_err(|e| ChronoError::Render(e.to_string()))
 }
 

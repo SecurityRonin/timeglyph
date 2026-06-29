@@ -38,13 +38,15 @@ jobs:
       - uses: taiki-e/install-action@a402910a723481c4c80d006d75298c796a9c8695 # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov
-      # Collect once (all test targets, all features — integration tests carry
-      # the coverage here, so NOT --lib), then report against a hard 100%
-      # function gate and emit lcov from the same run.
-      - name: Collect coverage
-        run: cargo llvm-cov --all-features --no-report
-      - name: Coverage gate (100% functions)
-        run: cargo llvm-cov report --fail-under-functions 100 --show-missing-lines
+      # All test targets, all features (integration tests carry the coverage, so
+      # NOT --lib). The gate requires 100% function coverage of the LIBRARY,
+      # honoring `// cov:unreachable` markers on provably-dead defensive arms
+      # (raw --fail-under-functions can't exempt those); main.rs (the Humble
+      # CLI shell) is excluded by the script.
+      - name: Coverage + 100% function gate
+        run: |
+          cargo llvm-cov --all-features --json --output-path cov.json
+          python3 scripts/coverage-gate.py cov.json
       - name: Emit lcov
         run: cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload to Codecov

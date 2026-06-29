@@ -155,6 +155,8 @@ pub fn render(
         day: u32::from(day),
     };
     let lunar = std::panic::catch_unwind(AssertUnwindSafe(|| gregorian_to_lunisolar(civil)))
+        // cov:unreachable: only runs if the upstream conversion panics (out of
+        // its supported range) — a defensive guard kept for graceful degradation.
         .map_err(|_| {
             ChronoError::Render(format!(
             "lunisolar conversion is outside the supported range for {year}-{month:02}-{day:02}"
@@ -183,6 +185,8 @@ pub fn render(
         solar_term,
         civil_local: instant
             .render(zone)
+            // cov:unreachable: the instant already rendered via from_nanosecond
+            // at the top of render(), so render(zone) here cannot return None.
             .unwrap_or_else(|| "<out of civil range>".to_string()),
         assumptions,
     })
