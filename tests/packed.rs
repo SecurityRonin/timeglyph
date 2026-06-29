@@ -79,3 +79,45 @@ fn sony_packed() {
     // (id >> 24) counts 10ms units since the 2014-09-01 scheme epoch.
     assert_packed("sony", 0x065D_D4BB_8900_0001, "2023-05-01T19:37:45");
 }
+
+#[test]
+fn ns40_packed() {
+    // oracle: --ns40 07e905040f1232 -> 2025-05-04 15:18:50 (UTC). 7 bytes:
+    // year(BE u16) month day hour minute second, each a raw byte value.
+    assert_packed("ns40", 0x0007_E905_040F_1232, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn ns40le_packed() {
+    // oracle: --ns40le e90705040f1232 -> 2025-05-04 15:18:50 (UTC). Like ns40
+    // but the year u16 is little-endian.
+    assert_packed("ns40le", 0x00E9_0705_040F_1232, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn logtime_packed() {
+    // oracle: --logtime 343a0d17037b0000 -> 2023-03-23 13:58:52 (UTC). 8 bytes,
+    // reversed field order: sec min hour day month year(+1900) + 2 fillers.
+    assert_packed("logtime", 0x343A_0D17_037B_0000, "2023-03-23T13:58:52");
+}
+
+#[test]
+fn semioctet_packed() {
+    // oracle: --semioctet 525040518105 -> 2025-05-04 15:18:50. 12 digits, each
+    // pair nibble-swapped, then YY(+2000) MM DD HH MM SS.
+    assert_packed("semioctet", 525_040_518_105, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn gsm_packed() {
+    // oracle: --gsm 52504051810500 -> 2025-05-04 15:18:50 (UTC). 7 bytes,
+    // semi-octet (per-byte nibble swap → decimal), YY(+2000)..SS + tz byte.
+    assert_packed("gsm", 0x0052_5040_5181_0500, "2025-05-04T15:18:50");
+}
+
+#[test]
+fn nokiale_packed() {
+    // oracle: --nokiale 5a0f9dd1 -> 2025-05-04 15:18:51 (UTC). 4-byte LE: bytes
+    // reversed, then a two's-complement count of seconds before 2050.
+    assert_packed("nokiale", 0x5A0F_9DD1, "2025-05-04T15:18:51");
+}
