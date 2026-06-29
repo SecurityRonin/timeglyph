@@ -118,13 +118,34 @@ Each new format: find the **primary spec**, add the entry with a real `citation`
 write a RED anchor test (value-0 = epoch, plus a worked example from the spec),
 then GREEN. Validate against the MIT `time_decode` oracle (see §6).
 
-**Landed (oracle-validated):** `active` (AD/LDAP FILETIME), `prtime`, `iostime`
-(iOS-11 ns NSDate), `ksuid`, `excel1904`, `mastodon`/`linkedin`/`tiktok` (the
-embedded strategy was generalised to carry a `unit`, so seconds-shift IDs like
-TikTok work), plus string/packed forms `ulid`, `uuid_v1`, `rfc2822`, `exif`, and
-128-bit `SYSTEMTIME`. **Still TODO** — obscure packed-bitfield formats needing
-per-format unpackers (exFAT tz byte, bitdate/dttm/logtime/ns40/moto/symantec/dvr,
-BCD/GSM semi-octet, Sonyflake's 10ms unit); GPS/NTP/TAI remain in `leap.rs`.
+### 5a STATUS — essentially complete
+
+**Landed, oracle-validated (`time-decode`):** `active`, `prtime`, `iostime`,
+`ksuid`, `excel1904`, `mastodon`/`linkedin`/`tiktok`, `sony` (Sonyflake, via a
+new `Unit::CentiSecond`); the full packed family `exfat`, `dttm`, `bitdate`,
+`bitdec`, `bcd`, `moto`, `symantec`, `dvr`, `ns40`, `ns40le`, `logtime`,
+`semioctet`, `gsm`, `nokiale`; and string/packed forms `ulid`, `uuid_v1`,
+`rfc2822`, `exif`, `systemtime`.
+
+**Landed, spec-derivable (tier-2):** `mjd` (Modified Julian Day), MongoDB
+`objectid`, `uuid_v6`/`uuid_v7`, `sqlserver` (datetime), ISO `iso_ordinal`
+(YYYY-DDD) + `iso_week` (YYYY-Www-D). HTTP-date parses via the `rfc2822` form.
+
+**Resolved-as-covered / deferred (with rationale):**
+- ext4 / XFS / btrfs basic timestamps **are** Unix seconds / nanoseconds →
+  `unix` / `unix_ns`. The ext4 post-2038 *extra* word is a **separate inode
+  field**, not a single value, so it does not fit the one-value decode model —
+  out of scope until a byte/struct input path exists.
+- MySQL `TIMESTAMP` **is** Unix seconds (`unix`); the binary `DATETIME` packed
+  form and SQL Server `datetime2` (variable-length, precision-tagged) are
+  **deferred** — they need an independent oracle to validate the exact bit
+  layout (Doer-Checker: do not ship an unvalidated packed layout).
+- `TAI64N` leap-correct UTC second is identical to `TAI64` (already in
+  `leap.rs`); the extra 32-bit nanoseconds are a sub-second refinement on a
+  16-byte label (needs a byte input path).
+- `$STANDARD_INFORMATION` vs `$FILE_NAME` is **not a distinct decode** — both
+  store a FILETIME (`filetime`/`active`); the distinction is *which NTFS
+  attribute*, a finding-context note for a higher layer, not a registry format.
 
 Still needed (Codex's gap list + the long tail):
 - **Apple/macOS**: `CFAbsoluteTime` as a **signed double** in plists/NSKeyedArchiver
