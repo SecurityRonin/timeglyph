@@ -4,21 +4,24 @@
 //! Unlike the rest of timeglyph (a pure instant↔instant mapping), this
 //! conversion is **convention-relative**: a UTC instant maps to a lunisolar date
 //! only once a *reference meridian* is fixed (China uses UTC+8; Vietnam UTC+7;
-//! Korea UTC+9), because the calendar assigns astronomical new-moon / solar-term
-//! instants to civil **days** at that meridian. So [`render`] REQUIRES a
-//! [`RenderZone`]. The optional `longitude` applies a local-mean-solar-time
-//! correction to the HOUR pillar only (真太陽時) — the one field traditionally
-//! reckoned by the observer's solar clock; the equation of time is NOT applied
-//! (stated in the reading's assumptions).
+//! Korea UTC+9), because the calendar assigns civil DAYS at that meridian. So
+//! [`render`] REQUIRES a [`RenderZone`]. The optional `longitude` corrects the
+//! HOUR pillar to local mean solar time (真太陽時); the equation of time is NOT
+//! applied (stated in the reading's assumptions).
 //!
-//! The ephemeris (new-moon / solar-term astronomy) and calendar rules are
-//! delegated to `lunar-lite` (reuse, don't reinvent); timeglyph supplies the
-//! meridian/longitude that crate intentionally leaves to the caller. Validated
-//! against the independent `cnlunar` oracle (tests/lunisolar.rs).
+//! Engines (reuse, don't reinvent):
+//! - **`stem-branch`** — the Sun's apparent ecliptic longitude (VSOP87D +
+//!   DE441-fit + IAU2000B nutation). The solar terms it defines drive the 干支
+//!   YEAR pillar (立春 = 315°) and MONTH pillar (the 12 节, every 30°). These are
+//!   meridian-INDEPENDENT (a solar term is one absolute instant worldwide).
+//! - **`lunar-lite`** — the lunar (moon) calendar DATE (year/month/day, leap
+//!   months), which needs new-moon astronomy the solar-only core does not carry.
+//!
+//! The day pillar is Julian-day arithmetic and the hour pillar is 五鼠遁; both
+//! are validated, with everything above, against the independent `cnlunar`
+//! oracle (tests/lunisolar.rs).
 
-use lunar_lite::{
-    four_pillars_from_solar_date, solar_to_lunar, time_index, FourPillars, SolarDate, StemBranch,
-};
+use lunar_lite::{solar_to_lunar, SolarDate};
 
 use crate::{ChronoError, PosixNs, RenderZone};
 
@@ -28,6 +31,16 @@ const STEMS: [char; 10] = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛
 const BRANCHES: [char; 12] = [
     '子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥',
 ];
+/// The 24 solar terms by apparent ecliptic longitude, starting at 0° (春分).
+const SOLAR_TERMS: [&str; 24] = [
+    "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露",
+    "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至", "小寒", "大寒", "立春", "雨水", "惊蛰",
+];
+
+/// Julian Day of the Unix epoch (1970-01-01T00:00:00Z).
+const UNIX_EPOCH_JD: f64 = 2_440_587.5;
+/// 立春 (Start of Spring) apparent solar longitude — the 干支 year boundary.
+const LICHUN_LONGITUDE: f64 = 315.0;
 
 /// A lunisolar / 干支 reading of an instant at a chosen meridian. The lunar date
 /// is the civil Chinese-calendar date; the four pillars are the sexagenary
@@ -51,6 +64,11 @@ pub struct LunisolarReading {
     pub day_pillar: String,
     /// Hour pillar (時柱).
     pub hour_pillar: String,
+    /// The Sun's apparent ecliptic longitude (degrees, `[0, 360)`) at the
+    /// instant — from the stem-branch ephemeris; meridian-independent.
+    pub solar_longitude_deg: f64,
+    /// The current solar term (节气) implied by `solar_longitude_deg`.
+    pub solar_term: String,
     /// The civil datetime at the chosen meridian (RFC 3339 with offset).
     pub civil_local: String,
     /// Stated assumptions (meridian used, pillar conventions, solar-time note).
@@ -62,8 +80,8 @@ pub struct LunisolarReading {
 /// `longitude` degrees east.
 ///
 /// `zone` is **required** (the conversion is meridian-relative). `longitude`,
-/// when given, shifts only the hour pillar; the lunar date and year/month/day
-/// pillars stay on the civil meridian day.
+/// when given, shifts only the hour pillar; the lunar date, the solar terms, and
+/// the year/month/day pillars are unaffected by it.
 pub fn render(
     instant: PosixNs,
     zone: &RenderZone,
@@ -78,49 +96,78 @@ pub fn render(
         RenderZone::Named(tz) => tz.to_offset(ts),
     };
     let dt = offset.to_datetime(ts);
-    let solar = SolarDate {
-        year: i32::from(dt.year()),
-        month: dt.month() as u8,
-        day: dt.day() as u8,
+    let (year, month, day) = (i32::from(dt.year()), dt.month() as u8, dt.day() as u8);
+    let civil_hour = i64::from(dt.hour());
+    let civil_minute = i64::from(dt.minute());
+
+    // --- Solar ephemeris (stem-branch): apparent longitude → solar terms ------
+    #[allow(clippy::cast_precision_loss)]
+    let jd_ut = instant.0 as f64 / 1e9 / 86_400.0 + UNIX_EPOCH_JD;
+    let jde_tt = jd_ut + delta_t_seconds(f64::from(year)) / 86_400.0;
+    let lambda =
+        normalize_deg(stem_branch::solar_ecliptic_state(jde_tt).apparent_longitude_degrees);
+    let solar_term = SOLAR_TERMS[((lambda / 15.0).floor() as usize) % 24].to_string();
+
+    // --- Year pillar: flips at 立春 (315°). Jan is always before it; in Feb the
+    // longitude disambiguates; Mar..Dec are after. (Meridian month only picks the
+    // Jan-vs-Dec branch — both have λ < 315.) ---------------------------------
+    let pillar_year = if month == 1 || (month == 2 && lambda < LICHUN_LONGITUDE) {
+        year - 1
+    } else {
+        year
     };
-    let hour = i64::from(dt.hour());
-    let minute = i64::from(dt.minute());
+    let year_stem = (pillar_year - 1984).rem_euclid(10) as usize;
+    let year_pillar = pillar(year_stem, (pillar_year - 1984).rem_euclid(12) as usize);
 
-    // Lunar date + the civil-time four pillars (year via 立春, month via 节).
-    let lunar = solar_to_lunar(solar).map_err(|e| ChronoError::Render(e.to_string()))?;
-    let ti_civil =
-        time_index(hour as u8, minute as u8).map_err(|e| ChronoError::Render(e.to_string()))?;
-    let base: FourPillars = four_pillars_from_solar_date(solar, ti_civil)
-        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    // --- Month pillar: the 节 sector (every 30° from 立春=315° → 寅月), stem via
+    // 五虎遁 from the year stem. -----------------------------------------------
+    let sector = (((lambda - LICHUN_LONGITUDE).rem_euclid(360.0)) / 30.0).floor() as usize;
+    let month_branch = (2 + sector) % 12;
+    let first_month_stem = (year_stem * 2 + 2) % 10; // 寅月 stem (五虎遁)
+    let month_pillar = pillar((first_month_stem + sector) % 10, month_branch);
 
-    // Optional true-solar-time correction, applied to the HOUR pillar only.
+    // --- Day pillar: civil Julian-day number, anchored so 2020-01-25 = 丁卯; the
+    // late-子 (23:00) civil hour rolls the displayed day forward. --------------
+    let base_jdn = julian_day_number(year, month, day);
+    let day_jdn = base_jdn + i64::from(civil_hour == 23);
+    let day_cycle = (day_jdn + 49).rem_euclid(60);
+    let day_pillar = pillar((day_cycle % 10) as usize, (day_cycle % 12) as usize);
+
+    // --- Hour pillar: 時辰 from the (optionally longitude-corrected) hour, stem
+    // via 五鼠遁 from that hour's day stem. The lunar date / other pillars keep
+    // civil meridian time; only this pillar follows true solar time. ----------
     let ref_lon = f64::from(offset.seconds()) / 3600.0 * 15.0;
-    let (hour_pillar, solar_note) = match longitude {
+    let (eff_hour, solar_note) = match longitude {
         Some(lon) => {
             let corr_min = ((lon - ref_lon) * 4.0).round() as i64;
-            let wrapped = (hour * 60 + minute + corr_min).rem_euclid(24 * 60);
-            let ti_solar = time_index((wrapped / 60) as u8, (wrapped % 60) as u8)
-                .map_err(|e| ChronoError::Render(e.to_string()))?;
-            let hp = four_pillars_from_solar_date(solar, ti_solar)
-                .map_err(|e| ChronoError::Render(e.to_string()))?
-                .hourly;
-            let note = format!(
-                "hour pillar uses local MEAN solar time (longitude {lon:.4}°E vs meridian {ref_lon:.1}°E, {corr_min:+} min); the equation of time is NOT applied, and the day pillar stays on the civil meridian day"
-            );
-            (pillar_string(hp), note)
+            let total = (civil_hour * 60 + civil_minute + corr_min).rem_euclid(24 * 60);
+            (
+                total / 60,
+                format!(
+                    "hour pillar uses local MEAN solar time (longitude {lon:.4}°E vs meridian {ref_lon:.1}°E, {corr_min:+} min); equation of time NOT applied, and the day/year/month pillars keep civil meridian time"
+                ),
+            )
         }
         None => (
-            pillar_string(base.hourly),
+            civil_hour,
             "hour pillar uses civil time at the meridian (no longitude → true solar time not applied)".to_string(),
         ),
     };
+    let hour_branch = ((eff_hour + 1) / 2).rem_euclid(12) as usize;
+    let hour_day_cycle = (base_jdn + i64::from(eff_hour == 23) + 49).rem_euclid(60);
+    let hour_stem = (hour_day_cycle as usize % 10 % 5 * 2 + hour_branch) % 10;
+    let hour_pillar = pillar(hour_stem, hour_branch);
+
+    // --- Lunar (moon) calendar date: lunar-lite. ------------------------------
+    let lunar = solar_to_lunar(SolarDate { year, month, day })
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
 
     let assumptions = vec![
         format!(
-            "Chinese lunisolar reading computed for the {ref_lon:.1}°E meridian (UTC offset {} h); a different tradition (e.g. Vietnam UTC+7, Korea UTC+9) can differ by a day or a leap month",
+            "Chinese reading computed for the {ref_lon:.1}°E meridian (UTC offset {} h); a different tradition (e.g. Vietnam UTC+7, Korea UTC+9) can differ by a day or a leap month",
             offset.seconds() / 3600
         ),
-        "year pillar uses the 立春 (LiChun) boundary and month pillar the 12 节 solar terms (orthodox 子平 convention); the lunar DATE uses the 正月初一 new-year boundary, so the year pillar and lunar year may differ near 立春".to_string(),
+        "year pillar via 立春 and month pillar via the 12 节 (apparent solar longitude, stem-branch ephemeris); the lunar DATE uses the 正月初一 new-year boundary (lunar-lite), so the year pillar and lunar year may differ near 立春".to_string(),
         solar_note,
     ];
 
@@ -129,10 +176,12 @@ pub fn render(
         lunar_month: lunar.month,
         lunar_day: lunar.day,
         is_leap_month: lunar.is_leap_month,
-        year_pillar: pillar_string(base.yearly),
-        month_pillar: pillar_string(base.monthly),
-        day_pillar: pillar_string(base.daily),
+        year_pillar,
+        month_pillar,
+        day_pillar,
         hour_pillar,
+        solar_longitude_deg: lambda,
+        solar_term,
         civil_local: instant
             .render(zone)
             .unwrap_or_else(|| "<out of civil range>".to_string()),
@@ -140,10 +189,43 @@ pub fn render(
     })
 }
 
-/// Render a [`StemBranch`] as its two-character 干支 string (e.g. `庚子`).
-fn pillar_string(sb: StemBranch) -> String {
+/// A two-character 干支 string from stem index (0..=9) and branch index (0..=11).
+fn pillar(stem: usize, branch: usize) -> String {
     let mut s = String::with_capacity(6);
-    s.push(STEMS[sb.stem().index() % 10]);
-    s.push(BRANCHES[sb.branch().index() % 12]);
+    s.push(STEMS[stem % 10]);
+    s.push(BRANCHES[branch % 12]);
     s
+}
+
+/// Normalise degrees into `[0, 360)`.
+fn normalize_deg(deg: f64) -> f64 {
+    deg.rem_euclid(360.0)
+}
+
+/// The integer Julian Day Number for a proleptic-Gregorian civil date
+/// (Fliegel–Van Flandern). Day boundary at noon, matching the day-pillar anchor.
+fn julian_day_number(year: i32, month: u8, day: u8) -> i64 {
+    let a = i64::from((14 - i32::from(month)) / 12);
+    let y = i64::from(year) + 4800 - a;
+    let m = i64::from(month) + 12 * a - 3;
+    i64::from(day) + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32_045
+}
+
+/// ΔT (TT − UT1) in seconds, from the Espenak–Meeus polynomials. Two modern
+/// segments cover 1986–2050 (the forensic-relevant range); outside, the nearest
+/// segment is used. ΔT precision is non-critical here — it shifts the apparent
+/// solar longitude by < 0.001° (a solar term moves ~1° per day), so it only
+/// matters within seconds of a term boundary.
+fn delta_t_seconds(year: f64) -> f64 {
+    let t = year - 2000.0;
+    if year < 2005.0 {
+        // 1986–2005 segment (clamped below 1986).
+        63.86 + 0.334_5 * t - 0.060_374 * t.powi(2)
+            + 0.001_727_5 * t.powi(3)
+            + 0.000_651_814 * t.powi(4)
+            + 0.000_023_735_99 * t.powi(5)
+    } else {
+        // 2005–2050 segment (clamped above 2050).
+        62.92 + 0.322_17 * t + 0.005_589 * t.powi(2)
+    }
 }

@@ -393,6 +393,10 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
                 "  四柱 pillars: 年 {}  月 {}  日 {}  時 {}",
                 r.year_pillar, r.month_pillar, r.day_pillar, r.hour_pillar
             );
+            println!(
+                "  solar: λ {:.2}° ({})",
+                r.solar_longitude_deg, r.solar_term
+            );
             for a in &r.assumptions {
                 println!("    - {a}");
             }
