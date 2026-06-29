@@ -16,11 +16,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `lunisolar <datetime> --tz <zone> [--longitude <°E>]`): the Chinese lunar date
   (incl. leap months) plus the sexagenary year/month/day/hour pillars, the Sun's
   apparent ecliptic longitude, and the current solar term. The year (立春) and
-  month (the 12 节) pillars are driven by the `stem-branch` solar ephemeris; the
+  month (the 12 節) pillars are driven by the `stem-branch` solar ephemeris; the
   lunar (moon) date by `lunar-lite`; the day pillar by Julian-day arithmetic and
   the hour pillar by 五鼠遁. The conversion is convention-relative, so a meridian
   (`--tz`) is **required** and an optional longitude corrects the hour pillar to
-  local mean solar time; conventions (立春 year, 节 month, 正月初一 lunar date) are
+  local mean solar time; conventions (立春 year, 節 month, 正月初一 lunar date) are
   surfaced as assumptions. Validated against the independent `cnlunar` oracle.
 - **Context-aware scoring components** (HANDOFF §5b): `byte_width_match`,
   `endian_match`, `artifact_match`, `neighbour_monotonicity`, each emitted only

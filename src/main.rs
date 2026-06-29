@@ -390,7 +390,7 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
                 r.lunar_year, r.lunar_month, r.lunar_day
             );
             println!(
-                "  四柱 pillars: 年 {}  月 {}  日 {}  時 {}",
+                "  四柱 pillars: {}年 {}月 {}日 {}時",
                 r.year_pillar, r.month_pillar, r.day_pillar, r.hour_pillar
             );
             println!(

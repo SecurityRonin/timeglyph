@@ -33,8 +33,8 @@ const BRANCHES: [char; 12] = [
 ];
 /// The 24 solar terms by apparent ecliptic longitude, starting at 0° (春分).
 const SOLAR_TERMS: [&str; 24] = [
-    "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露",
-    "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至", "小寒", "大寒", "立春", "雨水", "惊蛰",
+    "春分", "清明", "穀雨", "立夏", "小滿", "芒種", "夏至", "小暑", "大暑", "立秋", "處暑", "白露",
+    "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至", "小寒", "大寒", "立春", "雨水", "驚蟄",
 ];
 
 /// Julian Day of the Unix epoch (1970-01-01T00:00:00Z).
@@ -67,7 +67,7 @@ pub struct LunisolarReading {
     /// The Sun's apparent ecliptic longitude (degrees, `[0, 360)`) at the
     /// instant — from the stem-branch ephemeris; meridian-independent.
     pub solar_longitude_deg: f64,
-    /// The current solar term (节气) implied by `solar_longitude_deg`.
+    /// The current solar term (節氣) implied by `solar_longitude_deg`.
     pub solar_term: String,
     /// The civil datetime at the chosen meridian (RFC 3339 with offset).
     pub civil_local: String,
@@ -118,7 +118,7 @@ pub fn render(
     let year_stem = (pillar_year - 1984).rem_euclid(10) as usize;
     let year_pillar = pillar(year_stem, (pillar_year - 1984).rem_euclid(12) as usize);
 
-    // --- Month pillar: the 节 sector (every 30° from 立春=315° → 寅月), stem via
+    // --- Month pillar: the 節 sector (every 30° from 立春=315° → 寅月), stem via
     // 五虎遁 from the year stem. -----------------------------------------------
     let sector = (((lambda - LICHUN_LONGITUDE).rem_euclid(360.0)) / 30.0).floor() as usize;
     let month_branch = (2 + sector) % 12;
@@ -177,7 +177,7 @@ pub fn render(
             "Chinese reading computed for the {ref_lon:.1}°E meridian (UTC offset {} h); a different tradition (e.g. Vietnam UTC+7, Korea UTC+9) can differ by a day or a leap month",
             offset.seconds() / 3600
         ),
-        "year pillar via 立春 and month pillar via the 12 节 (apparent solar longitude); the lunar DATE uses the 正月初一 new-year boundary (中氣 leap-month rule), so the year pillar and lunar year may differ near 立春".to_string(),
+        "year pillar via 立春 and month pillar via the 12 節 (apparent solar longitude); the lunar DATE uses the 正月初一 new-year boundary (中氣 leap-month rule), so the year pillar and lunar year may differ near 立春".to_string(),
         solar_note,
     ];
 

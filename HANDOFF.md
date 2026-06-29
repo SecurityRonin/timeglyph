@@ -99,7 +99,7 @@ output (never "the detected format").
 - **Lunisolar calendar + 干支 four pillars** (`src/lunisolar.rs`, `lunisolar`
   feature). Two engines (reuse, don't reinvent): the **`stem-branch`** solar
   ephemeris (Apache-2.0, h4x0r) supplies the Sun's apparent ecliptic longitude →
-  the YEAR pillar (立春=315°) and MONTH pillar (the 12 节, every 30°), which are
+  the YEAR pillar (立春=315°) and MONTH pillar (the 12 節, every 30°), which are
   meridian-independent; **`lunar-lite`** (MIT) supplies the lunar (moon) calendar
   DATE its solar-only core can't. Day pillar = Julian-day arithmetic; hour pillar
   = 五鼠遁. **Key design fact** — the conversion is *convention-relative*: a UTC

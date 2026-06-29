@@ -7,7 +7,7 @@
 //!
 //! Validated against the independent `cnlunar` / `lunardate` Python oracles
 //! (see the env-gated differential test). Convention-dependent pillars (year via
-//! 立春, month via 节) are asserted only on mid-period dates where every common
+//! 立春, month via 節) are asserted only on mid-period dates where every common
 //! convention agrees; the day/hour pillars and lunar date are convention-free.
 #![cfg(feature = "lunisolar")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -87,8 +87,8 @@ fn longitude_shifts_the_hour_pillar_via_true_solar_time() {
 #[test]
 fn solar_ephemeris_drives_terms() {
     // The stem-branch solar ephemeris: on 2020-06-01 the Sun's apparent ecliptic
-    // longitude is ~71° (independently: 小满 = 60° on ~May 20, 芒种 = 75° on
-    // ~Jun 5, sun ~0.96°/day), so the current solar term is 小满. λ is
+    // longitude is ~71° (independently: 小滿 = 60° on ~May 20, 芒種 = 75° on
+    // ~Jun 5, sun ~0.96°/day), so the current solar term is 小滿. λ is
     // instant-based (meridian-independent).
     let r = render(1_590_969_600, "+08:00", None);
     assert!(
@@ -96,7 +96,7 @@ fn solar_ephemeris_drives_terms() {
         "λ = {}, expected ~71°",
         r.solar_longitude_deg
     );
-    assert_eq!(r.solar_term, "小满");
+    assert_eq!(r.solar_term, "小滿");
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn differential_vs_cnlunar_oracle() {
         eprintln!("skipping: python3 + cnlunar not available");
         return;
     }
-    // Mid-period dates (away from CNY/立春/节 boundaries) where the year-pillar
+    // Mid-period dates (away from CNY/立春/節 boundaries) where the year-pillar
     // convention does not bite — every field then agrees across conventions.
     // (unix_secs at 00:00Z, read at +08:00 = 08:00 China time.)
     for &unix in &[
