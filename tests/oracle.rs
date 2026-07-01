@@ -174,7 +174,7 @@ fn differential_battery_catalog_buildout() {
         return;
     }
     // Each input is time-decode's OWN published example for that format; we agree
-    // on the third party's value AND answer (tier-1). HANDOFF §5a build-out.
+    // on the third party's value AND answer (tier-1). Catalog build-out.
     agree(
         "active",
         &render_int("active", 133_908_455_300_649_390),

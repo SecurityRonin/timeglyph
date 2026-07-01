@@ -10,11 +10,11 @@
 //! own `--formats` flags reverse but which need per-format unpackers): exFAT
 //! (tz-offset byte), bitdate/dttm/logtime/ns40/moto/symantec/dvr, the BCD/GSM
 //! semi-octet family, Sonyflake (10ms unit), and the leap-aware GPS/NTP/TAI
-//! scales (already in `leap.rs`). See HANDOFF.md §5a.
+//! scales (already in `leap.rs`).md §5a.
 //!
 //! Every epoch_ns constant below is a CLEAN-ROOM fact from a primary spec, to be
 //! cross-validated against the MIT `time-decode` oracle and each spec's worked
-//! example (HANDOFF §"Validation"). NEVER sourced from decompiling DCode.
+//! example (ADR 0007). NEVER sourced from decompiling DCode.
 
 use crate::{
     ChronoError, Format,
@@ -167,7 +167,7 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::Seconds,
         },
         citation: "Apple TN1150 (HFS Plus)",
-        tz: Utc, // NB: classic-Mac HFS stored LOCAL; HFS+ is UTC. See HANDOFF.
+        tz: Utc, // NB: classic-Mac HFS stored LOCAL; HFS+ is UTC.
         leap: PosixIgnored,
         plausible: W,
     },
@@ -289,7 +289,7 @@ pub static FORMATS: &[Format] = &[
         leap: PosixIgnored,
         plausible: W,
     },
-    // --- Catalog build-out (HANDOFF §5a), each cross-checked vs the MIT
+    // --- Catalog build-out, each cross-checked vs the MIT
     // `time-decode` oracle (tests/oracle.rs, tests/catalog.rs). --------------
     Format {
         id: "active",

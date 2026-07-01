@@ -1,5 +1,5 @@
 //! Leap-aware time scales — GPS, TAI64, NTP — deliberately kept OUT of the
-//! [`PosixNs`](crate::PosixNs) spine (HANDOFF §3). GPS and TAI are genuinely
+//! [`PosixNs`](crate::PosixNs) spine (ADR 0003). GPS and TAI are genuinely
 //! leap-aware: their UTC rendering applies the IERS leap-second table via the
 //! `hifitime` crate (leap math is solved; we do NOT reinvent it). NTP follows
 //! UTC and does NOT count leap seconds, so its conversion is additive (reused

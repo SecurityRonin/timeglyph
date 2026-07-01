@@ -1,4 +1,4 @@
-//! Context-aware plausibility components (HANDOFF §5b): byte-width match, endian
+//! Context-aware plausibility components (ADR 0005): byte-width match, endian
 //! match, artifact-context hint, and neighbour monotonicity.
 //!
 //! These four need information a bare integer lacks (the on-disk width/byte

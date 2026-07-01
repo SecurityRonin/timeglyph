@@ -1,4 +1,4 @@
-//! Epistemic-framing contract (HANDOFF §5c).
+//! Epistemic-framing contract (ADR 0005).
 //!
 //! A forensic reading is *evidence*, not a verdict. The engine must frame every
 //! candidate as "consistent with" a format — never "detected"/"is" — and must

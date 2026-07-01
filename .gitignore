@@ -12,3 +12,6 @@
 # Coverage artifacts
 cov.json
 lcov.info
+
+# Claude Code session state (worktrees, memory, plans) — ephemeral, never tracked
+/.claude/

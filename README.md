@@ -80,7 +80,7 @@ ASN.1 string forms. The leap-aware GPS/TAI64/NTP family is behind the `leap`
 feature (`decode gps|tai64|ntp`, leap-correct UTC via `hifitime`); the Chinese
 lunisolar calendar + 干支 four pillars are behind the `lunisolar` feature
 (`lunisolar <datetime> --tz <zone>`, via the `stem-branch` ephemeris). See
-**[HANDOFF.md](HANDOFF.md)** for the design record.
+**[the ADRs](docs/decisions/)** for the design decisions.
 
 ## Why another converter?
 

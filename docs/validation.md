@@ -29,7 +29,7 @@ The goal is tier 1 wherever reachable; tier-2 rows are labelled honestly.
 
 | Oracle | Author / license | Role | Verified |
 |---|---|---|---|
-| **time-decode** v10.4.0 | Corey Forman (digitalsleuth), **MIT** — [github](https://github.com/digitalsleuth/time_decode) | A separate implementation of 73 timestamp formats; the primary differential oracle (the reference named in the project handoff). | run in this battery |
+| **time-decode** v10.4.0 | Corey Forman (digitalsleuth), **MIT** — [github](https://github.com/digitalsleuth/time_decode) | A separate implementation of 73 timestamp formats; the primary differential oracle (the reference named in ADR 0007). | run in this battery |
 | **CPython `datetime`** | Python Software Foundation, PSF-2.0 — [docs](https://docs.python.org/3/library/datetime.html) | Independent implementation for formats time-decode lacks a flag for (PostgreSQL, Unix-ns). | run |
 | **Format specifications** | the spec authors (Discord, Microsoft, Apple, RFCs, …) | Spec worked examples: the author states value → answer directly (tier-1 gold). | see [References](references.md) |
 

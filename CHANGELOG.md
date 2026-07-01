@@ -24,7 +24,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`--tz`) is **required** and an optional longitude corrects the hour pillar to
   local mean solar time; conventions (立春 year, 節 month, 正月初一 lunar date) are
   surfaced as assumptions. Validated against the independent `cnlunar` oracle.
-- **Context-aware scoring components** (HANDOFF §5b): `byte_width_match`,
+- **Context-aware scoring components** (ADR 0005): `byte_width_match`,
   `endian_match`, `artifact_match`, `neighbour_monotonicity`, each emitted only
   when an `InterpretContext` supplies its input (hex width/endian, `--artifact`
   hint, CSV column neighbours); the zero-context default is unchanged.
@@ -61,7 +61,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Notes
 
-- Remaining build-out in `HANDOFF.md`: the obscure packed-bitfield formats
+- Remaining build-out: the obscure packed-bitfield formats
   (exFAT offset byte, bitdate/dttm/logtime/ns40/moto/symantec/dvr, BCD/GSM
   semi-octet, Sonyflake's 10ms unit) and the distribution fan-out
   (Homebrew/apt/winget).

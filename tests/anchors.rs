@@ -5,7 +5,7 @@
 //! - the canonical FILETIME→Unix anchor (116444736000000000 == 1970-01-01);
 //! - a widely-published Unix anchor (1577836800 == 2020-01-01).
 //!
-//! HANDOFF §"Validation": extend into a differential battery against the MIT
+//! Validation (ADR 0007): extend into a differential battery against the MIT
 //! `time_decode` oracle + each spec's worked example.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -109,7 +109,7 @@ fn hex_decode_le_be() {
     );
 }
 
-// --- Catalog build-out anchors (HANDOFF §5a) ---------------------------------
+// --- Catalog build-out anchors ---------------------------------
 
 #[test]
 fn postgres_micros_since_2000() {

@@ -5,7 +5,7 @@
 //! all at once. Presenting one as *the* answer would fabricate certainty, which a
 //! forensic tool must never do (epistemics: "consistent with", not a verdict).
 //!
-//! Scoring is a named component set (HANDOFF §5b): representable validity,
+//! Scoring is a named component set (ADR 0005): representable validity,
 //! plausibility-window membership, granularity match, magnitude fit, and a
 //! sentinel guard are always emitted; byte-width match, endian match,
 //! artifact-context hint, and neighbour-monotonicity are emitted when an
@@ -55,7 +55,7 @@ pub enum Endian {
 }
 
 /// Extra context that sharpens scoring beyond what a bare integer reveals
-/// (HANDOFF §5b). Each field, when present, unlocks one additional named
+/// (ADR 0005). Each field, when present, unlocks one additional named
 /// component; an all-default context (the [`interpret_int`] path) emits none of
 /// them, so the zero-knowledge default is exactly the prior behaviour.
 #[derive(Debug, Clone, Default)]
@@ -149,7 +149,7 @@ fn decode_one(format_id: &str, value: i64, ctx: &InterpretContext) -> Option<Can
     build_candidate(crate::format(format_id).ok()?, value, ctx)
 }
 
-/// The stated assumptions behind one reading (HANDOFF §5c epistemics). A reading
+/// The stated assumptions behind one reading (ADR 0005 epistemics). A reading
 /// is evidence, not a verdict: it is framed as *consistent with* a format, never
 /// "detected". POSIX-labelled readings additionally carry the leap-smear
 /// disclaimer — a raw value cannot reveal whether its source clock smeared leap
@@ -193,7 +193,7 @@ pub fn sentinel_reason(value: i64) -> Option<&'static str> {
     }
 }
 
-/// The named plausibility components for one reading (HANDOFF §5b). Each is in
+/// The named plausibility components for one reading (ADR 0005). Each is in
 /// `[0, 1]` and emitted verbatim on the `Candidate` so a reviewer can audit the
 /// rank instead of trusting an opaque number. NEVER a filter — a low component
 /// lowers the rank, it does not hide the reading.
@@ -219,7 +219,7 @@ fn score_components(
         ("magnitude_fit", magnitude),
         ("not_sentinel", not_sentinel),
     ];
-    // Context-unlocked components (HANDOFF §5b): each appears ONLY when its
+    // Context-unlocked components (ADR 0005): each appears ONLY when its
     // context is supplied, so the zero-context default is byte-for-byte the old
     // five-component set.
     if let Some(width) = ctx.observed_width_bytes {

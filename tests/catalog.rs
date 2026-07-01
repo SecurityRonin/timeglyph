@@ -1,4 +1,4 @@
-//! Catalog build-out anchors (HANDOFF §5a), each cross-checked against the MIT
+//! Catalog build-out anchors, each cross-checked against the MIT
 //! `time-decode` oracle: every (value → expected) pair below is the oracle's own
 //! published example value AND its decoded answer (tier-1; see tests/oracle.rs
 //! for the live differential battery). Anchors also pin value-0 = the format's

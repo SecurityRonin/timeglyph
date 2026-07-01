@@ -1,4 +1,4 @@
-//! Leap-aware time-scale anchors (HANDOFF §3 / §5a leap family).
+//! Leap-aware time-scale anchors (ADR 0003).
 //!
 //! GPS and TAI are genuinely leap-aware: their UTC rendering must apply the
 //! IERS leap-second offsets (TAI−UTC = 37 s, GPS−UTC = 18 s since 2017-01-01),

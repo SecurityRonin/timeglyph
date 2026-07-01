@@ -1,4 +1,4 @@
-//! Plausibility-scoring component contract (HANDOFF §5b).
+//! Plausibility-scoring component contract (ADR 0005).
 //!
 //! Scoring must be a *named component set*, never a single opaque rank, so a
 //! reviewer can see WHY a reading scored as it did. The load-bearing component

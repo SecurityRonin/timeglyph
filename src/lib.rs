@@ -7,7 +7,7 @@
 //! plausible interpretation, *scored, with stated assumptions*, never "the
 //! answer" (a single integer is usually underdetermined).
 //!
-//! # Design (see HANDOFF.md for the full record)
+//! # Design (see docs/decisions/ for the ADRs)
 //! - Canonical spine: [`PosixNs`] — nanoseconds since the Unix epoch, proleptic
 //!   Gregorian, **leap-second-ignoring (POSIX)**. It is *not* called UTC: UTC has
 //!   discontinuities POSIX pretends away. Leap-aware scales (TAI/GPS/NTP) get
@@ -42,7 +42,7 @@
 pub mod csv_enrich;
 pub mod interpret;
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
-/// separate from the POSIX [`PosixNs`] spine (HANDOFF §3).
+/// separate from the POSIX [`PosixNs`] spine (ADR 0003).
 #[cfg(feature = "leap")]
 pub mod leap;
 /// Chinese lunisolar calendar + 干支 four-pillar rendering, behind the
@@ -260,7 +260,7 @@ pub enum Strategy {
     /// dedicated unpacker. The function returns the instant; tz semantics (e.g.
     /// FAT's LOCAL naive time) are carried on the [`Format`] entry.
     Packed(fn(i64) -> Result<PosixNs, ChronoError>),
-    // TODO(HANDOFF): SYSTEMTIME / exFAT (offset field) packed layouts;
+    // TODO: SYSTEMTIME / exFAT (offset field) packed layouts;
     // ASN.1 / EXIF / RFC-2822 string forms.
 }
 
@@ -310,7 +310,7 @@ pub struct Format {
 
 impl Format {
     /// The natural on-disk storage width, in bytes, of this format's stored
-    /// value. A structural prior for byte-width scoring (HANDOFF §5b), NOT a hard
+    /// value. A structural prior for byte-width scoring (ADR 0005), NOT a hard
     /// rule: second/day-resolution fields are classically 32-bit (Unix `time_t`,
     /// HFS+, DOS date words), while sub-second and ID fields are 64-bit
     /// (FILETIME, .NET ticks, ms/µs/ns counts, snowflake IDs, OLE `f64`).
