@@ -33,3 +33,12 @@ fn asn1_rejects_out_of_range_offset() {
     let ok = interpret::interpret_string("20200101000000+0100");
     assert!(ok.iter().any(|c| c.format_id == "asn1_generalizedtime"));
 }
+
+#[test]
+fn interpret_hex_never_panics_on_fuzz_crash_input() {
+    // Regression: cargo-fuzz `interpret_hex` found this 21-byte input triggered
+    // a panic (arithmetic overflow under debug-assertions). The no-panic
+    // invariant requires Ok or Err — never a crash.
+    let crash = "C80000000000000000000000000002626002626060";
+    let _ = interpret::interpret_hex(crash); // must not panic
+}
