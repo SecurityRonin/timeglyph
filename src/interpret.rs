@@ -511,6 +511,12 @@ fn systemtime_candidate(b: &[u8]) -> Option<Candidate> {
     let minute = i8::try_from(field(5)?).ok()?;
     let second = i8::try_from(field(6)?).ok()?;
     let millis = field(7)?;
+    // [MS-DTYP] §2.3.13: wMilliseconds is 0..=999. A larger value is not a valid
+    // SYSTEMTIME (and would overflow the i32 nanosecond conversion), so reject it
+    // rather than fabricate an instant.
+    if millis > 999 {
+        return None;
+    }
     let subsec_nanos = i32::from(millis) * 1_000_000;
     let instant = civil_to_posix(year, month, day, hour, minute, second, subsec_nanos, 0)?;
     Some(string_candidate(
