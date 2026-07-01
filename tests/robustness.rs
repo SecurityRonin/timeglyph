@@ -42,3 +42,16 @@ fn interpret_hex_never_panics_on_fuzz_crash_input() {
     let crash = "C80000000000000000000000000002626002626060";
     let _ = interpret::interpret_hex(crash); // must not panic
 }
+
+#[test]
+fn interpret_string_never_panics_on_multibyte_tz_split() {
+    // Regression: cargo-fuzz `interpret_string` found "Ť\0\u{8}2[" panicked in
+    // split_tz — `split_at(len - 5)` used a byte index that landed inside the
+    // 2-byte 'Ť'. Multi-byte input must return readings/none, never crash.
+    let crash = std::str::from_utf8(&[197u8, 164, 0, 8, 50, 91]).unwrap();
+    let _ = interpret::interpret_string(crash); // must not panic
+                                                // a couple more multi-byte tails around the 5-byte tz-suffix boundary
+    for s in ["ends in émoji 🕰", "＋０８００", "Ｚ", "x🕰4", "1577836800Ｚ"] {
+        let _ = interpret::interpret_string(s);
+    }
+}
