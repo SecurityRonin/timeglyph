@@ -9,4 +9,5 @@
 pub mod ganzhi;
 pub mod scan;
 pub mod tzinfo;
+pub mod tzmap;
 pub mod zone;

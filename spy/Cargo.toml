@@ -24,6 +24,9 @@ timeglyph = { path = "..", features = ["lunisolar"] }
 # tz math (host-zone resolution for the "Local" display option). Reused from the
 # same jiff the engine uses — never reinvented.
 jiff = "0.2"
+# Parse the bundled (public-domain) time-zone map polygons at startup.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Cross-platform always-on-top overlay window (the same GUI on Windows + macOS);
 # the platform-specific part is only the element picker.
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and
