@@ -118,33 +118,80 @@ pub fn readings_for(number: &str, max: usize, zone: &RenderZone) -> Vec<Reading>
                     .any(|(n, v)| *n == "in_window" && *v > 0.0)
         })
         .take(max)
-        .map(|c| {
-            let tz = timeglyph::format(c.format_id)
-                .map(|f| f.tz)
-                .unwrap_or(TzSemantics::Utc);
-            let native = c.rendered.clone().unwrap_or_default();
-            let (rendered, local) = render_in_zone(tz, c.instant, &native, zone);
-            Reading {
-                format_id: c.format_id.to_string(),
-                rendered,
-                label: c.label.to_string(),
-                local,
-                instant: c.instant,
-            }
-        })
+        .map(|c| reading_from(c, zone))
         .collect()
 }
 
-/// Inspect a block of UI text: every long number paired with its top readings,
-/// rendered in `zone`. Numbers with no confident reading are dropped, so noise
-/// stays off the screen.
+/// Build one [`Reading`] from a candidate, rendered in `zone` (semantics-aware).
+fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
+    let tz = timeglyph::format(c.format_id)
+        .map(|f| f.tz)
+        .unwrap_or(TzSemantics::Utc);
+    let native = c.rendered.clone().unwrap_or_default();
+    let (rendered, local) = render_in_zone(tz, c.instant, &native, zone);
+    Reading {
+        format_id: c.format_id.to_string(),
+        rendered,
+        label: c.label.to_string(),
+        local,
+        instant: c.instant,
+    }
+}
+
+/// Confident readings for a candidate datetime *string* — the self-describing
+/// forms (ISO-8601/RFC-3339, RFC-2822, HTTP-date, EXIF, ASN.1, …), rendered in
+/// `zone`. Empty when `text` is not a datetime string. Unlike [`readings_for`]
+/// there is no in-window gate: a parsed string form is evidence in itself.
+#[must_use]
+pub fn readings_for_string(text: &str, zone: &RenderZone) -> Vec<Reading> {
+    interpret::interpret_string(text)
+        .into_iter()
+        .filter(|c| !c.sentinel && c.rendered.is_some())
+        .map(|c| reading_from(c, zone))
+        .collect()
+}
+
+/// Candidate datetime-string substrings of `text`: the whole text, each line,
+/// and each whitespace token (deduped, >= 8 chars). Pure numeric runs are
+/// excluded — those are the integer path's job ([`scan_numbers`]).
+fn datetime_candidates(text: &str) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    let mut push = |s: &str| {
+        let t = s.trim();
+        if t.len() >= 8 && !t.bytes().all(|b| b.is_ascii_digit()) && seen.insert(t.to_string()) {
+            out.push(t.to_string());
+        }
+    };
+    push(text);
+    text.lines().for_each(&mut push);
+    text.split_whitespace().for_each(&mut push);
+    out
+}
+
+/// Inspect a block of UI text: every long number AND every rendered datetime
+/// string paired with its top readings, rendered in `zone`. Items with no
+/// confident reading are dropped, so noise stays off the screen.
 #[must_use]
 pub fn inspect_text(text: &str, max_per_number: usize, zone: &RenderZone) -> Vec<NumberReadings> {
-    scan_numbers(text)
+    let mut out: Vec<NumberReadings> = scan_numbers(text)
         .into_iter()
         .filter_map(|number| {
             let readings = readings_for(&number, max_per_number, zone);
             (!readings.is_empty()).then_some(NumberReadings { number, readings })
         })
-        .collect()
+        .collect();
+    for cand in datetime_candidates(text) {
+        let readings: Vec<Reading> = readings_for_string(&cand, zone)
+            .into_iter()
+            .take(max_per_number)
+            .collect();
+        if !readings.is_empty() {
+            out.push(NumberReadings {
+                number: cand,
+                readings,
+            });
+        }
+    }
+    out
 }
