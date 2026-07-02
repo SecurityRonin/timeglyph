@@ -5,14 +5,15 @@
 //!
 //! Presentation is a compact "time-instrument" inspector panel: each number is
 //! the subject, its candidate readings a clean `format · instant · label` row,
-//! and the raw source element a de-emphasised caption. High-contrast warm-dark
-//! palette (targets WCAG AA on `BG_DEEP`) with a single brass/amber accent.
+//! and the raw source element a de-emphasised caption. A footer selects the
+//! display timezone (UTC by default; any other zone is shown "loud"). High-
+//! contrast warm-dark palette (targets WCAG AA on `BG_DEEP`) with a brass accent.
 
 use std::time::Duration;
 
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
-use timeglyph::RenderZone;
+use timeglyph_spy::zone::{parse_zone, ZoneChoice};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -37,8 +38,8 @@ pub fn run() -> Result<(), String> {
     let picker = Picker::new()?;
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([560.0, 380.0])
-            .with_min_inner_size([360.0, 200.0])
+            .with_inner_size([560.0, 400.0])
+            .with_min_inner_size([380.0, 220.0])
             .with_always_on_top()
             .with_title("timeglyph-spy"),
         ..Default::default()
@@ -72,6 +73,11 @@ struct SpyApp {
     source: String,
     /// The decoded model: numbers and their ranked readings.
     hits: Vec<NumberReadings>,
+    /// The display timezone. Session-scoped, UTC by default: it never persists
+    /// across launches, so a prior case's zone can't silently apply to the next.
+    zone: ZoneChoice,
+    /// The footer's free-text zone entry buffer.
+    zone_input: String,
 }
 
 impl SpyApp {
@@ -81,6 +87,8 @@ impl SpyApp {
             last_text: String::new(),
             source: String::new(),
             hits: Vec::new(),
+            zone: ZoneChoice::default(),
+            zone_input: String::new(),
         }
     }
 }
@@ -88,10 +96,31 @@ impl SpyApp {
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let text = self.picker.text_under_cursor().unwrap_or_default();
+        let mut dirty = false;
         if text != self.last_text {
             self.last_text.clone_from(&text);
             self.source = text.clone();
-            self.hits = scan::inspect_text(&text, MAX_READINGS, &RenderZone::Utc);
+            dirty = true;
+        }
+
+        // Footer first (egui requires panels before the central region). Placing
+        // the zone control at the bottom keeps the forensically-important source
+        // caption prominent in the header.
+        egui::TopBottomPanel::bottom("zone_bar")
+            .frame(
+                Frame::none()
+                    .fill(BG_DEEP)
+                    .inner_margin(Margin::symmetric(16.0, 8.0)),
+            )
+            .show(ctx, |ui| {
+                if zone_bar(ui, &mut self.zone, &mut self.zone_input) {
+                    dirty = true;
+                }
+            });
+
+        // Re-decode when either the hovered text OR the display zone changed.
+        if dirty {
+            self.hits = scan::inspect_text(&self.source, MAX_READINGS, &self.zone.zone);
         }
 
         let panel = Frame::none()
@@ -127,6 +156,67 @@ impl eframe::App for SpyApp {
         // Poll the cursor a few times a second without busy-spinning.
         ctx.request_repaint_after(Duration::from_millis(200));
     }
+}
+
+/// The footer display-zone control. Returns `true` when the zone changed (so the
+/// caller re-decodes). UTC is calm; any other zone is shown "loud" (amber, ⚠) so
+/// the active frame is unmistakable — a glance can't misread it as UTC.
+fn zone_bar(ui: &mut egui::Ui, zone: &mut ZoneChoice, input: &mut String) -> bool {
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            RichText::new("zone")
+                .font(FontId::proportional(11.0))
+                .color(FAINT),
+        );
+        // Active-zone chip: loud (amber) when not UTC.
+        let (fill, fg) = if zone.loud {
+            (BG_CHIP, AMBER)
+        } else {
+            (BG_CARD, MUTE)
+        };
+        Frame::none()
+            .fill(fill)
+            .rounding(Rounding::same(4.0))
+            .inner_margin(Margin::symmetric(8.0, 3.0))
+            .show(ui, |ui| {
+                let mark = if zone.loud { "⚠ " } else { "" };
+                ui.label(
+                    RichText::new(format!("{mark}{}", zone.label))
+                        .font(FontId::monospace(12.0))
+                        .color(fg)
+                        .strong(),
+                );
+            });
+        ui.add_space(8.0);
+        if ui.small_button("UTC").clicked() {
+            *zone = ZoneChoice::default();
+            input.clear();
+            changed = true;
+        }
+        if ui.small_button("Local").clicked() {
+            if let Some(z) = parse_zone("local") {
+                *zone = z;
+                input.clear();
+                changed = true;
+            }
+        }
+        let resp = ui.add(
+            egui::TextEdit::singleline(input)
+                .hint_text("+08:00 or Area/City")
+                .desired_width(140.0)
+                .font(FontId::monospace(12.0)),
+        );
+        if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            // Apply only a valid zone; an invalid entry leaves the frame unchanged
+            // (never a silent UTC fallback).
+            if let Some(z) = parse_zone(input) {
+                *zone = z;
+                changed = true;
+            }
+        }
+    });
+    changed
 }
 
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
@@ -182,7 +272,8 @@ fn number_card(ui: &mut egui::Ui, nr: &NumberReadings) {
 
 /// One reading: an amber format chip and the rendered instant on one line, the
 /// human label beneath. Role is conveyed by position and weight, not colour
-/// alone (chip first + monospace; label last + smaller + muted).
+/// alone (chip first + monospace; label last + smaller + muted). A local-naive
+/// reading is tagged so it is never mistaken for a zoned instant.
 fn reading_row(ui: &mut egui::Ui, r: &Reading) {
     ui.horizontal(|ui| {
         Frame::none()
@@ -203,6 +294,14 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading) {
                 .font(FontId::monospace(14.0))
                 .color(INK),
         );
+        if r.local {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("· local (no zone)")
+                    .font(FontId::proportional(11.0))
+                    .color(FAINT),
+            );
+        }
     });
     ui.label(
         RichText::new(&r.label)
