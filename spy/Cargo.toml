@@ -20,6 +20,9 @@ path = "src/main.rs"
 
 [dependencies]
 timeglyph = { path = ".." }
+# tz math (host-zone resolution for the "Local" display option). Reused from the
+# same jiff the engine uses — never reinvented.
+jiff = "0.2"
 # Cross-platform always-on-top overlay window (the same GUI on Windows + macOS);
 # the platform-specific part is only the element picker.
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and

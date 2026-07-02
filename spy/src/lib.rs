@@ -7,3 +7,4 @@
 //! in the binary.
 
 pub mod scan;
+pub mod zone;
