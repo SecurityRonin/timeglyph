@@ -42,6 +42,25 @@ fn longitude_correction_leaves_date_and_ymd_pillars_untouched() {
 }
 
 #[test]
+fn lunar_date_uses_chinese_notation_not_gregorian_looking() {
+    // 2020-01-01 UTC is lunar 己亥年十二月初七. It must render in Chinese month/day
+    // notation — NOT "2019年 12月 7日", which reads like the Gregorian date
+    // 2019-12-07 and confuses users.
+    let inst = PosixNs(1_577_836_800_000_000_000); // 2020-01-01T00:00:00Z
+    let v = ganzhi::ganzhi_view(inst, &RenderZone::Utc, None).unwrap();
+    assert!(
+        v.lunar_date.contains("十二月初七"),
+        "expected Chinese lunar notation, got {:?}",
+        v.lunar_date
+    );
+    assert!(
+        !v.lunar_date.contains('日'),
+        "must not use the Gregorian-looking 日 form: {:?}",
+        v.lunar_date
+    );
+}
+
+#[test]
 fn parse_longitude_accepts_in_range_rejects_the_rest() {
     assert_eq!(ganzhi::parse_longitude("121.5"), Some(121.5));
     assert_eq!(ganzhi::parse_longitude("-74"), Some(-74.0));
