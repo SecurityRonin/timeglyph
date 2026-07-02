@@ -61,6 +61,21 @@ fn lunar_date_uses_chinese_notation_not_gregorian_looking() {
 }
 
 #[test]
+fn solar_term_carries_longitude_so_it_reads_as_a_period() {
+    // 2020-01-01 is ~10° past the winter solstice (冬至 = λ270°): still inside the
+    // 冬至 solar-term PERIOD (until 小寒 at 285°), but not the solstice day. Expose
+    // λ so the label reads as a position within the term, not "today is 冬至".
+    let inst = PosixNs(1_577_836_800_000_000_000);
+    let v = ganzhi::ganzhi_view(inst, &RenderZone::Utc, None).unwrap();
+    assert_eq!(v.solar_term, "冬至");
+    assert!(
+        (279.0..281.0).contains(&v.solar_longitude_deg),
+        "λ={}",
+        v.solar_longitude_deg
+    );
+}
+
+#[test]
 fn parse_longitude_accepts_in_range_rejects_the_rest() {
     assert_eq!(ganzhi::parse_longitude("121.5"), Some(121.5));
     assert_eq!(ganzhi::parse_longitude("-74"), Some(-74.0));
