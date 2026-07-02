@@ -15,7 +15,7 @@ use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{PosixNs, RenderZone};
 use timeglyph_spy::zone::{self, parse_zone, ZoneChoice};
-use timeglyph_spy::{ganzhi, tzinfo};
+use timeglyph_spy::{ganzhi, tzinfo, tzmap};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -88,6 +88,9 @@ struct SpyApp {
     /// Optional longitude (°E) for the hour-pillar correction, and its buffer.
     longitude: Option<f64>,
     longitude_input: String,
+    /// Whether the clickable world map window is open, and the last-picked region.
+    show_map: bool,
+    map_pick: Option<usize>,
 }
 
 impl SpyApp {
@@ -104,6 +107,8 @@ impl SpyApp {
             expanded: None,
             longitude: None,
             longitude_input: String::new(),
+            show_map: false,
+            map_pick: None,
         }
     }
 }
@@ -139,6 +144,11 @@ impl eframe::App for SpyApp {
                     dirty = true;
                 }
             });
+
+        // The clickable world map (floating window), if open.
+        if self.map_window(ctx) {
+            dirty = true;
+        }
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
@@ -282,6 +292,7 @@ impl SpyApp {
             if ui.small_button("UTC").clicked() {
                 self.zone = ZoneChoice::default();
                 self.continent.clear();
+                self.map_pick = None;
                 changed = true;
             }
             if ui.small_button("Local").clicked() {
@@ -289,6 +300,9 @@ impl SpyApp {
                     self.zone = z;
                     changed = true;
                 }
+            }
+            if ui.small_button("🗺 map").clicked() {
+                self.show_map = !self.show_map;
             }
             // Continent → Zone picker. Iterate over clones so the closures don't
             // alias the fields they mutate.
@@ -543,4 +557,90 @@ fn empty_state(ui: &mut egui::Ui, title: &str, sub: &str) {
                 .color(FAINT),
         );
     });
+}
+
+/// Format a UTC offset (hours) as a `parse_zone` spec: `-5.0` → `-05:00`,
+/// `5.5` → `+05:30`, `0.0` → `UTC`.
+fn offset_spec(off: f64) -> String {
+    if off == 0.0 {
+        return "UTC".to_string();
+    }
+    let sign = if off < 0.0 { '-' } else { '+' };
+    let a = off.abs();
+    let h = a.trunc() as u32;
+    let m = ((a - a.trunc()) * 60.0).round() as u32;
+    format!("{sign}{h:02}:{m:02}")
+}
+
+impl SpyApp {
+    /// The clickable world time-zone map (a floating window). Region *boundaries*
+    /// are drawn (Natural Earth, public domain); clicking resolves the point to a
+    /// zone via [`tzmap::zone_at`] and sets the display zone — preferring the
+    /// region's representative IANA name (DST-aware) over a bare fixed offset.
+    /// Returns `true` when the zone changed.
+    fn map_window(&mut self, ctx: &egui::Context) -> bool {
+        if !self.show_map {
+            return false;
+        }
+        let mut changed = false;
+        let mut open = true;
+        egui::Window::new("time zone map")
+            .open(&mut open)
+            .default_size([540.0, 300.0])
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new(
+                        "click a region to set the display zone \
+                         (Natural Earth · public domain · offset-keyed)",
+                    )
+                    .font(FontId::proportional(10.5))
+                    .color(FAINT),
+                );
+                let w = ui.available_width();
+                let (rect, resp) =
+                    ui.allocate_exact_size(egui::vec2(w, w / 2.0), egui::Sense::click());
+                let p = ui.painter_at(rect);
+                p.rect_filled(rect, Rounding::same(4.0), BG_DEEP);
+                let proj = |lon: f32, lat: f32| {
+                    egui::pos2(
+                        rect.left() + (lon + 180.0) / 360.0 * rect.width(),
+                        rect.top() + (90.0 - lat) / 180.0 * rect.height(),
+                    )
+                };
+                for (i, r) in tzmap::regions().iter().enumerate() {
+                    let stroke = if self.map_pick == Some(i) {
+                        Stroke::new(1.6, AMBER)
+                    } else {
+                        Stroke::new(0.4, HAIRLINE)
+                    };
+                    for ring in &r.rings {
+                        let pts: Vec<egui::Pos2> = ring.iter().map(|c| proj(c[0], c[1])).collect();
+                        p.add(egui::Shape::closed_line(pts, stroke));
+                    }
+                }
+                if resp.clicked() {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        let lon = (pos.x - rect.left()) / rect.width() * 360.0 - 180.0;
+                        let lat = 90.0 - (pos.y - rect.top()) / rect.height() * 180.0;
+                        if let Some(pick) = tzmap::zone_at(lon, lat) {
+                            let spec = pick
+                                .iana
+                                .clone()
+                                .unwrap_or_else(|| offset_spec(pick.offset));
+                            if let Some(z) = parse_zone(&spec) {
+                                self.zone = z;
+                                self.map_pick = tzmap::regions().iter().position(|rr| {
+                                    rr.offset == pick.offset && rr.iana == pick.iana
+                                });
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            });
+        if !open {
+            self.show_map = false;
+        }
+        changed
+    }
 }
