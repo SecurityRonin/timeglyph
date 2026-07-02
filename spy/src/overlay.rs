@@ -443,7 +443,11 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
                         .color(AMBER)
                         .strong(),
                 );
-            });
+            })
+            // The verbose format name is a hover tooltip on the chip, not an
+            // always-shown line — keeps each reading compact.
+            .response
+            .on_hover_text(r.label.as_str());
         ui.add_space(8.0);
         ui.label(
             RichText::new(&r.rendered)
@@ -482,11 +486,6 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
             );
         }
     });
-    ui.label(
-        RichText::new(&r.label)
-            .font(FontId::proportional(11.5))
-            .color(MUTE),
-    );
 }
 
 /// The 干支 / lunisolar reading for one instant, shown compactly beneath every
