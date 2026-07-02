@@ -35,19 +35,49 @@ pub fn ganzhi_view(
     longitude: Option<f64>,
 ) -> Result<GanzhiView, String> {
     let r = lunisolar::render(instant, zone, longitude).map_err(|e| e.to_string())?;
-    let leap = if r.is_leap_month { "闰" } else { "" };
     Ok(GanzhiView {
         year_pillar: r.year_pillar,
         month_pillar: r.month_pillar,
         day_pillar: r.day_pillar,
         hour_pillar: r.hour_pillar,
+        // Chinese lunar notation (十二月初七), NOT "2019 年 12 月 07 日" — the arabic
+        // form reads as a Gregorian date and misleads (it is a *lunar* date).
         lunar_date: format!(
-            "{} 年 {}{} 月 {:02} 日",
-            r.lunar_year, leap, r.lunar_month, r.lunar_day
+            "{}年 {}{}",
+            r.lunar_year,
+            lunar_month_name(r.lunar_month, r.is_leap_month),
+            lunar_day_name(r.lunar_day)
         ),
         solar_term: r.solar_term,
         assumptions: r.assumptions,
     })
+}
+
+/// The Chinese lunar month name (`正月`, `二月`…`十二月`; leap months prefixed
+/// `閏`), unambiguously a lunar month — not a Gregorian numeral.
+fn lunar_month_name(month: u8, leap: bool) -> String {
+    const NAMES: [&str; 12] = [
+        "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二",
+    ];
+    let base = NAMES
+        .get((month as usize).wrapping_sub(1))
+        .copied()
+        .unwrap_or("?");
+    format!("{}{base}月", if leap { "閏" } else { "" })
+}
+
+/// The Chinese lunar day name (`初一`…`初十`, `十一`…`二十`, `廿一`…`三十`).
+fn lunar_day_name(day: u8) -> String {
+    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    match day {
+        1..=9 => format!("初{}", D[day as usize]),
+        10 => "初十".to_string(),
+        11..=19 => format!("十{}", D[(day - 10) as usize]),
+        20 => "二十".to_string(),
+        21..=29 => format!("廿{}", D[(day - 20) as usize]),
+        30 => "三十".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// Parse a longitude entry (°E, east positive) for the hour-pillar correction.
