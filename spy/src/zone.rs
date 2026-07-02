@@ -1,7 +1,9 @@
 //! Display-zone parsing for the overlay's footer control. Pure and testable; the
 //! egui footer is the thin shell over this.
 
-use timeglyph::RenderZone;
+use timeglyph::{PosixNs, RenderZone};
+
+use crate::tzinfo;
 
 /// A parsed display zone plus how to present it in the footer chip.
 #[derive(Debug, Clone)]
@@ -50,4 +52,53 @@ pub fn parse_zone(input: &str) -> Option<ZoneChoice> {
         label: s.to_string(),
         loud: true,
     })
+}
+
+/// All IANA zone names known to jiff.
+fn available() -> impl Iterator<Item = String> {
+    jiff::tz::db().available().map(|n| n.as_str().to_string())
+}
+
+/// The distinct continents/areas in the IANA database (first path segment),
+/// sorted — the first level of the hierarchical picker.
+#[must_use]
+pub fn continents() -> Vec<String> {
+    let mut set = std::collections::BTreeSet::new();
+    for name in available() {
+        if let Some((head, _)) = name.split_once('/') {
+            set.insert(head.to_string());
+        }
+    }
+    set.into_iter().collect()
+}
+
+/// The full IANA zone names under `continent` (e.g. `Europe` → `Europe/London`),
+/// sorted — the second level of the picker.
+#[must_use]
+pub fn zones_in(continent: &str) -> Vec<String> {
+    let prefix = format!("{continent}/");
+    let mut v: Vec<String> = available().filter(|n| n.starts_with(&prefix)).collect();
+    v.sort();
+    v
+}
+
+/// A Windows-style menu label: `(UTC-05:00) America/New_York · EST`, with the
+/// offset and abbreviation resolved at `at`. A location alone is ambiguous, so
+/// the offset is shown at selection time.
+#[must_use]
+pub fn menu_label(name: &str, at: PosixNs) -> String {
+    match RenderZone::parse(name) {
+        Ok(zone) => match tzinfo::stamp(&zone, at) {
+            Some(s) => {
+                let abbr = if s.abbr.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", s.abbr)
+                };
+                format!("(UTC{}) {name}{abbr}", s.offset)
+            }
+            None => format!("(UTC) {name}"),
+        },
+        Err(_) => name.to_string(),
+    }
 }
