@@ -84,3 +84,20 @@ fn inspect_text_keeps_only_numbers_with_a_confident_reading() {
     // A long-but-meaningless number yields no confident reading → dropped.
     assert!(scan::inspect_text("00000000000000000000", 5, &RenderZone::Utc).is_empty());
 }
+
+#[test]
+fn string_datetimes_are_decoded() {
+    // Rendered datetime STRINGS decode too, not just big integers.
+    let r = scan::readings_for_string("2025-05-04T15:18:50Z", &RenderZone::Utc);
+    assert!(r.iter().any(|x| x.format_id.contains("iso8601")), "{r:?}");
+}
+
+#[test]
+fn inspect_text_catches_embedded_datetime_strings() {
+    let hits = scan::inspect_text("modified: 2025-05-04T15:18:50Z (ok)", 5, &RenderZone::Utc);
+    assert!(
+        hits.iter().any(|h| h.number == "2025-05-04T15:18:50Z"
+            && h.readings.iter().any(|r| r.format_id.contains("iso8601"))),
+        "{hits:?}"
+    );
+}
