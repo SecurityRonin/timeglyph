@@ -117,9 +117,8 @@ struct SpyApp {
     /// Selected continent and its zones (second level of the picker).
     continent: String,
     zones: Vec<String>,
-    /// Which (number, reading) has its 干支 expansion open, if any.
-    expanded: Option<(usize, usize)>,
-    /// Optional longitude (°E) for the hour-pillar correction, and its buffer.
+    /// Optional global longitude (°E): refines every reading's 干支 hour pillar to
+    /// true solar time. Its footer entry buffer.
     longitude: Option<f64>,
     longitude_input: String,
     /// Whether the clickable world map window is open, and the picked UTC offset
@@ -139,7 +138,6 @@ impl SpyApp {
             continents: zone::continents(),
             continent: String::new(),
             zones: Vec::new(),
-            expanded: None,
             longitude: None,
             longitude_input: String::new(),
             show_map: false,
@@ -150,17 +148,24 @@ impl SpyApp {
 
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Freeze cursor-tracking while the pointer is over our own panel, so you
-        // can move onto it and click a reading's 干支 toggle, the map, or the zone
-        // picker WITHOUT the reading changing to whatever is now under the cursor.
+        // Hold the reading while the pointer is over our own panel (a "paused"
+        // cue shows), so you can move onto it and click a reading's 干支 toggle,
+        // the map, or the zone picker.
         let frozen = ctx.input(|i| i.pointer.latest_pos().is_some());
         let mut dirty = false;
         if !frozen {
             let text = self.picker.text_under_cursor().unwrap_or_default();
             if text != self.last_text {
                 self.last_text.clone_from(&text);
-                self.source = text.clone();
-                dirty = true;
+                let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
+                // Only REPLACE the shown reading when the new element actually
+                // decodes to something. Crossing blank / non-timestamp UI on the
+                // way to the panel then leaves the reading intact — otherwise it
+                // would be wiped before you could click into it.
+                if !new_hits.is_empty() {
+                    self.source = text;
+                    self.hits = new_hits;
+                }
             }
         }
 
@@ -200,10 +205,7 @@ impl eframe::App for SpyApp {
         let source = self.source.clone();
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
-        let expanded = self.expanded;
-        let mut new_expanded = expanded;
-        let mut longitude = self.longitude;
-        let mut lon_input = std::mem::take(&mut self.longitude_input);
+        let longitude = self.longitude;
 
         let panel = Frame::none()
             .fill(BG_DEEP)
@@ -212,23 +214,17 @@ impl eframe::App for SpyApp {
             header(ui, &source, frozen);
             ui.separator();
             ui.add_space(10.0);
-            if source.is_empty() {
+            if hits.is_empty() {
                 empty_state(
                     ui,
                     "Hover an element with a number",
                     "Point at any on-screen value to decode it",
                 );
-            } else if hits.is_empty() {
-                empty_state(
-                    ui,
-                    "No timestamp-like number here",
-                    "This element has no value that reads as a date",
-                );
             } else {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for (ni, nr) in hits.iter().enumerate() {
+                        for nr in &hits {
                             Frame::none()
                                 .fill(BG_CARD)
                                 .rounding(Rounding::same(8.0))
@@ -247,15 +243,8 @@ impl eframe::App for SpyApp {
                                         if ri > 0 {
                                             ui.add_space(8.0);
                                         }
-                                        let key = (ni, ri);
-                                        let open = expanded == Some(key);
-                                        if reading_row(ui, r, open, &zone) {
-                                            new_expanded = if open { None } else { Some(key) };
-                                        }
-                                        if open {
-                                            ganzhi_expansion(ui, r.instant, &zone, longitude);
-                                            longitude_row(ui, &mut lon_input, &mut longitude);
-                                        }
+                                        reading_row(ui, r, &zone);
+                                        ganzhi_line(ui, r.instant, &zone, longitude);
                                     }
                                 });
                             ui.add_space(10.0);
@@ -265,9 +254,6 @@ impl eframe::App for SpyApp {
         });
 
         self.hits = hits;
-        self.longitude_input = lon_input;
-        self.longitude = longitude;
-        self.expanded = new_expanded;
 
         // Poll the cursor a few times a second without busy-spinning.
         ctx.request_repaint_after(Duration::from_millis(200));
@@ -380,6 +366,24 @@ impl SpyApp {
                         }
                     });
             }
+
+            // Global longitude (°E): refines every reading's 干支 hour pillar to
+            // true solar time. Optional — empty/invalid means no correction.
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("long")
+                    .font(FontId::proportional(11.0))
+                    .color(FAINT),
+            );
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.longitude_input)
+                    .hint_text("°E")
+                    .desired_width(52.0)
+                    .font(FontId::monospace(12.0)),
+            );
+            if resp.changed() {
+                self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+            }
         });
         changed
     }
@@ -423,11 +427,10 @@ fn header(ui: &mut egui::Ui, source: &str, frozen: bool) {
     });
 }
 
-/// One reading: an amber format chip, the rendered instant, an optional local
-/// tag, and a 干支 disclosure toggle. Returns `true` when the toggle was clicked.
-/// Role is conveyed by position and weight, not colour alone.
-fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool, zone: &RenderZone) -> bool {
-    let mut toggled = false;
+/// One reading: an amber format chip, the rendered instant, the per-instant
+/// abbreviation + DST, and an optional local tag, then the format label. Role is
+/// conveyed by position and weight, not colour alone.
+fn reading_row(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
     ui.horizontal(|ui| {
         Frame::none()
             .fill(BG_CHIP)
@@ -478,112 +481,42 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool, zone: &RenderZone) ->
                     .color(FAINT),
             );
         }
-        let arrow = if open { "▾" } else { "▸" };
-        if ui
-            .small_button(
-                RichText::new(format!("{arrow}干支"))
-                    .font(FontId::proportional(11.0))
-                    .color(MUTE),
-            )
-            .clicked()
-        {
-            toggled = true;
-        }
     });
     ui.label(
         RichText::new(&r.label)
             .font(FontId::proportional(11.5))
             .color(MUTE),
     );
-    toggled
 }
 
-/// The 干支 / lunisolar expansion for one reading's instant, using the current
-/// display zone as the meridian. A reading, not a verdict — the assumptions
-/// (meridian, conventions) are surfaced beneath the pillars.
-fn ganzhi_expansion(
-    ui: &mut egui::Ui,
-    instant: PosixNs,
-    zone: &RenderZone,
-    longitude: Option<f64>,
-) {
-    ui.add_space(6.0);
-    Frame::none()
-        .fill(BG_DEEP)
-        .rounding(Rounding::same(6.0))
-        .inner_margin(Margin::symmetric(10.0, 8.0))
-        .stroke(Stroke::new(1.0, HAIRLINE))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            match ganzhi::ganzhi_view(instant, zone, longitude) {
-                Ok(v) => {
-                    ui.horizontal_wrapped(|ui| {
-                        for (mark, pillar) in [
-                            ("年", &v.year_pillar),
-                            ("月", &v.month_pillar),
-                            ("日", &v.day_pillar),
-                            ("時", &v.hour_pillar),
-                        ] {
-                            ui.label(
-                                RichText::new(format!("{mark} {pillar}"))
-                                    .font(FontId::monospace(15.0))
-                                    .color(AMBER)
-                                    .strong(),
-                            );
-                            ui.add_space(10.0);
-                        }
-                    });
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(format!("{}  ·  {}", v.lunar_date, v.solar_term))
-                            .font(FontId::monospace(12.0))
-                            .color(INK),
-                    );
-                    for a in &v.assumptions {
-                        ui.label(
-                            RichText::new(format!("— {a}"))
-                                .font(FontId::proportional(10.5))
-                                .color(FAINT),
-                        );
-                    }
-                }
-                Err(e) => {
-                    ui.label(
-                        RichText::new(format!("干支 unavailable: {e}"))
-                            .font(FontId::proportional(11.0))
-                            .color(FAINT),
-                    );
-                }
-            }
-        });
-}
-
-/// The optional longitude entry inside a 干支 expansion. Live-parses into
-/// `longitude` (empty / invalid / out-of-range → no correction).
-fn longitude_row(ui: &mut egui::Ui, input: &mut String, longitude: &mut Option<f64>) {
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
+/// The 干支 / lunisolar reading for one instant, shown compactly beneath every
+/// reading — ALWAYS visible, resolved at the display zone (the meridian) and
+/// refined by the optional global longitude (hour pillar → true solar time).
+/// A reading, not a verdict. Silently omitted if the engine cannot render it.
+fn ganzhi_line(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude: Option<f64>) {
+    let Ok(v) = ganzhi::ganzhi_view(instant, zone, longitude) else {
+        return;
+    };
+    ui.add_space(3.0);
+    ui.horizontal_wrapped(|ui| {
+        for (mark, pillar) in [
+            ("年", &v.year_pillar),
+            ("月", &v.month_pillar),
+            ("日", &v.day_pillar),
+            ("時", &v.hour_pillar),
+        ] {
+            ui.label(
+                RichText::new(format!("{mark}{pillar}"))
+                    .font(FontId::monospace(12.0))
+                    .color(AMBER),
+            );
+            ui.add_space(6.0);
+        }
         ui.label(
-            RichText::new("longitude °E")
-                .font(FontId::proportional(11.0))
+            RichText::new(format!("· {} · {}", v.lunar_date, v.solar_term))
+                .font(FontId::proportional(10.5))
                 .color(FAINT),
         );
-        let resp = ui.add(
-            egui::TextEdit::singleline(input)
-                .hint_text("e.g. 121.5 (optional)")
-                .desired_width(120.0)
-                .font(FontId::monospace(12.0)),
-        );
-        if resp.changed() {
-            *longitude = ganzhi::parse_longitude(input);
-        }
-        if let Some(l) = longitude {
-            ui.label(
-                RichText::new(format!("→ 真太陽時 @ {l}°E"))
-                    .font(FontId::proportional(10.5))
-                    .color(MUTE),
-            );
-        }
     });
 }
 
