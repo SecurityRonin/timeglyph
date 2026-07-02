@@ -61,6 +61,16 @@ fn lunar_date_uses_chinese_notation_not_gregorian_looking() {
 }
 
 #[test]
+fn solar_term_phrase_reads_as_days_after_the_term() {
+    // 2020-01-01 is the 10th day after the winter solstice — render it as
+    // 冬至後第十日, not a bare 冬至 (which reads as "today is the solstice").
+    let inst = PosixNs(1_577_836_800_000_000_000);
+    let v = ganzhi::ganzhi_view(inst, &RenderZone::Utc, None).unwrap();
+    assert_eq!(v.days_into_term, 10);
+    assert_eq!(v.solar_term_phrase(), "冬至後第十日");
+}
+
+#[test]
 fn solar_term_carries_longitude_so_it_reads_as_a_period() {
     // 2020-01-01 is ~10° past the winter solstice (冬至 = λ270°): still inside the
     // 冬至 solar-term PERIOD (until 小寒 at 285°), but not the solstice day. Expose
