@@ -15,7 +15,7 @@ use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{PosixNs, RenderZone};
 use timeglyph_spy::zone::{self, parse_zone, ZoneChoice};
-use timeglyph_spy::{ganzhi, tzinfo, tzmap};
+use timeglyph_spy::{ganzhi, text, tzinfo, tzmap};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -357,14 +357,17 @@ fn header(ui: &mut egui::Ui, source: &str) {
         );
         if !source.is_empty() {
             ui.add_space(10.0);
-            let caption = source.split_whitespace().collect::<Vec<_>>().join(" ");
+            // Char-safe truncation + single-line Extend. egui 0.29's
+            // Label::truncate() byte-slices the galley and PANICS on multi-byte
+            // text (e.g. '·'), so we never use it on arbitrary hovered text.
+            let collapsed: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
             ui.add(
                 egui::Label::new(
-                    RichText::new(caption)
+                    RichText::new(text::ellipsize(&collapsed, 120))
                         .font(FontId::proportional(11.0))
                         .color(FAINT),
                 )
-                .truncate(),
+                .wrap_mode(egui::TextWrapMode::Extend),
             );
         }
     });

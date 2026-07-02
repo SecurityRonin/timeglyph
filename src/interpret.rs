@@ -904,7 +904,10 @@ fn split_tz(s: &str) -> Option<(String, i64, bool)> {
     if let Some(core) = s.strip_suffix('Z').or_else(|| s.strip_suffix('z')) {
         return Some((core.to_string(), 0, true));
     }
-    if s.len() >= 5 {
+    // A numeric tz suffix (+HHMM / -HHMM) is 5 ASCII bytes. Guard the byte-index
+    // split against a multi-byte UTF-8 char straddling that boundary (split_at
+    // panics on a non-char-boundary; a non-ASCII tail is not a valid offset).
+    if s.len() >= 5 && s.is_char_boundary(s.len() - 5) {
         let (core, suf) = s.split_at(s.len() - 5);
         let b = suf.as_bytes();
         if (b[0] == b'+' || b[0] == b'-') && suf[1..].bytes().all(|c| c.is_ascii_digit()) {

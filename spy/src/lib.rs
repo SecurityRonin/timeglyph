@@ -8,6 +8,7 @@
 
 pub mod ganzhi;
 pub mod scan;
+pub mod text;
 pub mod tzinfo;
 pub mod tzmap;
 pub mod zone;
