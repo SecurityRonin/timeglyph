@@ -4,15 +4,17 @@
 //! platform-specific.
 //!
 //! Presentation is a compact "time-instrument" inspector panel: each number is
-//! the subject, its candidate readings a clean `format · instant · label` row,
-//! and the raw source element a de-emphasised caption. A footer selects the
-//! display timezone (UTC by default; any other zone is shown "loud"). High-
-//! contrast warm-dark palette (targets WCAG AA on `BG_DEEP`) with a brass accent.
+//! the subject; each candidate reading a `format · instant · label` row with an
+//! opt-in 干支 expansion; the raw source element a de-emphasised caption; and a
+//! footer selects the display timezone (UTC by default, any other zone "loud").
+//! High-contrast warm-dark palette (WCAG AA on `BG_DEEP`) with a brass accent.
 
 use std::time::Duration;
 
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
+use timeglyph::{PosixNs, RenderZone};
+use timeglyph_spy::ganzhi;
 use timeglyph_spy::zone::{parse_zone, ZoneChoice};
 
 use crate::picker::Picker;
@@ -25,7 +27,7 @@ const BG_CARD: Color32 = Color32::from_rgb(31, 28, 22);
 const BG_CHIP: Color32 = Color32::from_rgb(38, 31, 20); // amber-tinted
 const HAIRLINE: Color32 = Color32::from_rgb(52, 47, 38);
 const INK: Color32 = Color32::from_rgb(245, 241, 232); // warm white — datetime values
-const AMBER: Color32 = Color32::from_rgb(240, 180, 41); // brass accent — format + wordmark
+const AMBER: Color32 = Color32::from_rgb(240, 180, 41); // brass accent — format + pillars
 const MUTE: Color32 = Color32::from_rgb(179, 169, 145); // labels
 const FAINT: Color32 = Color32::from_rgb(143, 134, 116); // captions
 const GLYPH: Color32 = Color32::from_rgb(92, 82, 64); // large empty-state mark
@@ -78,6 +80,11 @@ struct SpyApp {
     zone: ZoneChoice,
     /// The footer's free-text zone entry buffer.
     zone_input: String,
+    /// Which (number, reading) has its 干支 expansion open, if any.
+    expanded: Option<(usize, usize)>,
+    /// Optional longitude (°E) for the hour-pillar correction, and its buffer.
+    longitude: Option<f64>,
+    longitude_input: String,
 }
 
 impl SpyApp {
@@ -89,6 +96,9 @@ impl SpyApp {
             hits: Vec::new(),
             zone: ZoneChoice::default(),
             zone_input: String::new(),
+            expanded: None,
+            longitude: None,
+            longitude_input: String::new(),
         }
     }
 }
@@ -123,20 +133,29 @@ impl eframe::App for SpyApp {
             self.hits = scan::inspect_text(&self.source, MAX_READINGS, &self.zone.zone);
         }
 
+        // Snapshot into locals so the nested render closures capture no `self`.
+        let source = self.source.clone();
+        let hits = std::mem::take(&mut self.hits);
+        let zone = self.zone.zone.clone();
+        let expanded = self.expanded;
+        let mut new_expanded = expanded;
+        let mut longitude = self.longitude;
+        let mut lon_input = std::mem::take(&mut self.longitude_input);
+
         let panel = Frame::none()
             .fill(BG_DEEP)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &self.source);
+            header(ui, &source);
             ui.separator();
             ui.add_space(10.0);
-            if self.source.is_empty() {
+            if source.is_empty() {
                 empty_state(
                     ui,
                     "Hover an element with a number",
                     "Point at any on-screen value to decode it",
                 );
-            } else if self.hits.is_empty() {
+            } else if hits.is_empty() {
                 empty_state(
                     ui,
                     "No timestamp-like number here",
@@ -146,13 +165,47 @@ impl eframe::App for SpyApp {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for nr in &self.hits {
-                            number_card(ui, nr);
+                        for (ni, nr) in hits.iter().enumerate() {
+                            Frame::none()
+                                .fill(BG_CARD)
+                                .rounding(Rounding::same(8.0))
+                                .inner_margin(Margin::symmetric(14.0, 12.0))
+                                .stroke(Stroke::new(1.0, HAIRLINE))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.label(
+                                        RichText::new(&nr.number)
+                                            .font(FontId::monospace(21.0))
+                                            .color(INK)
+                                            .strong(),
+                                    );
+                                    ui.add_space(8.0);
+                                    for (ri, r) in nr.readings.iter().enumerate() {
+                                        if ri > 0 {
+                                            ui.add_space(8.0);
+                                        }
+                                        let key = (ni, ri);
+                                        let open = expanded == Some(key);
+                                        if reading_row(ui, r, open) {
+                                            new_expanded = if open { None } else { Some(key) };
+                                        }
+                                        if open {
+                                            ganzhi_expansion(ui, r.instant, &zone, longitude);
+                                            longitude_row(ui, &mut lon_input, &mut longitude);
+                                        }
+                                    }
+                                });
                             ui.add_space(10.0);
                         }
                     });
             }
         });
+
+        self.hits = hits;
+        self.longitude_input = lon_input;
+        self.longitude = longitude;
+        self.expanded = new_expanded;
+
         // Poll the cursor a few times a second without busy-spinning.
         ctx.request_repaint_after(Duration::from_millis(200));
     }
@@ -169,7 +222,6 @@ fn zone_bar(ui: &mut egui::Ui, zone: &mut ZoneChoice, input: &mut String) -> boo
                 .font(FontId::proportional(11.0))
                 .color(FAINT),
         );
-        // Active-zone chip: loud (amber) when not UTC.
         let (fill, fg) = if zone.loud {
             (BG_CHIP, AMBER)
         } else {
@@ -245,36 +297,11 @@ fn header(ui: &mut egui::Ui, source: &str) {
     });
 }
 
-/// One number as the subject, with its ranked readings beneath it.
-fn number_card(ui: &mut egui::Ui, nr: &NumberReadings) {
-    Frame::none()
-        .fill(BG_CARD)
-        .rounding(Rounding::same(8.0))
-        .inner_margin(Margin::symmetric(14.0, 12.0))
-        .stroke(Stroke::new(1.0, HAIRLINE))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new(&nr.number)
-                    .font(FontId::monospace(21.0))
-                    .color(INK)
-                    .strong(),
-            );
-            ui.add_space(8.0);
-            for (i, r) in nr.readings.iter().enumerate() {
-                if i > 0 {
-                    ui.add_space(8.0);
-                }
-                reading_row(ui, r);
-            }
-        });
-}
-
-/// One reading: an amber format chip and the rendered instant on one line, the
-/// human label beneath. Role is conveyed by position and weight, not colour
-/// alone (chip first + monospace; label last + smaller + muted). A local-naive
-/// reading is tagged so it is never mistaken for a zoned instant.
-fn reading_row(ui: &mut egui::Ui, r: &Reading) {
+/// One reading: an amber format chip, the rendered instant, an optional local
+/// tag, and a 干支 disclosure toggle. Returns `true` when the toggle was clicked.
+/// Role is conveyed by position and weight, not colour alone.
+fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool) -> bool {
+    let mut toggled = false;
     ui.horizontal(|ui| {
         Frame::none()
             .fill(BG_CHIP)
@@ -302,12 +329,113 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading) {
                     .color(FAINT),
             );
         }
+        let arrow = if open { "▾" } else { "▸" };
+        if ui
+            .small_button(
+                RichText::new(format!("{arrow}干支"))
+                    .font(FontId::proportional(11.0))
+                    .color(MUTE),
+            )
+            .clicked()
+        {
+            toggled = true;
+        }
     });
     ui.label(
         RichText::new(&r.label)
             .font(FontId::proportional(11.5))
             .color(MUTE),
     );
+    toggled
+}
+
+/// The 干支 / lunisolar expansion for one reading's instant, using the current
+/// display zone as the meridian. A reading, not a verdict — the assumptions
+/// (meridian, conventions) are surfaced beneath the pillars.
+fn ganzhi_expansion(
+    ui: &mut egui::Ui,
+    instant: PosixNs,
+    zone: &RenderZone,
+    longitude: Option<f64>,
+) {
+    ui.add_space(6.0);
+    Frame::none()
+        .fill(BG_DEEP)
+        .rounding(Rounding::same(6.0))
+        .inner_margin(Margin::symmetric(10.0, 8.0))
+        .stroke(Stroke::new(1.0, HAIRLINE))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            match ganzhi::ganzhi_view(instant, zone, longitude) {
+                Ok(v) => {
+                    ui.horizontal_wrapped(|ui| {
+                        for (mark, pillar) in [
+                            ("年", &v.year_pillar),
+                            ("月", &v.month_pillar),
+                            ("日", &v.day_pillar),
+                            ("時", &v.hour_pillar),
+                        ] {
+                            ui.label(
+                                RichText::new(format!("{mark} {pillar}"))
+                                    .font(FontId::monospace(15.0))
+                                    .color(AMBER)
+                                    .strong(),
+                            );
+                            ui.add_space(10.0);
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("{}  ·  {}", v.lunar_date, v.solar_term))
+                            .font(FontId::monospace(12.0))
+                            .color(INK),
+                    );
+                    for a in &v.assumptions {
+                        ui.label(
+                            RichText::new(format!("— {a}"))
+                                .font(FontId::proportional(10.5))
+                                .color(FAINT),
+                        );
+                    }
+                }
+                Err(e) => {
+                    ui.label(
+                        RichText::new(format!("干支 unavailable: {e}"))
+                            .font(FontId::proportional(11.0))
+                            .color(FAINT),
+                    );
+                }
+            }
+        });
+}
+
+/// The optional longitude entry inside a 干支 expansion. Live-parses into
+/// `longitude` (empty / invalid / out-of-range → no correction).
+fn longitude_row(ui: &mut egui::Ui, input: &mut String, longitude: &mut Option<f64>) {
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new("longitude °E")
+                .font(FontId::proportional(11.0))
+                .color(FAINT),
+        );
+        let resp = ui.add(
+            egui::TextEdit::singleline(input)
+                .hint_text("e.g. 121.5 (optional)")
+                .desired_width(120.0)
+                .font(FontId::monospace(12.0)),
+        );
+        if resp.changed() {
+            *longitude = ganzhi::parse_longitude(input);
+        }
+        if let Some(l) = longitude {
+            ui.label(
+                RichText::new(format!("→ 真太陽時 @ {l}°E"))
+                    .font(FontId::proportional(10.5))
+                    .color(MUTE),
+            );
+        }
+    });
 }
 
 /// A calm centred placeholder instead of a debug string.
