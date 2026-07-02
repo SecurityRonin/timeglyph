@@ -148,24 +148,18 @@ impl SpyApp {
 
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Hold the reading while the pointer is over our own panel (a "paused"
-        // cue shows), so you can move onto it and click a reading's 干支 toggle,
-        // the map, or the zone picker.
-        let frozen = ctx.input(|i| i.pointer.latest_pos().is_some());
         let mut dirty = false;
-        if !frozen {
-            let text = self.picker.text_under_cursor().unwrap_or_default();
-            if text != self.last_text {
-                self.last_text.clone_from(&text);
-                let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
-                // Only REPLACE the shown reading when the new element actually
-                // decodes to something. Crossing blank / non-timestamp UI on the
-                // way to the panel then leaves the reading intact — otherwise it
-                // would be wiped before you could click into it.
-                if !new_hits.is_empty() {
-                    self.source = text;
-                    self.hits = new_hits;
-                }
+        let text = self.picker.text_under_cursor().unwrap_or_default();
+        if text != self.last_text {
+            self.last_text.clone_from(&text);
+            let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
+            // Only REPLACE the shown reading when the new element actually decodes
+            // to something — so moving the cursor across blank / non-timestamp UI
+            // (including this panel, which exposes no accessible text) leaves the
+            // reading intact instead of wiping it.
+            if !new_hits.is_empty() {
+                self.source = text;
+                self.hits = new_hits;
             }
         }
 
@@ -211,7 +205,7 @@ impl eframe::App for SpyApp {
             .fill(BG_DEEP)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source, frozen);
+            header(ui, &source);
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -392,7 +386,7 @@ impl SpyApp {
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
 /// source element — context, not the subject (and it keeps sensitive surrounding
 /// text from dominating the panel).
-fn header(ui: &mut egui::Ui, source: &str, frozen: bool) {
+fn header(ui: &mut egui::Ui, source: &str) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("◷ timeglyph")
@@ -400,15 +394,6 @@ fn header(ui: &mut egui::Ui, source: &str, frozen: bool) {
                 .color(AMBER)
                 .strong(),
         );
-        if frozen {
-            // Tracking is paused because the pointer is over the panel — the
-            // reading is held so it can be interacted with.
-            ui.label(
-                RichText::new("paused")
-                    .font(FontId::proportional(10.5))
-                    .color(AMBER),
-            );
-        }
         if !source.is_empty() {
             ui.add_space(10.0);
             // Char-safe truncation + single-line Extend. egui 0.29's
