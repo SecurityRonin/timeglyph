@@ -19,6 +19,10 @@ pub struct GanzhiView {
     pub lunar_date: String,
     /// The current solar term (節氣).
     pub solar_term: String,
+    /// The sun's apparent ecliptic longitude (°). The solar term is the 15° arc
+    /// this falls in, so λ shows the position *within* the term (a period), not
+    /// that today is the term's exact day.
+    pub solar_longitude_deg: f64,
     /// Stated assumptions (meridian, pillar conventions, solar-time note) — a
     /// reading, not a verdict.
     pub assumptions: Vec<String>,
@@ -49,6 +53,7 @@ pub fn ganzhi_view(
             lunar_day_name(r.lunar_day)
         ),
         solar_term: r.solar_term,
+        solar_longitude_deg: r.solar_longitude_deg,
         assumptions: r.assumptions,
     })
 }
