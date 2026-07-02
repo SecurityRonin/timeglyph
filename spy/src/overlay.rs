@@ -50,11 +50,45 @@ pub fn run() -> Result<(), String> {
         "timeglyph-spy",
         native_options,
         Box::new(|cc| {
+            install_fonts(&cc.egui_ctx);
             install_theme(&cc.egui_ctx);
             Ok(Box::new(SpyApp::new(picker)))
         }),
     )
     .map_err(|e| e.to_string())
+}
+
+/// Load a CJK + symbol capable font (for 干支 pillars, `▸` arrows, etc.) as a
+/// fallback for both families. egui's default fonts have no CJK/symbol glyphs, so
+/// without this those render as missing-glyph boxes (tofu). Loaded from the OS at
+/// runtime (not bundled); if none is found, non-CJK still works and CJK degrades
+/// to tofu rather than failing.
+fn install_fonts(ctx: &egui::Context) {
+    // First single-face TTF / collection face-0 that reads wins. Ordered by
+    // platform; `.ttc` collections load face 0 (FontData::index defaults to 0).
+    const CANDIDATES: &[&str] = &[
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf", // macOS: CJK + symbols
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+        "C:\\Windows\\Fonts\\msyh.ttc",   // Windows: Microsoft YaHei
+        "C:\\Windows\\Fonts\\simsun.ttc", // SimSun
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", // Linux
+    ];
+    let Some(bytes) = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok()) else {
+        return;
+    };
+    let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .font_data
+        .insert("cjk".to_owned(), egui::FontData::from_owned(bytes));
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts
+            .families
+            .entry(family)
+            .or_default()
+            .push("cjk".to_owned());
+    }
+    ctx.set_fonts(fonts);
 }
 
 /// Install the panel's warm-dark theme once at startup.
@@ -88,9 +122,10 @@ struct SpyApp {
     /// Optional longitude (°E) for the hour-pillar correction, and its buffer.
     longitude: Option<f64>,
     longitude_input: String,
-    /// Whether the clickable world map window is open, and the last-picked region.
+    /// Whether the clickable world map window is open, and the picked UTC offset
+    /// (used to highlight the whole band, not a single polygon).
     show_map: bool,
-    map_pick: Option<usize>,
+    map_pick: Option<f64>,
 }
 
 impl SpyApp {
@@ -115,12 +150,18 @@ impl SpyApp {
 
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let text = self.picker.text_under_cursor().unwrap_or_default();
+        // Freeze cursor-tracking while the pointer is over our own panel, so you
+        // can move onto it and click a reading's 干支 toggle, the map, or the zone
+        // picker WITHOUT the reading changing to whatever is now under the cursor.
+        let frozen = ctx.input(|i| i.pointer.latest_pos().is_some());
         let mut dirty = false;
-        if text != self.last_text {
-            self.last_text.clone_from(&text);
-            self.source = text.clone();
-            dirty = true;
+        if !frozen {
+            let text = self.picker.text_under_cursor().unwrap_or_default();
+            if text != self.last_text {
+                self.last_text.clone_from(&text);
+                self.source = text.clone();
+                dirty = true;
+            }
         }
 
         // The reference instant for the footer's offset/abbr/DST resolution: the
@@ -168,7 +209,7 @@ impl eframe::App for SpyApp {
             .fill(BG_DEEP)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source);
+            header(ui, &source, frozen);
             ui.separator();
             ui.add_space(10.0);
             if source.is_empty() {
@@ -301,7 +342,7 @@ impl SpyApp {
                     changed = true;
                 }
             }
-            if ui.small_button("🗺 map").clicked() {
+            if ui.small_button("map").clicked() {
                 self.show_map = !self.show_map;
             }
             // Continent → Zone picker. Iterate over clones so the closures don't
@@ -347,7 +388,7 @@ impl SpyApp {
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
 /// source element — context, not the subject (and it keeps sensitive surrounding
 /// text from dominating the panel).
-fn header(ui: &mut egui::Ui, source: &str) {
+fn header(ui: &mut egui::Ui, source: &str, frozen: bool) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("◷ timeglyph")
@@ -355,6 +396,15 @@ fn header(ui: &mut egui::Ui, source: &str) {
                 .color(AMBER)
                 .strong(),
         );
+        if frozen {
+            // Tracking is paused because the pointer is over the panel — the
+            // reading is held so it can be interacted with.
+            ui.label(
+                RichText::new("paused")
+                    .font(FontId::proportional(10.5))
+                    .color(AMBER),
+            );
+        }
         if !source.is_empty() {
             ui.add_space(10.0);
             // Char-safe truncation + single-line Extend. egui 0.29's
@@ -610,15 +660,23 @@ impl SpyApp {
                         rect.top() + (90.0 - lat) / 180.0 * rect.height(),
                     )
                 };
-                for (i, r) in tzmap::regions().iter().enumerate() {
-                    let stroke = if self.map_pick == Some(i) {
-                        Stroke::new(1.6, AMBER)
+                for r in tzmap::regions() {
+                    // Highlight the whole band: every region at the picked offset.
+                    let selected = self.map_pick.is_some_and(|o| (o - r.offset).abs() < 0.01);
+                    let fill = region_fill(r.offset, selected);
+                    let stroke = if selected {
+                        Stroke::new(1.4, AMBER)
                     } else {
                         Stroke::new(0.4, HAIRLINE)
                     };
                     for ring in &r.rings {
                         let pts: Vec<egui::Pos2> = ring.iter().map(|c| proj(c[0], c[1])).collect();
-                        p.add(egui::Shape::closed_line(pts, stroke));
+                        p.add(egui::Shape::Path(egui::epaint::PathShape {
+                            points: pts,
+                            closed: true,
+                            fill,
+                            stroke: stroke.into(),
+                        }));
                     }
                 }
                 if resp.clicked() {
@@ -632,9 +690,7 @@ impl SpyApp {
                                 .unwrap_or_else(|| offset_spec(pick.offset));
                             if let Some(z) = parse_zone(&spec) {
                                 self.zone = z;
-                                self.map_pick = tzmap::regions().iter().position(|rr| {
-                                    rr.offset == pick.offset && rr.iana == pick.iana
-                                });
+                                self.map_pick = Some(pick.offset);
                                 changed = true;
                             }
                         }
@@ -646,4 +702,15 @@ impl SpyApp {
         }
         changed
     }
+}
+
+/// A muted fill for a map region, varying by UTC offset so adjacent bands are
+/// distinguishable; the selected region fills amber.
+fn region_fill(offset: f64, selected: bool) -> Color32 {
+    if selected {
+        return Color32::from_rgb(120, 84, 24);
+    }
+    let k = u8::try_from((offset.round() as i64).rem_euclid(3)).unwrap_or(0);
+    let b = 30 + k * 8;
+    Color32::from_rgb(b, b.saturating_sub(3), b.saturating_sub(10))
 }
