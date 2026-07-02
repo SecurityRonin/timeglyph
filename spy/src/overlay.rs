@@ -233,13 +233,22 @@ impl eframe::App for SpyApp {
                                             .strong(),
                                     );
                                     ui.add_space(8.0);
-                                    for (ri, r) in nr.readings.iter().enumerate() {
-                                        if ri > 0 {
-                                            ui.add_space(8.0);
-                                        }
-                                        reading_row(ui, r, &zone);
-                                        ganzhi_line(ui, r.instant, &zone, longitude);
-                                    }
+                                    // 2-column grid: the format chip is column 1
+                                    // (a tab stop), so every datetime — and the
+                                    // 干支 line beneath it — left-aligns in column 2.
+                                    egui::Grid::new(nr.number.as_str())
+                                        .num_columns(2)
+                                        .spacing([10.0, 8.0])
+                                        .show(ui, |ui| {
+                                            for r in &nr.readings {
+                                                chip_cell(ui, r);
+                                                datetime_cell(ui, r, &zone);
+                                                ui.end_row();
+                                                ui.label(""); // empty col 1
+                                                ganzhi_cell(ui, r.instant, &zone, longitude);
+                                                ui.end_row();
+                                            }
+                                        });
                                 });
                             ui.add_space(10.0);
                         }
@@ -412,35 +421,35 @@ fn header(ui: &mut egui::Ui, source: &str) {
     });
 }
 
-/// One reading: an amber format chip, the rendered instant, the per-instant
-/// abbreviation + DST, and an optional local tag, then the format label. Role is
-/// conveyed by position and weight, not colour alone.
-fn reading_row(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
+/// Grid column 1: the amber format chip. The verbose format name is a hover
+/// tooltip on the chip (not an always-shown line), keeping each reading compact.
+fn chip_cell(ui: &mut egui::Ui, r: &Reading) {
+    Frame::none()
+        .fill(BG_CHIP)
+        .rounding(Rounding::same(4.0))
+        .inner_margin(Margin::symmetric(6.0, 2.0))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(&r.format_id)
+                    .font(FontId::monospace(11.0))
+                    .color(AMBER)
+                    .strong(),
+            );
+        })
+        .response
+        .on_hover_text(r.label.as_str());
+}
+
+/// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
+/// DST (the numeric offset is already in `rendered`; a location alone is
+/// ambiguous, so these disambiguate), and an optional local tag.
+fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
     ui.horizontal(|ui| {
-        Frame::none()
-            .fill(BG_CHIP)
-            .rounding(Rounding::same(4.0))
-            .inner_margin(Margin::symmetric(6.0, 2.0))
-            .show(ui, |ui| {
-                ui.label(
-                    RichText::new(&r.format_id)
-                        .font(FontId::monospace(11.0))
-                        .color(AMBER)
-                        .strong(),
-                );
-            })
-            // The verbose format name is a hover tooltip on the chip, not an
-            // always-shown line — keeps each reading compact.
-            .response
-            .on_hover_text(r.label.as_str());
-        ui.add_space(8.0);
         ui.label(
             RichText::new(&r.rendered)
                 .font(FontId::monospace(14.0))
                 .color(INK),
         );
-        // Per-instant abbreviation + DST (the numeric offset is already in
-        // `rendered`). A location alone is ambiguous, so these disambiguate.
         if !r.local {
             if let Some(s) = tzinfo::stamp(zone, r.instant) {
                 if !s.abbr.is_empty() {
@@ -477,12 +486,21 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
 /// reading — ALWAYS visible, resolved at the display zone (the meridian) and
 /// refined by the optional global longitude (hour pillar → true solar time).
 /// A reading, not a verdict. Silently omitted if the engine cannot render it.
-fn ganzhi_line(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude: Option<f64>) {
+/// Grid column 2 (row 2): the 干支 line, led by the lunar date so it left-aligns
+/// under the datetime above it, then the four pillars. Empty cell if the engine
+/// can't render (keeps the grid row intact).
+fn ganzhi_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude: Option<f64>) {
     let Ok(v) = ganzhi::ganzhi_view(instant, zone, longitude) else {
+        ui.label("");
         return;
     };
-    ui.add_space(3.0);
-    ui.horizontal_wrapped(|ui| {
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(format!("{} · {}", v.lunar_date, v.solar_term_phrase()))
+                .font(FontId::proportional(10.5))
+                .color(FAINT),
+        );
+        ui.add_space(8.0);
         for (mark, pillar) in [
             ("年", &v.year_pillar),
             ("月", &v.month_pillar),
@@ -491,16 +509,11 @@ fn ganzhi_line(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
         ] {
             ui.label(
                 RichText::new(format!("{mark}{pillar}"))
-                    .font(FontId::monospace(12.0))
+                    .font(FontId::monospace(11.0))
                     .color(MUTE),
             );
-            ui.add_space(6.0);
+            ui.add_space(5.0);
         }
-        ui.label(
-            RichText::new(format!("· {} · {}", v.lunar_date, v.solar_term_phrase()))
-                .font(FontId::proportional(10.5))
-                .color(FAINT),
-        );
     });
 }
 
