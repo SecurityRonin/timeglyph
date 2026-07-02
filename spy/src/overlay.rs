@@ -507,7 +507,7 @@ fn ganzhi_line(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
             ui.label(
                 RichText::new(format!("{mark}{pillar}"))
                     .font(FontId::monospace(12.0))
-                    .color(AMBER),
+                    .color(MUTE),
             );
             ui.add_space(6.0);
         }
