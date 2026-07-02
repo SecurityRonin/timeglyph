@@ -14,8 +14,8 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{PosixNs, RenderZone};
-use timeglyph_spy::ganzhi;
-use timeglyph_spy::zone::{parse_zone, ZoneChoice};
+use timeglyph_spy::zone::{self, parse_zone, ZoneChoice};
+use timeglyph_spy::{ganzhi, tzinfo};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -78,8 +78,11 @@ struct SpyApp {
     /// The display timezone. Session-scoped, UTC by default: it never persists
     /// across launches, so a prior case's zone can't silently apply to the next.
     zone: ZoneChoice,
-    /// The footer's free-text zone entry buffer.
-    zone_input: String,
+    /// Cached IANA continents (first level of the Continent → Zone picker).
+    continents: Vec<String>,
+    /// Selected continent and its zones (second level of the picker).
+    continent: String,
+    zones: Vec<String>,
     /// Which (number, reading) has its 干支 expansion open, if any.
     expanded: Option<(usize, usize)>,
     /// Optional longitude (°E) for the hour-pillar correction, and its buffer.
@@ -95,7 +98,9 @@ impl SpyApp {
             source: String::new(),
             hits: Vec::new(),
             zone: ZoneChoice::default(),
-            zone_input: String::new(),
+            continents: zone::continents(),
+            continent: String::new(),
+            zones: Vec::new(),
             expanded: None,
             longitude: None,
             longitude_input: String::new(),
@@ -113,9 +118,16 @@ impl eframe::App for SpyApp {
             dirty = true;
         }
 
-        // Footer first (egui requires panels before the central region). Placing
-        // the zone control at the bottom keeps the forensically-important source
-        // caption prominent in the header.
+        // The reference instant for the footer's offset/abbr/DST resolution: the
+        // top reading's instant (offset is per-instant), else now.
+        let ref_instant = self
+            .hits
+            .first()
+            .and_then(|nr| nr.readings.first())
+            .map_or_else(now_instant, |r| r.instant);
+
+        // Footer first (egui requires panels before the central region). The zone
+        // control sits at the bottom so the source caption stays prominent.
         egui::TopBottomPanel::bottom("zone_bar")
             .frame(
                 Frame::none()
@@ -123,7 +135,7 @@ impl eframe::App for SpyApp {
                     .inner_margin(Margin::symmetric(16.0, 8.0)),
             )
             .show(ctx, |ui| {
-                if zone_bar(ui, &mut self.zone, &mut self.zone_input) {
+                if self.zone_footer(ui, ref_instant) {
                     dirty = true;
                 }
             });
@@ -186,7 +198,7 @@ impl eframe::App for SpyApp {
                                         }
                                         let key = (ni, ri);
                                         let open = expanded == Some(key);
-                                        if reading_row(ui, r, open) {
+                                        if reading_row(ui, r, open, &zone) {
                                             new_expanded = if open { None } else { Some(key) };
                                         }
                                         if open {
@@ -211,64 +223,111 @@ impl eframe::App for SpyApp {
     }
 }
 
-/// The footer display-zone control. Returns `true` when the zone changed (so the
-/// caller re-decodes). UTC is calm; any other zone is shown "loud" (amber, ⚠) so
-/// the active frame is unmistakable — a glance can't misread it as UTC.
-fn zone_bar(ui: &mut egui::Ui, zone: &mut ZoneChoice, input: &mut String) -> bool {
-    let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        ui.label(
-            RichText::new("zone")
-                .font(FontId::proportional(11.0))
-                .color(FAINT),
-        );
-        let (fill, fg) = if zone.loud {
-            (BG_CHIP, AMBER)
-        } else {
-            (BG_CARD, MUTE)
-        };
-        Frame::none()
-            .fill(fill)
-            .rounding(Rounding::same(4.0))
-            .inner_margin(Margin::symmetric(8.0, 3.0))
-            .show(ui, |ui| {
-                let mark = if zone.loud { "⚠ " } else { "" };
-                ui.label(
-                    RichText::new(format!("{mark}{}", zone.label))
-                        .font(FontId::monospace(12.0))
-                        .color(fg)
-                        .strong(),
-                );
-            });
-        ui.add_space(8.0);
-        if ui.small_button("UTC").clicked() {
-            *zone = ZoneChoice::default();
-            input.clear();
-            changed = true;
+/// The active-zone summary shown in the footer chip: `⚠ Europe/London ·
+/// UTC+01:00 BST · DST` for a named zone at `at`, or `UTC`. Because offset/DST
+/// are per-instant, the summary is resolved at the reference instant `at`.
+fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
+    match tzinfo::stamp(&zone.zone, at) {
+        Some(s) => {
+            let abbr = if s.abbr.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", s.abbr)
+            };
+            let dst = if s.dst { " · DST" } else { "" };
+            format!("⚠ {} · UTC{}{abbr}{dst}", zone.label, s.offset)
         }
-        if ui.small_button("Local").clicked() {
-            if let Some(z) = parse_zone("local") {
-                *zone = z;
-                input.clear();
+        None => zone.label.clone(),
+    }
+}
+
+/// Current wall-clock instant, used as the footer's reference when no reading is
+/// on screen yet.
+fn now_instant() -> PosixNs {
+    PosixNs(jiff::Timestamp::now().as_nanosecond())
+}
+
+impl SpyApp {
+    /// The footer time-zone control: an active summary (offset · abbr · DST at the
+    /// reference instant `at`), UTC/Local presets, and a Continent → Zone picker
+    /// (Windows-style, offset shown at selection). Returns `true` when the zone
+    /// changed. UTC is calm; any other zone renders "loud" (amber ⚠).
+    fn zone_footer(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
+        let mut changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new("time zone")
+                    .font(FontId::proportional(11.0))
+                    .color(FAINT),
+            );
+            let (fill, fg) = if self.zone.loud {
+                (BG_CHIP, AMBER)
+            } else {
+                (BG_CARD, MUTE)
+            };
+            let summary = zone_summary(&self.zone, at);
+            Frame::none()
+                .fill(fill)
+                .rounding(Rounding::same(4.0))
+                .inner_margin(Margin::symmetric(8.0, 3.0))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(summary)
+                            .font(FontId::monospace(12.0))
+                            .color(fg)
+                            .strong(),
+                    );
+                });
+            ui.add_space(8.0);
+            if ui.small_button("UTC").clicked() {
+                self.zone = ZoneChoice::default();
+                self.continent.clear();
                 changed = true;
             }
-        }
-        let resp = ui.add(
-            egui::TextEdit::singleline(input)
-                .hint_text("+08:00 or Area/City")
-                .desired_width(140.0)
-                .font(FontId::monospace(12.0)),
-        );
-        if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            // Apply only a valid zone; an invalid entry leaves the frame unchanged
-            // (never a silent UTC fallback).
-            if let Some(z) = parse_zone(input) {
-                *zone = z;
-                changed = true;
+            if ui.small_button("Local").clicked() {
+                if let Some(z) = parse_zone("local") {
+                    self.zone = z;
+                    changed = true;
+                }
             }
-        }
-    });
-    changed
+            // Continent → Zone picker. Iterate over clones so the closures don't
+            // alias the fields they mutate.
+            let conts = self.continents.clone();
+            egui::ComboBox::from_id_salt("tz_continent")
+                .selected_text(if self.continent.is_empty() {
+                    "Region…".to_string()
+                } else {
+                    self.continent.clone()
+                })
+                .show_ui(ui, |ui| {
+                    for c in &conts {
+                        if ui.selectable_label(&self.continent == c, c).clicked() {
+                            self.continent = c.clone();
+                            self.zones = zone::zones_in(c);
+                        }
+                    }
+                });
+            let zones = self.zones.clone();
+            if !zones.is_empty() {
+                egui::ComboBox::from_id_salt("tz_zone")
+                    .selected_text("Zone…")
+                    .show_ui(ui, |ui| {
+                        for z in &zones {
+                            if ui
+                                .selectable_label(false, zone::menu_label(z, at))
+                                .clicked()
+                            {
+                                if let Some(zc) = parse_zone(z) {
+                                    self.zone = zc;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    });
+            }
+        });
+        changed
+    }
 }
 
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
@@ -300,7 +359,7 @@ fn header(ui: &mut egui::Ui, source: &str) {
 /// One reading: an amber format chip, the rendered instant, an optional local
 /// tag, and a 干支 disclosure toggle. Returns `true` when the toggle was clicked.
 /// Role is conveyed by position and weight, not colour alone.
-fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool) -> bool {
+fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool, zone: &RenderZone) -> bool {
     let mut toggled = false;
     ui.horizontal(|ui| {
         Frame::none()
@@ -321,6 +380,29 @@ fn reading_row(ui: &mut egui::Ui, r: &Reading, open: bool) -> bool {
                 .font(FontId::monospace(14.0))
                 .color(INK),
         );
+        // Per-instant abbreviation + DST (the numeric offset is already in
+        // `rendered`). A location alone is ambiguous, so these disambiguate.
+        if !r.local {
+            if let Some(s) = tzinfo::stamp(zone, r.instant) {
+                if !s.abbr.is_empty() {
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(&s.abbr)
+                            .font(FontId::monospace(11.0))
+                            .color(MUTE),
+                    );
+                }
+                if s.dst {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("DST")
+                            .font(FontId::proportional(10.0))
+                            .color(AMBER)
+                            .strong(),
+                    );
+                }
+            }
+        }
         if r.local {
             ui.add_space(6.0);
             ui.label(
