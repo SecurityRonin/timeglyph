@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
+use timeglyph::RenderZone;
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -90,7 +91,7 @@ impl eframe::App for SpyApp {
         if text != self.last_text {
             self.last_text.clone_from(&text);
             self.source = text.clone();
-            self.hits = scan::inspect_text(&text, MAX_READINGS);
+            self.hits = scan::inspect_text(&text, MAX_READINGS, &RenderZone::Utc);
         }
 
         let panel = Frame::none()

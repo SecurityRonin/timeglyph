@@ -1,10 +1,10 @@
 //! Pure scan core: pull numeric runs out of arbitrary UI text and turn each
-//! into timeglyph's top ranked datetime readings. No platform or GUI dependency
-//! — this is the testable half of the inspector.
+//! into timeglyph's top ranked datetime readings, rendered in a chosen zone. No
+//! platform or GUI dependency — this is the testable half of the inspector.
 
 use std::fmt;
 
-use timeglyph::interpret;
+use timeglyph::{interpret, PosixNs, RenderZone, TzSemantics};
 
 /// One decoded reading of a number: which format, the rendered instant, and the
 /// human label — kept as separate fields so the GUI can style each distinctly.
@@ -13,10 +13,16 @@ use timeglyph::interpret;
 pub struct Reading {
     /// The format identifier (e.g. `unix`, `webkit`).
     pub format_id: String,
-    /// The rendered datetime (RFC 3339).
+    /// The rendered datetime, expressed in the requested display zone.
     pub rendered: String,
     /// The human-readable format label (e.g. `Unix time (seconds)`).
     pub label: String,
+    /// True when the value is naive *local* wall-clock (no UTC anchor): the
+    /// display zone is NOT applied, and the reading carries no zone designator.
+    pub local: bool,
+    /// The absolute instant, kept so a caller can re-express it (e.g. the 干支
+    /// expansion) without re-decoding.
+    pub instant: PosixNs,
 }
 
 impl fmt::Display for Reading {
@@ -66,10 +72,39 @@ pub fn scan_numbers(text: &str) -> Vec<String> {
     out
 }
 
-/// The top `max` *in-window* datetime readings for one numeric string. Empty when
-/// the number does not parse or has no confident (in-window, non-sentinel) reading.
+/// Render `instant` for display in `zone`, honoring the format's tz semantics.
+///
+/// Only a [`TzSemantics::Utc`] value has a UTC anchor, so only it may be shifted
+/// into the display zone (with an explicit offset). A [`TzSemantics::LocalNaive`]
+/// value is wall-clock with no offset — shifting it would fabricate meaning, so
+/// it is shown as-is (the misleading `Z` stripped) and reported `local`. An
+/// [`TzSemantics::OffsetEmbedded`] value already carries its own offset, so the
+/// display zone is not applied either. Returns `(rendered, is_local)`.
+///
+/// `native` is the format's own (UTC) rendering, used as the fallback and the
+/// source for the wall-clock / offset-embedded cases.
 #[must_use]
-pub fn readings_for(number: &str, max: usize) -> Vec<Reading> {
+pub fn render_in_zone(
+    tz: TzSemantics,
+    instant: PosixNs,
+    native: &str,
+    zone: &RenderZone,
+) -> (String, bool) {
+    match tz {
+        TzSemantics::Utc => (
+            instant.render(zone).unwrap_or_else(|| native.to_string()),
+            false,
+        ),
+        TzSemantics::LocalNaive => (native.trim_end_matches('Z').to_string(), true),
+        TzSemantics::OffsetEmbedded => (native.to_string(), false),
+    }
+}
+
+/// The top `max` *in-window* datetime readings for one numeric string, each
+/// rendered in `zone` (semantics-aware — see [`render_in_zone`]). Empty when the
+/// number does not parse or has no confident (in-window, non-sentinel) reading.
+#[must_use]
+pub fn readings_for(number: &str, max: usize, zone: &RenderZone) -> Vec<Reading> {
     let Ok(value) = number.parse::<i64>() else {
         return Vec::new();
     };
@@ -83,22 +118,32 @@ pub fn readings_for(number: &str, max: usize) -> Vec<Reading> {
                     .any(|(n, v)| *n == "in_window" && *v > 0.0)
         })
         .take(max)
-        .map(|c| Reading {
-            format_id: c.format_id.to_string(),
-            rendered: c.rendered.unwrap_or_default(),
-            label: c.label.to_string(),
+        .map(|c| {
+            let tz = timeglyph::format(c.format_id)
+                .map(|f| f.tz)
+                .unwrap_or(TzSemantics::Utc);
+            let native = c.rendered.clone().unwrap_or_default();
+            let (rendered, local) = render_in_zone(tz, c.instant, &native, zone);
+            Reading {
+                format_id: c.format_id.to_string(),
+                rendered,
+                label: c.label.to_string(),
+                local,
+                instant: c.instant,
+            }
         })
         .collect()
 }
 
-/// Inspect a block of UI text: every long number paired with its top readings.
-/// Numbers with no confident reading are dropped, so noise stays off the screen.
+/// Inspect a block of UI text: every long number paired with its top readings,
+/// rendered in `zone`. Numbers with no confident reading are dropped, so noise
+/// stays off the screen.
 #[must_use]
-pub fn inspect_text(text: &str, max_per_number: usize) -> Vec<NumberReadings> {
+pub fn inspect_text(text: &str, max_per_number: usize, zone: &RenderZone) -> Vec<NumberReadings> {
     scan_numbers(text)
         .into_iter()
         .filter_map(|number| {
-            let readings = readings_for(&number, max_per_number);
+            let readings = readings_for(&number, max_per_number, zone);
             (!readings.is_empty()).then_some(NumberReadings { number, readings })
         })
         .collect()

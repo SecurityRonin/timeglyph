@@ -7,6 +7,7 @@
 //!   that follows the cursor; whatever UI element you hover, any number in its
 //!   text is shown with timeglyph's ranked datetime readings (Spy++-style).
 
+use timeglyph::RenderZone;
 use timeglyph_spy::scan;
 
 mod overlay;
@@ -20,7 +21,7 @@ fn main() {
         Some("--live") => live_console(),
         // Text mode (any platform): decode every number in the argument string.
         Some(_) => {
-            for nr in scan::inspect_text(&args.join(" "), 6) {
+            for nr in scan::inspect_text(&args.join(" "), 6, &RenderZone::Utc) {
                 println!("{}", nr.number);
                 for r in &nr.readings {
                     println!("    {r}");
@@ -53,7 +54,7 @@ fn live_console() {
         let text = picker.text_under_cursor().unwrap_or_default();
         if text != last {
             last.clone_from(&text);
-            let hits = scan::inspect_text(&text, 4);
+            let hits = scan::inspect_text(&text, 4, &RenderZone::Utc);
             println!("\nelement: {text:?}");
             for nr in hits {
                 println!("  {}", nr.number);
