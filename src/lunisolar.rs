@@ -58,6 +58,10 @@ pub struct LunisolarReading {
     pub solar_longitude_deg: f64,
     /// The current solar term (節氣) implied by `solar_longitude_deg`.
     pub solar_term: String,
+    /// Calendar days (at the meridian) since [`solar_term`](Self::solar_term)
+    /// began — a term is a ~15-day period, so `0` means the term's own day and
+    /// `10` means the 10th day after it (e.g. `冬至後第十日`).
+    pub days_into_term: u32,
     /// The civil datetime at the chosen meridian (RFC 3339 with offset).
     pub civil_local: String,
     /// Stated assumptions (meridian used, pillar conventions, solar-time note).
@@ -95,6 +99,16 @@ pub fn render(
     let jde_tt = jd_ut + delta_t_for_year(f64::from(year)) / 86_400.0;
     let lambda = normalize_deg(solar_ecliptic_state(jde_tt).apparent_longitude_degrees);
     let solar_term = solar_term_for_longitude(lambda).to_string();
+
+    // Calendar days since the current term began: invert the ephemeris for the
+    // instant the Sun crossed the term's base longitude (`⌊λ/15⌋·15`), then count
+    // whole days between that meridian date and this one. A term spans ~15 days,
+    // so the search window of 20 days back always brackets the crossing.
+    let days_into_term =
+        term_start_date_jd(jd_ut, f64::from(year), lambda, offset).map_or(0, |start_jd| {
+            let now_jd = jd_from_ymd(year, u32::from(month), u32::from(day));
+            (now_jd - start_jd).round().max(0.0) as u32
+        });
 
     // --- Year pillar: flips at 立春 (315°). Jan is always before it; in Feb the
     // longitude disambiguates; Mar..Dec are after. (Meridian month only picks the
@@ -183,6 +197,7 @@ pub fn render(
         hour_pillar,
         solar_longitude_deg: lambda,
         solar_term,
+        days_into_term,
         civil_local: instant
             .render(zone)
             // cov:unreachable: the instant already rendered via from_nanosecond
@@ -190,6 +205,44 @@ pub fn render(
             .unwrap_or_else(|| "<out of civil range>".to_string()),
         assumptions,
     })
+}
+
+/// The JD (at 00:00 UT) of the meridian date on which the current solar term
+/// began: the most recent instant (within 20 days) that the Sun's apparent
+/// longitude crossed the term's base longitude `⌊λ/15⌋·15`. `None` if that
+/// instant is out of representable range. Apparent longitude rises ~1°/day and is
+/// monotonic across a 20-day window, so a bisection brackets the crossing.
+fn term_start_date_jd(
+    jd_ut_now: f64,
+    year: f64,
+    lambda: f64,
+    offset: jiff::tz::Offset,
+) -> Option<f64> {
+    let base = (lambda / 15.0).floor() * 15.0;
+    let dt_days = delta_t_for_year(year) / 86_400.0;
+    // Signed longitude difference from `base`, mapped to (-180, 180].
+    let diff = |jd_ut: f64| -> f64 {
+        let l = normalize_deg(solar_ecliptic_state(jd_ut + dt_days).apparent_longitude_degrees);
+        (l - base + 540.0).rem_euclid(360.0) - 180.0
+    };
+    let (mut lo, mut hi) = (jd_ut_now - 20.0, jd_ut_now);
+    for _ in 0..48 {
+        let mid = 0.5 * (lo + hi);
+        if diff(mid) < 0.0 {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    // `hi` ≈ the crossing instant (UT); take its civil date at the meridian.
+    let secs = (hi - UNIX_EPOCH_JD) * 86_400.0;
+    let ts = jiff::Timestamp::from_nanosecond((secs * 1e9) as i128).ok()?;
+    let d = offset.to_datetime(ts);
+    Some(jd_from_ymd(
+        i32::from(d.year()),
+        u32::from(d.month().unsigned_abs()),
+        u32::from(d.day().unsigned_abs()),
+    ))
 }
 
 /// A two-character 干支 string from stem index (0..=9) and branch index (0..=11),
