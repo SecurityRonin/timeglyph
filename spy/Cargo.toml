@@ -19,7 +19,8 @@ name = "timeglyph-spy"
 path = "src/main.rs"
 
 [dependencies]
-timeglyph = { path = ".." }
+# `lunisolar` powers the opt-in 干支 expansion (per selected reading).
+timeglyph = { path = "..", features = ["lunisolar"] }
 # tz math (host-zone resolution for the "Local" display option). Reused from the
 # same jiff the engine uses — never reinvented.
 jiff = "0.2"
