@@ -193,3 +193,12 @@ fn out_of_range_instant_errors_not_panics() {
     let zone = RenderZone::parse("+08:00").unwrap();
     assert!(lunisolar::render(PosixNs(i128::MAX), &zone, None).is_err());
 }
+
+#[test]
+fn days_into_term_counts_calendar_days_after_the_solar_term() {
+    // 2020-01-01 UTC: the winter solstice 冬至 was 2019-12-22, so Jan 1 is the
+    // 10th calendar day after it (冬至後第十日) — not the solstice day itself.
+    let r = render(1_577_836_800, "UTC", None);
+    assert_eq!(r.solar_term, "冬至");
+    assert_eq!(r.days_into_term, 10);
+}
