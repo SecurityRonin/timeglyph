@@ -2,15 +2,40 @@
 //! into timeglyph's top ranked datetime readings. No platform or GUI dependency
 //! — this is the testable half of the inspector.
 
+use std::fmt;
+
 use timeglyph::interpret;
+
+/// One decoded reading of a number: which format, the rendered instant, and the
+/// human label — kept as separate fields so the GUI can style each distinctly.
+/// `Display` renders the console form `"<format>  <rendered>  (<label>)"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reading {
+    /// The format identifier (e.g. `unix`, `webkit`).
+    pub format_id: String,
+    /// The rendered datetime (RFC 3339).
+    pub rendered: String,
+    /// The human-readable format label (e.g. `Unix time (seconds)`).
+    pub label: String,
+}
+
+impl fmt::Display for Reading {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:<12} {}  ({})",
+            self.format_id, self.rendered, self.label
+        )
+    }
+}
 
 /// One number found in the inspected text, with its top datetime readings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NumberReadings {
     /// The numeric run as it appeared in the text.
     pub number: String,
-    /// Formatted top readings (`"<format>  <rendered>  (<label>)"`).
-    pub readings: Vec<String>,
+    /// The top ranked readings.
+    pub readings: Vec<Reading>,
 }
 
 /// Minimum digit count for a run to be treated as a possible timestamp. Shorter
@@ -41,11 +66,10 @@ pub fn scan_numbers(text: &str) -> Vec<String> {
     out
 }
 
-/// The top `max` *in-window* datetime readings for one numeric string, formatted
-/// `"<format>  <rendered>  (<label>)"`. Empty when the number does not parse or
-/// has no confident (in-window, non-sentinel) reading.
+/// The top `max` *in-window* datetime readings for one numeric string. Empty when
+/// the number does not parse or has no confident (in-window, non-sentinel) reading.
 #[must_use]
-pub fn readings_for(number: &str, max: usize) -> Vec<String> {
+pub fn readings_for(number: &str, max: usize) -> Vec<Reading> {
     let Ok(value) = number.parse::<i64>() else {
         return Vec::new();
     };
@@ -59,13 +83,10 @@ pub fn readings_for(number: &str, max: usize) -> Vec<String> {
                     .any(|(n, v)| *n == "in_window" && *v > 0.0)
         })
         .take(max)
-        .map(|c| {
-            format!(
-                "{:<12} {}  ({})",
-                c.format_id,
-                c.rendered.unwrap_or_default(),
-                c.label
-            )
+        .map(|c| Reading {
+            format_id: c.format_id.to_string(),
+            rendered: c.rendered.unwrap_or_default(),
+            label: c.label.to_string(),
         })
         .collect()
 }

@@ -19,7 +19,7 @@ fn readings_are_ranked_in_window_datetimes() {
     assert!(!r.is_empty());
     // The top reading for this value is Unix-seconds = 2020-01-01.
     assert!(
-        r[0].contains("unix") && r[0].contains("2020-01-01"),
+        r[0].format_id.contains("unix") && r[0].rendered.contains("2020-01-01"),
         "{r:?}"
     );
 }
@@ -29,7 +29,10 @@ fn inspect_text_keeps_only_numbers_with_a_confident_reading() {
     let hits = scan::inspect_text("the cookie value is 13390845530064940 (chrome)", 5);
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].number, "13390845530064940");
-    assert!(hits[0].readings.iter().any(|s| s.contains("webkit")));
+    assert!(hits[0]
+        .readings
+        .iter()
+        .any(|r| r.format_id.contains("webkit")));
     // A long-but-meaningless number yields no confident reading → dropped.
     assert!(scan::inspect_text("00000000000000000000", 5).is_empty());
 }
