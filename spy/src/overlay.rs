@@ -513,12 +513,9 @@ fn ganzhi_line(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
             ui.add_space(6.0);
         }
         ui.label(
-            RichText::new(format!(
-                "· {} · {} λ{:.0}°",
-                v.lunar_date, v.solar_term, v.solar_longitude_deg
-            ))
-            .font(FontId::proportional(10.5))
-            .color(FAINT),
+            RichText::new(format!("· {} · {}", v.lunar_date, v.solar_term_phrase()))
+                .font(FontId::proportional(10.5))
+                .color(FAINT),
         );
     });
 }

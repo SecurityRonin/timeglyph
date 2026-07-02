@@ -23,9 +23,43 @@ pub struct GanzhiView {
     /// this falls in, so λ shows the position *within* the term (a period), not
     /// that today is the term's exact day.
     pub solar_longitude_deg: f64,
+    /// Calendar days since the solar term began (`0` = the term's own day).
+    pub days_into_term: u32,
     /// Stated assumptions (meridian, pillar conventions, solar-time note) — a
     /// reading, not a verdict.
     pub assumptions: Vec<String>,
+}
+
+impl GanzhiView {
+    /// The solar term as a period phrase: the bare term on its own day
+    /// (`冬至`), else `<term>後第<N>日` (`冬至後第十日`) — so a day well past the
+    /// term is not misread as the term's day.
+    #[must_use]
+    pub fn solar_term_phrase(&self) -> String {
+        if self.days_into_term == 0 {
+            self.solar_term.clone()
+        } else {
+            format!(
+                "{}後第{}日",
+                self.solar_term,
+                cn_numeral(self.days_into_term)
+            )
+        }
+    }
+}
+
+/// A Chinese numeral for a small count (1..=30): `一`…`十`, `十一`…`廿九`, `三十`.
+fn cn_numeral(n: u32) -> String {
+    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    match n {
+        1..=9 => D[n as usize].to_string(),
+        10 => "十".to_string(),
+        11..=19 => format!("十{}", D[(n - 10) as usize]),
+        20 => "二十".to_string(),
+        21..=29 => format!("廿{}", D[(n - 20) as usize]),
+        30 => "三十".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// Compute the 干支 view for `instant` at the meridian `zone`, optionally
@@ -54,6 +88,7 @@ pub fn ganzhi_view(
         ),
         solar_term: r.solar_term,
         solar_longitude_deg: r.solar_longitude_deg,
+        days_into_term: r.days_into_term,
         assumptions: r.assumptions,
     })
 }
