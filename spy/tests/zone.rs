@@ -90,3 +90,38 @@ fn parse_zone_relabels_etc_gmt_to_its_offset() {
         "footer chip must not show the reversed id"
     );
 }
+
+#[test]
+fn picker_excludes_nongeographic_pseudo_regions() {
+    // Etc/SystemV are offset-alias bags with confusing/duplicate names, not real
+    // regions — keep them out of the picker (offsets come from the map).
+    let cs = zone::continents();
+    assert!(
+        !cs.iter().any(|c| c == "Etc"),
+        "Etc must not be listed: {cs:?}"
+    );
+    assert!(
+        !cs.iter().any(|c| c == "SystemV"),
+        "SystemV must not be listed"
+    );
+    assert!(
+        cs.iter().any(|c| c == "America"),
+        "real regions still present"
+    );
+}
+
+#[test]
+fn zone_summary_does_not_double_an_offset_label() {
+    // A cleaned Etc/GMT zone's label already IS the offset — don't repeat it.
+    let z = zone::parse_zone("Etc/GMT-8").unwrap();
+    let s = zone::zone_summary(&z, WINTER);
+    assert!(s.contains("UTC+08:00"), "{s}");
+    assert!(!s.contains("· UTC+08"), "must not double the offset: {s}");
+}
+
+#[test]
+fn zone_summary_appends_offset_for_named_zones() {
+    let z = zone::parse_zone("Asia/Shanghai").unwrap();
+    let s = zone::zone_summary(&z, WINTER);
+    assert!(s.contains("Asia/Shanghai") && s.contains("UTC+08"), "{s}");
+}
