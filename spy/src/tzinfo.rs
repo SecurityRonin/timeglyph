@@ -31,20 +31,30 @@ pub fn meridian_of_offset(hours: f64) -> f64 {
 /// `instant` is out of range.
 #[must_use]
 pub fn meridian_longitude(zone: &RenderZone, instant: PosixNs) -> Option<f64> {
-    let hours = match zone {
+    let mut hours = offset_hours(zone, instant)?;
+    // Standard offset — the meridian is geographic, so remove DST when in effect.
+    if let RenderZone::Named(tz) = zone {
+        if let Ok(ts) = jiff::Timestamp::from_nanosecond(instant.0) {
+            if matches!(tz.to_offset_info(ts).dst(), jiff::tz::Dst::Yes) {
+                hours -= 1.0;
+            }
+        }
+    }
+    Some(meridian_of_offset(hours))
+}
+
+/// The UTC offset of `zone` at `instant`, in hours (`+05:30` → `5.5`). The raw
+/// clock offset (DST included) — for sorting and labeling zones.
+#[must_use]
+pub fn offset_hours(zone: &RenderZone, instant: PosixNs) -> Option<f64> {
+    Some(match zone {
         RenderZone::Utc => 0.0,
         RenderZone::Fixed(off) => f64::from(off.seconds()) / 3600.0,
         RenderZone::Named(tz) => {
             let ts = jiff::Timestamp::from_nanosecond(instant.0).ok()?;
-            let info = tz.to_offset_info(ts);
-            let mut h = f64::from(info.offset().seconds()) / 3600.0;
-            if matches!(info.dst(), jiff::tz::Dst::Yes) {
-                h -= 1.0; // standard offset — the meridian is geographic, not clock
-            }
-            h
+            f64::from(tz.to_offset_info(ts).offset().seconds()) / 3600.0
         }
-    };
-    Some(meridian_of_offset(hours))
+    })
 }
 
 /// Resolve the [`ZoneStamp`] for `instant` in `zone`. `None` for [`RenderZone::Utc`]

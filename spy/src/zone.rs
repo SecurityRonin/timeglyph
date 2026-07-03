@@ -48,19 +48,21 @@ pub fn offset_spec(hours: f64) -> String {
 /// through unchanged.
 #[must_use]
 pub fn clean_label(name: &str) -> String {
-    if let Some(rest) = name.strip_prefix("Etc/GMT") {
-        if rest.is_empty() {
-            return "UTC".to_string();
+    if let Some(rest) = name.strip_prefix("Etc/") {
+        // Etc/* are non-geographic offset aliases; present them as their offset.
+        if let Some(gmt) = rest.strip_prefix("GMT") {
+            if let Ok(n) = gmt.parse::<i32>() {
+                // POSIX Etc/GMT sign is inverted; offset_spec gives "UTC" for zero.
+                let spec = offset_spec(f64::from(-n));
+                return if spec == "UTC" {
+                    spec
+                } else {
+                    format!("UTC{spec}")
+                };
+            }
         }
-        if let Ok(n) = rest.parse::<i32>() {
-            // POSIX Etc/GMT sign is inverted; offset_spec gives "UTC" for zero.
-            let spec = offset_spec(f64::from(-n));
-            return if spec == "UTC" {
-                spec
-            } else {
-                format!("UTC{spec}")
-            };
-        }
+        // Etc/GMT, Etc/UTC, Etc/UCT, Etc/Universal, Etc/Zulu, Etc/Greenwich → UTC.
+        return "UTC".to_string();
     }
     name.to_string()
 }
@@ -101,11 +103,10 @@ fn available() -> impl Iterator<Item = String> {
 /// sorted — the first level of the hierarchical picker.
 #[must_use]
 pub fn continents() -> Vec<String> {
-    // Non-geographic pseudo-regions: offset-alias bags with sign-inverted,
-    // duplicate names (Etc/GMT-8, SystemV/EST5, …). Excluded from the picker —
-    // pure offsets come from the map, and clean_label still tidies one that
-    // arrives that way.
-    const PSEUDO: &[&str] = &["Etc", "SystemV"];
+    // SystemV is a bag of sign-inverted offset aliases that clean_label doesn't
+    // tidy — excluded. Etc is kept: its menu is cleaned by menu_entries (deduped,
+    // offset-sorted) and clean_label rewrites its ids to plain offsets.
+    const PSEUDO: &[&str] = &["SystemV"];
     let mut set = std::collections::BTreeSet::new();
     for name in available() {
         if let Some((head, _)) = name.split_once('/') {
@@ -151,6 +152,35 @@ pub fn zones_in(continent: &str) -> Vec<String> {
     let mut v: Vec<String> = available().filter(|n| n.starts_with(&prefix)).collect();
     v.sort();
     v
+}
+
+/// The `(zone-name, display-label)` submenu entries for `continent`, sorted by
+/// UTC offset (at `at`) then name and deduplicated by label. This collapses the
+/// Etc region's many UTC aliases into a single `UTC` entry and orders its bands
+/// `UTC-12:00 → UTC+14:00`, rather than the lexical `Etc/GMT+1, +10, +11…` mess.
+#[must_use]
+pub fn menu_entries(continent: &str, at: PosixNs) -> Vec<(String, String)> {
+    let mut rows: Vec<(f64, String, String)> = zones_in(continent)
+        .into_iter()
+        .map(|z| {
+            let off = RenderZone::parse(&z)
+                .ok()
+                .and_then(|rz| tzinfo::offset_hours(&rz, at))
+                .unwrap_or(0.0);
+            let label = menu_label(&z, at);
+            (off, z, label)
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    let mut seen = std::collections::HashSet::new();
+    rows.into_iter()
+        .filter(|(_, _, label)| seen.insert(label.clone()))
+        .map(|(_, z, label)| (z, label))
+        .collect()
 }
 
 /// A Windows-style menu label: `(UTC-05:00) America/New_York · EST`, with the

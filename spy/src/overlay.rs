@@ -420,8 +420,8 @@ impl SpyApp {
                                 egui::ScrollArea::vertical()
                                     .max_height(max_h)
                                     .show(ui, |ui| {
-                                        for z in zone::zones_in(c) {
-                                            if ui.button(zone::menu_label(&z, at)).clicked() {
+                                        for (z, label) in zone::menu_entries(c, at) {
+                                            if ui.button(label).clicked() {
                                                 if let Some(zc) = parse_zone(&z) {
                                                     self.zone = zc;
                                                     changed = true;
