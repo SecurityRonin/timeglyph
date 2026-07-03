@@ -128,7 +128,7 @@ pub fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
         zone.label.starts_with("UTC") || zone.label.starts_with('+') || zone.label.starts_with('-');
     match tzinfo::stamp(&zone.zone, at) {
         Some(s) => {
-            let dst = if s.dst { " · DST" } else { "" };
+            let dst = if s.dst { " · ☀ DST" } else { "" };
             if label_is_offset {
                 return format!("⚠ {}{dst}", zone.label);
             }
