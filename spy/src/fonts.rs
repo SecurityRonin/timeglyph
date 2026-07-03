@@ -11,7 +11,7 @@
 /// Non-ASCII glyphs the overlay's own chrome renders. Each must have a glyph in
 /// some font [`fallback_fonts`] loads, or it renders as tofu. (Arial Unicode MS,
 /// the usual CJK face, lacks ◷ U+25F7 and ⚠ U+26A0 — hence the symbol face.)
-pub const UI_SYMBOLS: &[char] = &['◷', '⚠', '→', '…', '—', '·', '°'];
+pub const UI_SYMBOLS: &[char] = &['◷', '⚠', '🌐', '⚙', '→', '…', '—', '·', '°'];
 
 /// CJK-capable faces, most-preferred first. A `.ttc` collection loads face 0.
 pub const CJK_FONTS: &[&str] = &[

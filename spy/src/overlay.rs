@@ -4,10 +4,11 @@
 //! platform-specific.
 //!
 //! Presentation is a compact "time-instrument" inspector panel: each number is
-//! the subject; each candidate reading a `format · instant · label` row with an
-//! opt-in 干支 expansion; the raw source element a de-emphasised caption; and a
-//! footer selects the display timezone (UTC by default, any other zone "loud").
-//! High-contrast warm-dark palette (WCAG AA on `BG_DEEP`) with a brass accent.
+//! the subject; each candidate reading a `format · instant · label` row with a
+//! confidence badge and an optional 干支 expansion; the raw source element a
+//! de-emphasised caption; and a footer that selects the display timezone and
+//! opens settings (dark/light theme, whether to show 干支). Both palettes clear
+//! WCAG AA (see [`timeglyph_spy::theme`]).
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -15,26 +16,35 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{PosixNs, RenderZone};
+use timeglyph_spy::theme::{Palette, Theme};
 use timeglyph_spy::zone::{self, parse_zone, ZoneChoice};
 use timeglyph_spy::{ganzhi, text, tzinfo, tzmap};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
 
-// Warm "time instrument" palette. Text contrasts vs BG_DEEP (#14120F):
-// INK ~15:1, AMBER ~10:1, MUTE ~8:1, FAINT ~5:1 — all clear WCAG AA.
-const BG_DEEP: Color32 = Color32::from_rgb(20, 18, 15); // warm near-black
-const BG_CARD: Color32 = Color32::from_rgb(31, 28, 22);
-const BG_CHIP: Color32 = Color32::from_rgb(38, 31, 20); // amber-tinted
-const HAIRLINE: Color32 = Color32::from_rgb(52, 47, 38);
-const INK: Color32 = Color32::from_rgb(245, 241, 232); // warm white — datetime values
-const AMBER: Color32 = Color32::from_rgb(240, 180, 41); // brass accent — format + pillars
-const MUTE: Color32 = Color32::from_rgb(179, 169, 145); // labels
-const FAINT: Color32 = Color32::from_rgb(143, 134, 116); // captions
-const GLYPH: Color32 = Color32::from_rgb(92, 82, 64); // large empty-state mark
-
 /// How many readings to show per number.
 const MAX_READINGS: usize = 4;
+
+/// Session settings (never persisted — like the zone, a prior case's preferences
+/// can't silently apply to the next launch).
+#[derive(Clone, Copy)]
+struct Settings {
+    /// Dark (default) or light palette.
+    theme: Theme,
+    /// Whether to show the 干支 / lunisolar line (and, with it, the longitude
+    /// input, which only refines the 干支 hour pillar).
+    show_lunar: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            theme: Theme::default(),
+            show_lunar: true,
+        }
+    }
+}
 
 /// Open the overlay window and run until it is closed.
 pub fn run() -> Result<(), String> {
@@ -56,7 +66,7 @@ pub fn run() -> Result<(), String> {
         native_options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
-            install_theme(&cc.egui_ctx);
+            install_theme(&cc.egui_ctx, &Theme::default().palette());
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
             Ok(Box::new(SpyApp::new(latest)))
@@ -88,11 +98,11 @@ fn spawn_cursor_poll(ctx: egui::Context, latest: Arc<Mutex<String>>) {
 }
 
 /// Append the OS fallback fonts (a CJK face for the 干支 pillars + lunar date, a
-/// symbol face for the chrome's ◷ / ⚠) to both families. egui's bundled fonts
-/// carry no CJK/symbol glyphs, so without this those render as missing-glyph
-/// boxes (tofu); which glyphs the stack must cover is asserted by
-/// `tests/fonts.rs`. Loaded at runtime (not bundled); if the host has neither,
-/// the overlay still runs and only the uncovered glyphs degrade to tofu.
+/// symbol face for the chrome's ◷ / ⚠ / 🌐 / ⚙) to both families. egui's bundled
+/// fonts carry no CJK/symbol glyphs, so without this those render as missing-glyph
+/// boxes (tofu); which glyphs the stack must cover is asserted by `tests/fonts.rs`.
+/// Loaded at runtime (not bundled); if the host has neither, the overlay still
+/// runs and only the uncovered glyphs degrade to tofu.
 fn install_fonts(ctx: &egui::Context) {
     let stack = timeglyph_spy::fonts::fallback_fonts();
     if stack.is_empty() {
@@ -115,13 +125,18 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// Install the panel's warm-dark theme once at startup.
-fn install_theme(ctx: &egui::Context) {
-    let mut visuals = egui::Visuals::dark();
-    visuals.panel_fill = BG_DEEP;
-    visuals.window_fill = BG_DEEP;
-    visuals.override_text_color = Some(INK);
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, HAIRLINE);
+/// Apply a palette to egui's visuals (panel/window fill, default text colour,
+/// hairline). Re-applied each frame so a theme switch takes effect immediately.
+fn install_theme(ctx: &egui::Context, pal: &Palette) {
+    let mut visuals = if pal.base_dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
+    visuals.panel_fill = pal.bg_deep;
+    visuals.window_fill = pal.bg_deep;
+    visuals.override_text_color = Some(pal.ink);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, pal.hairline);
     ctx.set_visuals(visuals);
     ctx.style_mut(|s| s.spacing.item_spacing = egui::vec2(8.0, 6.0));
 }
@@ -151,6 +166,8 @@ struct SpyApp {
     /// (used to highlight the whole band, not a single polygon).
     show_map: bool,
     map_pick: Option<f64>,
+    /// Session settings (theme, whether to show 干支).
+    settings: Settings,
 }
 
 impl SpyApp {
@@ -168,12 +185,16 @@ impl SpyApp {
             longitude_input: String::new(),
             show_map: false,
             map_pick: None,
+            settings: Settings::default(),
         }
     }
 }
 
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let pal = self.settings.theme.palette();
+        install_theme(ctx, &pal);
+
         let mut dirty = false;
         let text = self
             .latest
@@ -206,7 +227,7 @@ impl eframe::App for SpyApp {
         egui::TopBottomPanel::bottom("zone_bar")
             .frame(
                 Frame::none()
-                    .fill(BG_DEEP)
+                    .fill(pal.bg_deep)
                     .inner_margin(Margin::symmetric(16.0, 8.0)),
             )
             .show(ctx, |ui| {
@@ -230,12 +251,13 @@ impl eframe::App for SpyApp {
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
+        let show_lunar = self.settings.show_lunar;
 
         let panel = Frame::none()
-            .fill(BG_DEEP)
+            .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source);
+            header(ui, &source, pal);
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -243,6 +265,7 @@ impl eframe::App for SpyApp {
                     ui,
                     "Hover an element with a number",
                     "Point at any on-screen value to decode it",
+                    pal,
                 );
             } else {
                 egui::ScrollArea::vertical()
@@ -250,16 +273,16 @@ impl eframe::App for SpyApp {
                     .show(ui, |ui| {
                         for nr in &hits {
                             Frame::none()
-                                .fill(BG_CARD)
+                                .fill(pal.bg_card)
                                 .rounding(Rounding::same(8.0))
                                 .inner_margin(Margin::symmetric(14.0, 12.0))
-                                .stroke(Stroke::new(1.0, HAIRLINE))
+                                .stroke(Stroke::new(1.0, pal.hairline))
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
                                     ui.label(
                                         RichText::new(&nr.number)
                                             .font(FontId::monospace(21.0))
-                                            .color(INK)
+                                            .color(pal.ink)
                                             .strong(),
                                     );
                                     ui.add_space(8.0);
@@ -271,12 +294,16 @@ impl eframe::App for SpyApp {
                                         .spacing([10.0, 8.0])
                                         .show(ui, |ui| {
                                             for r in &nr.readings {
-                                                chip_cell(ui, r);
-                                                datetime_cell(ui, r, &zone);
+                                                chip_cell(ui, r, pal);
+                                                datetime_cell(ui, r, &zone, pal);
                                                 ui.end_row();
-                                                ui.label(""); // empty col 1
-                                                ganzhi_cell(ui, r.instant, &zone, longitude);
-                                                ui.end_row();
+                                                if show_lunar {
+                                                    ui.label(""); // empty col 1
+                                                    ganzhi_cell(
+                                                        ui, r.instant, &zone, longitude, pal,
+                                                    );
+                                                    ui.end_row();
+                                                }
                                             }
                                         });
                                 });
@@ -321,21 +348,23 @@ fn now_instant() -> PosixNs {
 
 impl SpyApp {
     /// The footer time-zone control: an active summary (offset · abbr · DST at the
-    /// reference instant `at`), UTC/Local presets, and a Continent → Zone picker
-    /// (Windows-style, offset shown at selection). Returns `true` when the zone
-    /// changed. UTC is calm; any other zone renders "loud" (amber ⚠).
+    /// reference instant `at`), UTC/Local presets, a 🌐 map, a Continent → Zone
+    /// picker, a ⚙ settings menu (theme, show 干支), and — when 干支 is shown — a
+    /// longitude input. Returns `true` when the *zone* changed (settings changes
+    /// are purely presentational and need no re-decode).
     fn zone_footer(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
+        let pal = self.settings.theme.palette();
         let mut changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label(
                 RichText::new("time zone")
                     .font(FontId::proportional(11.0))
-                    .color(FAINT),
+                    .color(pal.faint),
             );
             let (fill, fg) = if self.zone.loud {
-                (BG_CHIP, AMBER)
+                (pal.bg_chip, pal.amber)
             } else {
-                (BG_CARD, MUTE)
+                (pal.bg_card, pal.mute)
             };
             let summary = zone_summary(&self.zone, at);
             Frame::none()
@@ -363,7 +392,11 @@ impl SpyApp {
                     changed = true;
                 }
             }
-            if ui.small_button("map").clicked() {
+            if ui
+                .small_button("🌐")
+                .on_hover_text("time-zone map")
+                .clicked()
+            {
                 self.show_map = !self.show_map;
             }
             // Continent → Zone picker. Iterate over clones so the closures don't
@@ -402,22 +435,43 @@ impl SpyApp {
                     });
             }
 
+            // ⚙ settings: theme + whether to show 干支. Purely presentational, so
+            // toggling them does not set `changed` (no re-decode needed).
+            ui.menu_button("⚙", |ui| {
+                ui.label(
+                    RichText::new("Theme")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
+                    ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
+                });
+                ui.separator();
+                ui.checkbox(&mut self.settings.show_lunar, "Show 干支 (lunar)");
+            })
+            .response
+            .on_hover_text("settings");
+
             // Global longitude (°E): refines every reading's 干支 hour pillar to
-            // true solar time. Optional — empty/invalid means no correction.
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new("long")
-                    .font(FontId::proportional(11.0))
-                    .color(FAINT),
-            );
-            let resp = ui.add(
-                egui::TextEdit::singleline(&mut self.longitude_input)
-                    .hint_text("°E")
-                    .desired_width(52.0)
-                    .font(FontId::monospace(12.0)),
-            );
-            if resp.changed() {
-                self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+            // true solar time. Only meaningful for 干支, so it is hidden when 干支
+            // is off. Optional — empty/invalid means no correction.
+            if self.settings.show_lunar {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("long")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.longitude_input)
+                        .hint_text("°E")
+                        .desired_width(52.0)
+                        .font(FontId::monospace(12.0)),
+                );
+                if resp.changed() {
+                    self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+                }
             }
         });
         changed
@@ -427,12 +481,12 @@ impl SpyApp {
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
 /// source element — context, not the subject (and it keeps sensitive surrounding
 /// text from dominating the panel).
-fn header(ui: &mut egui::Ui, source: &str) {
+fn header(ui: &mut egui::Ui, source: &str, pal: Palette) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("◷ timeglyph")
                 .font(FontId::monospace(15.0))
-                .color(AMBER)
+                .color(pal.amber)
                 .strong(),
         );
         if !source.is_empty() {
@@ -445,7 +499,7 @@ fn header(ui: &mut egui::Ui, source: &str) {
                 egui::Label::new(
                     RichText::new(text::ellipsize(&collapsed, 120))
                         .font(FontId::proportional(11.0))
-                        .color(FAINT),
+                        .color(pal.faint),
                 )
                 .wrap_mode(egui::TextWrapMode::Extend),
             );
@@ -455,16 +509,16 @@ fn header(ui: &mut egui::Ui, source: &str) {
 
 /// Grid column 1: the amber format chip. The verbose format name is a hover
 /// tooltip on the chip (not an always-shown line), keeping each reading compact.
-fn chip_cell(ui: &mut egui::Ui, r: &Reading) {
+fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     Frame::none()
-        .fill(BG_CHIP)
+        .fill(pal.bg_chip)
         .rounding(Rounding::same(4.0))
         .inner_margin(Margin::symmetric(6.0, 2.0))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(&r.format_id)
                     .font(FontId::monospace(11.0))
-                    .color(AMBER)
+                    .color(pal.amber)
                     .strong(),
             );
         })
@@ -474,13 +528,13 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading) {
 
 /// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
 /// DST (the numeric offset is already in `rendered`; a location alone is
-/// ambiguous, so these disambiguate), and an optional local tag.
-fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
+/// ambiguous, so these disambiguate), an optional local tag, and the confidence.
+fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(&r.rendered)
                 .font(FontId::monospace(14.0))
-                .color(INK),
+                .color(pal.ink),
         );
         if !r.local {
             if let Some(s) = tzinfo::stamp(zone, r.instant) {
@@ -489,7 +543,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
                     ui.label(
                         RichText::new(&s.abbr)
                             .font(FontId::monospace(11.0))
-                            .color(MUTE),
+                            .color(pal.mute),
                     );
                 }
                 if s.dst {
@@ -497,7 +551,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
                     ui.label(
                         RichText::new("DST")
                             .font(FontId::proportional(10.0))
-                            .color(AMBER)
+                            .color(pal.amber)
                             .strong(),
                     );
                 }
@@ -508,24 +562,24 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
             ui.label(
                 RichText::new("· local (no zone)")
                     .font(FontId::proportional(11.0))
-                    .color(FAINT),
+                    .color(pal.faint),
             );
         }
-        confidence_badge(ui, r);
+        confidence_badge(ui, r, pal);
     });
 }
 
 /// The engine's plausibility score as an `NN%` badge — amber when high, fading
 /// through muted to faint as it drops — with the named component breakdown on
 /// hover. Shown per reading so the ranking is legible, not just the order.
-fn confidence_badge(ui: &mut egui::Ui, r: &Reading) {
+fn confidence_badge(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     let pct = scan::confidence_pct(r.score);
     let color = if pct >= 67 {
-        AMBER
+        pal.amber
     } else if pct >= 34 {
-        MUTE
+        pal.mute
     } else {
-        FAINT
+        pal.faint
     };
     ui.add_space(8.0);
     let resp = ui.label(
@@ -544,14 +598,18 @@ fn confidence_badge(ui: &mut egui::Ui, r: &Reading) {
     }
 }
 
-/// The 干支 / lunisolar reading for one instant, shown compactly beneath every
-/// reading — ALWAYS visible, resolved at the display zone (the meridian) and
-/// refined by the optional global longitude (hour pillar → true solar time).
-/// A reading, not a verdict. Silently omitted if the engine cannot render it.
 /// Grid column 2 (row 2): the 干支 line, led by the lunar date so it left-aligns
-/// under the datetime above it, then the four pillars. Empty cell if the engine
-/// can't render (keeps the grid row intact).
-fn ganzhi_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude: Option<f64>) {
+/// under the datetime above it, then the four pillars. Resolved at the display
+/// zone (the meridian) and refined by the optional global longitude (hour pillar
+/// → true solar time). A reading, not a verdict. Empty cell if the engine can't
+/// render (keeps the grid row intact). Shown only when 干支 is enabled.
+fn ganzhi_cell(
+    ui: &mut egui::Ui,
+    instant: PosixNs,
+    zone: &RenderZone,
+    longitude: Option<f64>,
+    pal: Palette,
+) {
     let Ok(v) = ganzhi::ganzhi_view(instant, zone, longitude) else {
         ui.label("");
         return;
@@ -560,7 +618,7 @@ fn ganzhi_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
         ui.label(
             RichText::new(format!("{} · {}", v.lunar_date, v.solar_term_phrase()))
                 .font(FontId::proportional(10.5))
-                .color(FAINT),
+                .color(pal.faint),
         );
         ui.add_space(8.0);
         for (mark, pillar) in [
@@ -572,7 +630,7 @@ fn ganzhi_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
             ui.label(
                 RichText::new(format!("{mark}{pillar}"))
                     .font(FontId::monospace(11.0))
-                    .color(MUTE),
+                    .color(pal.mute),
             );
             ui.add_space(5.0);
         }
@@ -580,26 +638,26 @@ fn ganzhi_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, longitude
 }
 
 /// A calm centred placeholder instead of a debug string.
-fn empty_state(ui: &mut egui::Ui, title: &str, sub: &str) {
+fn empty_state(ui: &mut egui::Ui, title: &str, sub: &str, pal: Palette) {
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
         ui.label(
             RichText::new("◷")
                 .font(FontId::monospace(34.0))
-                .color(GLYPH),
+                .color(pal.glyph),
         );
         ui.add_space(10.0);
         ui.label(
             RichText::new(title)
                 .font(FontId::proportional(15.0))
-                .color(MUTE)
+                .color(pal.mute)
                 .strong(),
         );
         ui.add_space(4.0);
         ui.label(
             RichText::new(sub)
                 .font(FontId::proportional(12.0))
-                .color(FAINT),
+                .color(pal.faint),
         );
     });
 }
@@ -627,6 +685,7 @@ impl SpyApp {
         if !self.show_map {
             return false;
         }
+        let pal = self.settings.theme.palette();
         let mut changed = false;
         let mut open = true;
         egui::Window::new("time zone map")
@@ -639,13 +698,13 @@ impl SpyApp {
                          (Natural Earth · public domain · offset-keyed)",
                     )
                     .font(FontId::proportional(10.5))
-                    .color(FAINT),
+                    .color(pal.faint),
                 );
                 let w = ui.available_width();
                 let (rect, resp) =
                     ui.allocate_exact_size(egui::vec2(w, w / 2.0), egui::Sense::click());
                 let p = ui.painter_at(rect);
-                p.rect_filled(rect, Rounding::same(4.0), BG_DEEP);
+                p.rect_filled(rect, Rounding::same(4.0), pal.bg_deep);
                 let proj = |lon: f32, lat: f32| {
                     egui::pos2(
                         rect.left() + (lon + 180.0) / 360.0 * rect.width(),
@@ -657,9 +716,9 @@ impl SpyApp {
                     let selected = self.map_pick.is_some_and(|o| (o - r.offset).abs() < 0.01);
                     let fill = region_fill(r.offset, selected);
                     let stroke = if selected {
-                        Stroke::new(1.4, AMBER)
+                        Stroke::new(1.4, pal.amber)
                     } else {
-                        Stroke::new(0.4, HAIRLINE)
+                        Stroke::new(0.4, pal.hairline)
                     };
                     for ring in &r.rings {
                         let pts: Vec<egui::Pos2> = ring.iter().map(|c| proj(c[0], c[1])).collect();
