@@ -148,6 +148,19 @@ fn zone_summary_does_not_double_an_offset_label() {
 }
 
 #[test]
+fn zone_summary_is_label_abbr_equals_offset_without_a_warning() {
+    // "Asia/Shanghai (CST = UTC+08:00)" — no caution sign, abbr = offset in parens.
+    let z = zone::parse_zone("Asia/Shanghai").unwrap();
+    let s = zone::zone_summary(&z, WINTER);
+    assert!(!s.contains('⚠'), "no caution sign: {s}");
+    assert!(s.starts_with("Asia/Shanghai ("), "{s}");
+    assert!(s.contains("CST = UTC+08"), "{s}");
+    // Winter London is GMT.
+    let l = zone::zone_summary(&zone::parse_zone("Europe/London").unwrap(), WINTER);
+    assert!(l.contains("(GMT = UTC"), "{l}");
+}
+
+#[test]
 fn zone_summary_appends_offset_for_named_zones() {
     let z = zone::parse_zone("Asia/Shanghai").unwrap();
     let s = zone::zone_summary(&z, WINTER);
