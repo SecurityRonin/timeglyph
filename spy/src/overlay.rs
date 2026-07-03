@@ -331,24 +331,6 @@ impl eframe::App for SpyApp {
     }
 }
 
-/// The active-zone summary shown in the footer chip: `⚠ Europe/London ·
-/// UTC+01:00 BST · DST` for a named zone at `at`, or `UTC`. Because offset/DST
-/// are per-instant, the summary is resolved at the reference instant `at`.
-fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
-    match tzinfo::stamp(&zone.zone, at) {
-        Some(s) => {
-            let abbr = if s.abbr.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", s.abbr)
-            };
-            let dst = if s.dst { " · DST" } else { "" };
-            format!("⚠ {} · UTC{}{abbr}{dst}", zone.label, s.offset)
-        }
-        None => zone.label.clone(),
-    }
-}
-
 /// Current wall-clock instant, used as the footer's reference when no reading is
 /// on screen yet.
 fn now_instant() -> PosixNs {
@@ -375,7 +357,7 @@ impl SpyApp {
             } else {
                 (pal.bg_card, pal.mute)
             };
-            let summary = zone_summary(&self.zone, at);
+            let summary = zone::zone_summary(&self.zone, at);
             Frame::none()
                 .fill(fill)
                 .rounding(Rounding::same(4.0))

@@ -84,13 +84,46 @@ fn available() -> impl Iterator<Item = String> {
 /// sorted — the first level of the hierarchical picker.
 #[must_use]
 pub fn continents() -> Vec<String> {
+    // Non-geographic pseudo-regions: offset-alias bags with sign-inverted,
+    // duplicate names (Etc/GMT-8, SystemV/EST5, …). Excluded from the picker —
+    // pure offsets come from the map, and clean_label still tidies one that
+    // arrives that way.
+    const PSEUDO: &[&str] = &["Etc", "SystemV"];
     let mut set = std::collections::BTreeSet::new();
     for name in available() {
         if let Some((head, _)) = name.split_once('/') {
-            set.insert(head.to_string());
+            if !PSEUDO.contains(&head) {
+                set.insert(head.to_string());
+            }
         }
     }
     set.into_iter().collect()
+}
+
+/// The active-zone summary for the footer chip: `⚠ Asia/Shanghai · UTC+08:00 CST`
+/// for a named zone at `at`; just `⚠ UTC-05:00` when the label already encodes the
+/// offset (a fixed offset or a cleaned `Etc/GMT` zone — repeating it would double
+/// it); or the bare label for UTC. Offset/abbr/DST are per-instant, resolved at
+/// `at`.
+#[must_use]
+pub fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
+    let label_is_offset =
+        zone.label.starts_with("UTC") || zone.label.starts_with('+') || zone.label.starts_with('-');
+    match tzinfo::stamp(&zone.zone, at) {
+        Some(s) => {
+            let dst = if s.dst { " · DST" } else { "" };
+            if label_is_offset {
+                return format!("⚠ {}{dst}", zone.label);
+            }
+            let abbr = if s.abbr.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", s.abbr)
+            };
+            format!("⚠ {} · UTC{}{abbr}{dst}", zone.label, s.offset)
+        }
+        None => zone.label.clone(),
+    }
 }
 
 /// The full IANA zone names under `continent` (e.g. `Europe` → `Europe/London`),
