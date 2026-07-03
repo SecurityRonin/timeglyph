@@ -125,3 +125,12 @@ fn zone_summary_appends_offset_for_named_zones() {
     let s = zone::zone_summary(&z, WINTER);
     assert!(s.contains("Asia/Shanghai") && s.contains("UTC+08"), "{s}");
 }
+
+#[test]
+fn offset_spec_formats_hours_as_signed_hhmm() {
+    // The single offset formatter shared by clean_label and the map.
+    assert_eq!(zone::offset_spec(-5.0), "-05:00");
+    assert_eq!(zone::offset_spec(5.5), "+05:30");
+    assert_eq!(zone::offset_spec(14.0), "+14:00");
+    assert_eq!(zone::offset_spec(0.0), "UTC");
+}
