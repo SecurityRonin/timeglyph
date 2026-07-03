@@ -47,3 +47,14 @@ fn utc_needs_no_stamp() {
     // UTC readings already show `Z`; there is nothing to add.
     assert!(tzinfo::stamp(&RenderZone::Utc, SUMMER).is_none());
 }
+
+#[test]
+fn numeric_pseudo_abbreviation_is_suppressed() {
+    // Zones with no traditional letter code (Acre, many others) report a numeric
+    // "abbreviation" like `-05`, which just repeats the offset — suppress it so
+    // the summary isn't `UTC-05 -05`.
+    let acre = RenderZone::parse("America/Rio_Branco").unwrap();
+    let s = tzinfo::stamp(&acre, WINTER).unwrap();
+    assert!(s.offset.contains("-05"), "offset {}", s.offset);
+    assert!(s.abbr.is_empty(), "expected no abbr, got {:?}", s.abbr);
+}
