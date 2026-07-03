@@ -92,22 +92,50 @@ fn parse_zone_relabels_etc_gmt_to_its_offset() {
 }
 
 #[test]
-fn picker_excludes_nongeographic_pseudo_regions() {
-    // Etc/SystemV are offset-alias bags with confusing/duplicate names, not real
-    // regions — keep them out of the picker (offsets come from the map).
+fn picker_lists_etc_but_not_systemv() {
+    // Etc is restored (its menu is deduped + offset-sorted); SystemV stays out —
+    // its aliases aren't tidied and it's obscure.
     let cs = zone::continents();
-    assert!(
-        !cs.iter().any(|c| c == "Etc"),
-        "Etc must not be listed: {cs:?}"
-    );
+    assert!(cs.iter().any(|c| c == "Etc"), "Etc restored: {cs:?}");
     assert!(
         !cs.iter().any(|c| c == "SystemV"),
-        "SystemV must not be listed"
+        "SystemV stays out: {cs:?}"
     );
+    assert!(cs.iter().any(|c| c == "America"), "real regions present");
+}
+
+#[test]
+fn etc_utc_aliases_clean_to_plain_utc() {
+    for n in [
+        "Etc/UTC",
+        "Etc/Zulu",
+        "Etc/Greenwich",
+        "Etc/Universal",
+        "Etc/UCT",
+    ] {
+        assert_eq!(zone::clean_label(n), "UTC", "{n}");
+    }
+}
+
+#[test]
+fn etc_menu_entries_are_deduped_and_offset_sorted() {
+    let entries = zone::menu_entries("Etc", WINTER);
+    let labels: Vec<String> = entries.iter().map(|(_, l)| l.clone()).collect();
+    // No duplicate labels (the old bug was many identical "UTC").
+    let mut uniq = labels.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(uniq.len(), labels.len(), "duplicate labels: {labels:?}");
     assert!(
-        cs.iter().any(|c| c == "America"),
-        "real regions still present"
+        labels.iter().any(|l| l == "UTC"),
+        "has plain UTC: {labels:?}"
     );
+    // Offset-sorted: a negative offset precedes a positive one.
+    let neg = labels.iter().position(|l| l.contains("-12:00"));
+    let pos = labels.iter().position(|l| l.contains("+12:00"));
+    if let (Some(a), Some(b)) = (neg, pos) {
+        assert!(a < b, "not offset-sorted: {labels:?}");
+    }
 }
 
 #[test]

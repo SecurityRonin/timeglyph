@@ -15,6 +15,16 @@ fn approx(a: f64, b: f64) -> bool {
 }
 
 #[test]
+fn offset_hours_reads_the_zone_offset() {
+    let z = RenderZone::parse("+05:30").unwrap();
+    assert!(approx(tzinfo::offset_hours(&z, WINTER).unwrap(), 5.5));
+    assert!(approx(
+        tzinfo::offset_hours(&RenderZone::Utc, WINTER).unwrap(),
+        0.0
+    ));
+}
+
+#[test]
 fn meridian_of_offset_is_fifteen_degrees_per_hour() {
     // The shared offset→meridian formula (used by meridian_longitude and the map).
     assert!(approx(tzinfo::meridian_of_offset(8.0), 120.0));
