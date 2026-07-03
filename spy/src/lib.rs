@@ -6,6 +6,7 @@
 //! element picker and the layered overlay window) lives behind `#[cfg(windows)]`
 //! in the binary.
 
+pub mod fonts;
 pub mod ganzhi;
 pub mod scan;
 pub mod text;

@@ -58,3 +58,8 @@ core-graphics = "0.24"
 # which forbids it). The scan core stays safe.
 [lints.rust]
 unsafe_code = "allow"
+
+[dev-dependencies]
+# Read font cmaps to assert the overlay's fallback stack covers every UI symbol
+# (regression guard against tofu). Pure-safe parser; dev-only.
+ttf-parser = "0.25"
