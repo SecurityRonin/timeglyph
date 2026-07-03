@@ -367,18 +367,6 @@ impl SpyApp {
                             .strong(),
                     );
                 });
-            ui.add_space(8.0);
-            if !is_utc && ui.small_button("UTC").clicked() {
-                self.zone = ZoneChoice::default();
-                self.map_pick = None;
-                changed = true;
-            }
-            if !is_local && ui.small_button("Local").clicked() {
-                if let Some(z) = parse_zone("local") {
-                    self.zone = z;
-                    changed = true;
-                }
-            }
 
             // Global longitude (°E): refines every reading's 干支 hour pillar to
             // true solar time. Only meaningful for 干支, so it is hidden when 干支
@@ -436,6 +424,19 @@ impl SpyApp {
                 .clicked()
             {
                 self.show_map = !self.show_map;
+            }
+            // Quick presets to the right of the map button (each hidden when it's
+            // the active zone).
+            if !is_utc && ui.small_button("UTC").clicked() {
+                self.zone = ZoneChoice::default();
+                self.map_pick = None;
+                changed = true;
+            }
+            if !is_local && ui.small_button("Local").clicked() {
+                if let Some(z) = parse_zone("local") {
+                    self.zone = z;
+                    changed = true;
+                }
             }
         });
         // Selecting a location defaults the 干支 longitude to that zone's central
