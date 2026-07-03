@@ -65,3 +65,28 @@ fn menu_label_is_windows_style_with_offset_and_abbr() {
         "{l}"
     );
 }
+
+#[test]
+fn etc_gmt_labels_show_the_true_offset() {
+    // POSIX Etc/GMT sign is inverted: Etc/GMT-8 is 8h EAST of UTC = UTC+08:00.
+    assert_eq!(zone::clean_label("Etc/GMT-8"), "UTC+08:00");
+    assert_eq!(zone::clean_label("Etc/GMT+5"), "UTC-05:00");
+    assert_eq!(zone::clean_label("Etc/GMT-14"), "UTC+14:00");
+    assert_eq!(zone::clean_label("Etc/GMT"), "UTC");
+    assert_eq!(zone::clean_label("Etc/GMT0"), "UTC");
+}
+
+#[test]
+fn normal_zone_names_pass_through_clean_label() {
+    assert_eq!(zone::clean_label("Asia/Shanghai"), "Asia/Shanghai");
+    assert_eq!(zone::clean_label("America/New_York"), "America/New_York");
+}
+
+#[test]
+fn parse_zone_relabels_etc_gmt_to_its_offset() {
+    let z = zone::parse_zone("Etc/GMT-8").unwrap();
+    assert_eq!(
+        z.label, "UTC+08:00",
+        "footer chip must not show the reversed id"
+    );
+}
