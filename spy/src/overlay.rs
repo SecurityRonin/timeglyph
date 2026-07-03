@@ -166,6 +166,8 @@ struct SpyApp {
     /// (used to highlight the whole band, not a single polygon).
     show_map: bool,
     map_pick: Option<f64>,
+    /// Whether the settings dialog is open.
+    show_settings: bool,
     /// Session settings (theme, whether to show 干支).
     settings: Settings,
 }
@@ -185,6 +187,7 @@ impl SpyApp {
             longitude_input: String::new(),
             show_map: false,
             map_pick: None,
+            show_settings: false,
             settings: Settings::default(),
         }
     }
@@ -240,6 +243,8 @@ impl eframe::App for SpyApp {
         if self.map_window(ctx) {
             dirty = true;
         }
+        // The settings dialog (bottom-right), if open.
+        self.settings_window(ctx);
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
@@ -290,15 +295,17 @@ impl eframe::App for SpyApp {
                                     // (a tab stop), so every datetime — and the
                                     // 干支 line beneath it — left-aligns in column 2.
                                     egui::Grid::new(nr.number.as_str())
-                                        .num_columns(2)
+                                        .num_columns(3)
                                         .spacing([10.0, 8.0])
                                         .show(ui, |ui| {
                                             for r in &nr.readings {
+                                                conf_cell(ui, r, pal);
                                                 chip_cell(ui, r, pal);
                                                 datetime_cell(ui, r, &zone, pal);
                                                 ui.end_row();
                                                 if show_lunar {
-                                                    ui.label(""); // empty col 1
+                                                    ui.label(""); // col 1 (confidence)
+                                                    ui.label(""); // col 2 (format)
                                                     ganzhi_cell(
                                                         ui, r.instant, &zone, longitude, pal,
                                                     );
@@ -435,24 +442,6 @@ impl SpyApp {
                     });
             }
 
-            // ⚙ settings: theme + whether to show 干支. Purely presentational, so
-            // toggling them does not set `changed` (no re-decode needed).
-            ui.menu_button("⚙", |ui| {
-                ui.label(
-                    RichText::new("Theme")
-                        .font(FontId::proportional(11.0))
-                        .color(pal.faint),
-                );
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
-                    ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
-                });
-                ui.separator();
-                ui.checkbox(&mut self.settings.show_lunar, "Show 干支 (lunar)");
-            })
-            .response
-            .on_hover_text("settings");
-
             // Global longitude (°E): refines every reading's 干支 hour pillar to
             // true solar time. Only meaningful for 干支, so it is hidden when 干支
             // is off. Optional — empty/invalid means no correction.
@@ -474,7 +463,51 @@ impl SpyApp {
                 }
             }
         });
+        // ⚙ opens the settings dialog from the footer's bottom-right corner.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("⚙").font(FontId::proportional(15.0)))
+                        .frame(false),
+                )
+                .on_hover_text("settings")
+                .clicked()
+            {
+                self.show_settings = !self.show_settings;
+            }
+        });
         changed
+    }
+
+    /// The settings dialog (theme, whether to show 干支), anchored to the window's
+    /// bottom-right. Opened by the footer's ⚙ button; session-scoped, not saved.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        if !self.show_settings {
+            return;
+        }
+        let pal = self.settings.theme.palette();
+        let mut open = self.show_settings;
+        egui::Window::new("Settings")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::RIGHT_BOTTOM, [-12.0, -12.0])
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new("Theme")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
+                    ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
+                });
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(6.0);
+                ui.checkbox(&mut self.settings.show_lunar, "Show 干支 (lunar)");
+            });
+        self.show_settings = open;
     }
 }
 
@@ -565,28 +598,36 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                     .color(pal.faint),
             );
         }
-        confidence_badge(ui, r, pal);
     });
 }
 
-/// The engine's plausibility score as an `NN%` badge — amber when high, fading
-/// through muted to faint as it drops — with the named component breakdown on
-/// hover. Shown per reading so the ranking is legible, not just the order.
-fn confidence_badge(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
+/// Grid column 1: the confidence — a red/amber/green dot (by the engine's
+/// plausibility score) then the `NN%` — with the named component breakdown on
+/// hover. Left of the format chip so the ranking reads at a glance, not just from
+/// the row order.
+fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     let pct = scan::confidence_pct(r.score);
-    let color = if pct >= 67 {
-        pal.amber
+    let dot = if pct >= 67 {
+        pal.conf_high
     } else if pct >= 34 {
-        pal.mute
+        pal.conf_mid
     } else {
-        pal.faint
+        pal.conf_low
     };
-    ui.add_space(8.0);
-    let resp = ui.label(
-        RichText::new(format!("{pct}%"))
-            .font(FontId::proportional(11.0))
-            .color(color),
-    );
+    let resp = ui
+        .horizontal(|ui| {
+            ui.label(
+                RichText::new("●")
+                    .font(FontId::proportional(10.0))
+                    .color(dot),
+            );
+            ui.label(
+                RichText::new(format!("{pct}%"))
+                    .font(FontId::monospace(11.0))
+                    .color(pal.mute),
+            );
+        })
+        .response;
     if !r.components.is_empty() {
         let tip = r
             .components
@@ -594,7 +635,7 @@ fn confidence_badge(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
             .map(|(n, v)| format!("{n}  {v:.2}"))
             .collect::<Vec<_>>()
             .join("\n");
-        resp.on_hover_text(format!("plausibility score\n{tip}"));
+        resp.on_hover_text(format!("plausibility score  {pct}%\n{tip}"));
     }
 }
 
