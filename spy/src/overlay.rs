@@ -838,9 +838,12 @@ impl SpyApp {
 /// distinguishable; the selected region fills amber.
 fn region_fill(offset: f64, selected: bool) -> Color32 {
     if selected {
-        return Color32::from_rgb(120, 84, 24);
+        return Color32::from_rgb(214, 158, 46); // amber — the picked band stands out
     }
+    // Slate land tones that read clearly against the near-black map background,
+    // stepped by offset so adjacent zone bands are distinguishable (the earlier
+    // rgb ~30-46 was invisible on the dark panel).
     let k = u8::try_from((offset.round() as i64).rem_euclid(3)).unwrap_or(0);
-    let b = 30 + k * 8;
-    Color32::from_rgb(b, b.saturating_sub(3), b.saturating_sub(10))
+    let base = 60 + k * 22; // 60 / 82 / 104
+    Color32::from_rgb(base.saturating_sub(8), base, base.saturating_add(10))
 }
