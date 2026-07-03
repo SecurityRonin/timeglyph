@@ -62,6 +62,43 @@ pub struct NumberReadings {
 /// runs (counts, ids, 4-digit years) are dropped so the overlay stays quiet.
 const MIN_DIGITS: usize = 8;
 
+/// The whitespace-delimited token of `text` containing the UTF-16 code-unit
+/// offset `utf16_offset` — how macOS Accessibility reports the character under a
+/// screen point. Used to narrow a hovered element's *entire* value (e.g. an
+/// iTerm buffer) to just the token under the cursor before decoding.
+///
+/// `None` if the offset is out of range or lands on whitespace (nothing to
+/// decode there). The offset is in UTF-16 units, so it is mapped past non-BMP
+/// characters to the right Unicode scalar.
+#[must_use]
+pub fn word_at(text: &str, utf16_offset: usize) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    // Find the char whose UTF-16 span contains the offset.
+    let mut acc = 0usize;
+    let mut idx = None;
+    for (i, ch) in chars.iter().enumerate() {
+        let next = acc + ch.len_utf16();
+        if utf16_offset < next {
+            idx = Some(i);
+            break;
+        }
+        acc = next;
+    }
+    let idx = idx?;
+    if chars[idx].is_whitespace() {
+        return None;
+    }
+    let mut start = idx;
+    while start > 0 && !chars[start - 1].is_whitespace() {
+        start -= 1;
+    }
+    let mut end = idx;
+    while end + 1 < chars.len() && !chars[end + 1].is_whitespace() {
+        end += 1;
+    }
+    Some(chars[start..=end].iter().collect())
+}
+
 /// Extract candidate numeric runs (>= [`MIN_DIGITS`] consecutive ASCII digits)
 /// from `text`, in order of appearance.
 #[must_use]
