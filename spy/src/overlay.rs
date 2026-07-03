@@ -382,19 +382,32 @@ impl SpyApp {
                     changed = true;
                 }
             }
-            if ui
-                .small_button("🌐")
-                .on_hover_text("time-zone map")
-                .clicked()
-            {
-                self.show_map = !self.show_map;
+
+            // Global longitude (°E): refines every reading's 干支 hour pillar to
+            // true solar time. Only meaningful for 干支, so it is hidden when 干支
+            // is off. Optional — empty/invalid means no correction.
+            if self.settings().show_lunar {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("longitude")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.longitude_input)
+                        .hint_text("°E")
+                        .desired_width(52.0)
+                        .font(FontId::monospace(12.0)),
+                );
+                if resp.changed() {
+                    self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+                }
             }
-            // One cascading picker: a Region button whose menu lists continents,
-            // each a submenu of its zones. egui clips popups to this small
-            // always-on-top window, so both levels are wrapped in a height-bounded
-            // ScrollArea — a long zone list scrolls instead of being truncated at
-            // the window edge. Iterate over a clone so the closure doesn't alias
-            // the field it reads.
+        });
+        // Row 2: the cascading Region → Zone picker, then the 🌐 map toggle to its
+        // right. egui clips popups to this small window, so both menu levels use a
+        // height-bounded ScrollArea (a long zone list scrolls, not truncated).
+        ui.horizontal(|ui| {
             let conts = self.continents.clone();
             let max_h = (ui.ctx().screen_rect().height() - 48.0).max(160.0);
             ui.menu_button("Region / Zone…", |ui| {
@@ -420,26 +433,12 @@ impl SpyApp {
                         }
                     });
             });
-
-            // Global longitude (°E): refines every reading's 干支 hour pillar to
-            // true solar time. Only meaningful for 干支, so it is hidden when 干支
-            // is off. Optional — empty/invalid means no correction.
-            if self.settings().show_lunar {
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("longitude")
-                        .font(FontId::proportional(11.0))
-                        .color(pal.faint),
-                );
-                let resp = ui.add(
-                    egui::TextEdit::singleline(&mut self.longitude_input)
-                        .hint_text("°E")
-                        .desired_width(52.0)
-                        .font(FontId::monospace(12.0)),
-                );
-                if resp.changed() {
-                    self.longitude = ganzhi::parse_longitude(&self.longitude_input);
-                }
+            if ui
+                .small_button("🌐")
+                .on_hover_text("time-zone map")
+                .clicked()
+            {
+                self.show_map = !self.show_map;
             }
         });
         // Selecting a location defaults the 干支 longitude to that zone's central
