@@ -10,6 +10,7 @@
 use timeglyph::RenderZone;
 use timeglyph_spy::scan;
 
+mod macmenu;
 mod overlay;
 mod picker;
 

@@ -67,6 +67,8 @@ pub fn run() -> Result<(), String> {
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
             install_theme(&cc.egui_ctx, &Theme::default().palette());
+            // Native macOS app menu with a standard Settings… item (⌘,).
+            crate::macmenu::install();
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
             Ok(Box::new(SpyApp::new(latest)))
@@ -197,6 +199,11 @@ impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let pal = self.settings.theme.palette();
         install_theme(ctx, &pal);
+
+        // The native macOS menu's Settings… item opens the same dialog as ⚙.
+        if crate::macmenu::settings_selected() {
+            self.show_settings = true;
+        }
 
         let mut dirty = false;
         let text = self

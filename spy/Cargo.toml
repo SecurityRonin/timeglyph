@@ -53,6 +53,7 @@ windows = { version = "0.58", features = [
 accessibility-sys = "0.1"
 core-foundation = "0.10"
 core-graphics = "0.24"
+muda = "0.19.3"
 
 # The Win32 / UIA shell is FFI — unsafe is required here (unlike the engine,
 # which forbids it). The scan core stays safe.
