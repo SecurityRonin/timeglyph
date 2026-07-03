@@ -9,7 +9,7 @@ use timeglyph::{interpret, PosixNs, RenderZone, TzSemantics};
 /// One decoded reading of a number: which format, the rendered instant, and the
 /// human label — kept as separate fields so the GUI can style each distinctly.
 /// `Display` renders the console form `"<format>  <rendered>  (<label>)"`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Reading {
     /// The format identifier (e.g. `unix`, `webkit`).
     pub format_id: String,
@@ -23,6 +23,20 @@ pub struct Reading {
     /// The absolute instant, kept so a caller can re-express it (e.g. the 干支
     /// expansion) without re-decoding.
     pub instant: PosixNs,
+    /// The engine's overall plausibility score in `[0, 1]` — the ranking signal,
+    /// shown as a confidence percentage (see [`confidence_pct`]). A heuristic
+    /// plausibility measure, not a calibrated probability.
+    pub score: f64,
+    /// The named component scores behind [`score`](Self::score), for a breakdown
+    /// tooltip (e.g. `("in_window", 1.0)`).
+    pub components: Vec<(&'static str, f64)>,
+}
+
+/// Render a `[0, 1]` plausibility [`score`](Reading::score) as a whole-number
+/// percentage, clamped to `0..=100`.
+#[must_use]
+pub fn confidence_pct(score: f64) -> u8 {
+    (score.clamp(0.0, 1.0) * 100.0).round() as u8
 }
 
 impl fmt::Display for Reading {
@@ -36,7 +50,7 @@ impl fmt::Display for Reading {
 }
 
 /// One number found in the inspected text, with its top datetime readings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NumberReadings {
     /// The numeric run as it appeared in the text.
     pub number: String,
@@ -135,6 +149,8 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
         label: c.label.to_string(),
         local,
         instant: c.instant,
+        score: c.score,
+        components: c.components,
     }
 }
 

@@ -511,7 +511,37 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone) {
                     .color(FAINT),
             );
         }
+        confidence_badge(ui, r);
     });
+}
+
+/// The engine's plausibility score as an `NN%` badge — amber when high, fading
+/// through muted to faint as it drops — with the named component breakdown on
+/// hover. Shown per reading so the ranking is legible, not just the order.
+fn confidence_badge(ui: &mut egui::Ui, r: &Reading) {
+    let pct = scan::confidence_pct(r.score);
+    let color = if pct >= 67 {
+        AMBER
+    } else if pct >= 34 {
+        MUTE
+    } else {
+        FAINT
+    };
+    ui.add_space(8.0);
+    let resp = ui.label(
+        RichText::new(format!("{pct}%"))
+            .font(FontId::proportional(11.0))
+            .color(color),
+    );
+    if !r.components.is_empty() {
+        let tip = r
+            .components
+            .iter()
+            .map(|(n, v)| format!("{n}  {v:.2}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        resp.on_hover_text(format!("plausibility score\n{tip}"));
+    }
 }
 
 /// The 干支 / lunisolar reading for one instant, shown compactly beneath every
