@@ -45,5 +45,8 @@ pub fn fallback_fonts() -> Vec<(&'static str, Vec<u8>)> {
     if let Some(bytes) = first_readable(CJK_FONTS) {
         stack.push(("cjk", bytes));
     }
+    if let Some(bytes) = first_readable(SYMBOL_FONTS) {
+        stack.push(("sym", bytes));
+    }
     stack
 }

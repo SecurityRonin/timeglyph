@@ -58,35 +58,30 @@ pub fn run() -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-/// Load a CJK + symbol capable font (for 干支 pillars, `▸` arrows, etc.) as a
-/// fallback for both families. egui's default fonts have no CJK/symbol glyphs, so
-/// without this those render as missing-glyph boxes (tofu). Loaded from the OS at
-/// runtime (not bundled); if none is found, non-CJK still works and CJK degrades
-/// to tofu rather than failing.
+/// Append the OS fallback fonts (a CJK face for the 干支 pillars + lunar date, a
+/// symbol face for the chrome's ◷ / ⚠) to both families. egui's bundled fonts
+/// carry no CJK/symbol glyphs, so without this those render as missing-glyph
+/// boxes (tofu); which glyphs the stack must cover is asserted by
+/// `tests/fonts.rs`. Loaded at runtime (not bundled); if the host has neither,
+/// the overlay still runs and only the uncovered glyphs degrade to tofu.
 fn install_fonts(ctx: &egui::Context) {
-    // First single-face TTF / collection face-0 that reads wins. Ordered by
-    // platform; `.ttc` collections load face 0 (FontData::index defaults to 0).
-    const CANDIDATES: &[&str] = &[
-        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf", // macOS: CJK + symbols
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/PingFang.ttc",
-        "C:\\Windows\\Fonts\\msyh.ttc",   // Windows: Microsoft YaHei
-        "C:\\Windows\\Fonts\\simsun.ttc", // SimSun
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", // Linux
-    ];
-    let Some(bytes) = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok()) else {
+    let stack = timeglyph_spy::fonts::fallback_fonts();
+    if stack.is_empty() {
         return;
-    };
+    }
     let mut fonts = egui::FontDefinitions::default();
-    fonts
-        .font_data
-        .insert("cjk".to_owned(), egui::FontData::from_owned(bytes));
-    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+    let mut keys = Vec::new();
+    for (key, bytes) in stack {
         fonts
-            .families
-            .entry(family)
-            .or_default()
-            .push("cjk".to_owned());
+            .font_data
+            .insert(key.to_owned(), egui::FontData::from_owned(bytes));
+        keys.push(key.to_owned());
+    }
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        let entry = fonts.families.entry(family).or_default();
+        for key in &keys {
+            entry.push(key.clone());
+        }
     }
     ctx.set_fonts(fonts);
 }
