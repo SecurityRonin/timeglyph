@@ -418,21 +418,17 @@ impl SpyApp {
                         }
                     });
             });
-            if ui
-                .small_button("🌐")
-                .on_hover_text("time-zone map")
-                .clicked()
-            {
+            if ui.button("🌐").on_hover_text("time-zone map").clicked() {
                 self.show_map = !self.show_map;
             }
             // Quick presets to the right of the map button (each hidden when it's
             // the active zone).
-            if !is_utc && ui.small_button("UTC").clicked() {
+            if !is_utc && ui.button("UTC").clicked() {
                 self.zone = ZoneChoice::default();
                 self.map_pick = None;
                 changed = true;
             }
-            if !is_local && ui.small_button("Local").clicked() {
+            if !is_local && ui.button("Local").clicked() {
                 if let Some(z) = parse_zone("local") {
                     self.zone = z;
                     changed = true;
