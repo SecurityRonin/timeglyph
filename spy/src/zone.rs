@@ -125,20 +125,22 @@ pub fn continents() -> Vec<String> {
 /// `at`.
 #[must_use]
 pub fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
+    // A label that is already an offset (fixed offset, or a cleaned Etc/GMT zone)
+    // stands alone — nothing to add.
     let label_is_offset =
         zone.label.starts_with("UTC") || zone.label.starts_with('+') || zone.label.starts_with('-');
     match tzinfo::stamp(&zone.zone, at) {
+        Some(_) if label_is_offset => zone.label.clone(),
         Some(s) => {
-            let dst = if s.dst { " · ☀ DST" } else { "" };
-            if label_is_offset {
-                return format!("⚠ {}{dst}", zone.label);
-            }
-            let abbr = if s.abbr.is_empty() {
-                String::new()
+            let dst = if s.dst { " ☀ DST" } else { "" };
+            // "Local (HKT = UTC+08:00)" / "Asia/Shanghai (CST = UTC+08:00)", or
+            // "(UTC+08:00)" when the zone has no letter code. No caution sign — the
+            // always-amber chip and the explicit offset already flag the frame.
+            if s.abbr.is_empty() {
+                format!("{} (UTC{}{dst})", zone.label, s.offset)
             } else {
-                format!(" {}", s.abbr)
-            };
-            format!("⚠ {} · UTC{}{abbr}{dst}", zone.label, s.offset)
+                format!("{} ({} = UTC{}{dst})", zone.label, s.abbr, s.offset)
+            }
         }
         None => zone.label.clone(),
     }
