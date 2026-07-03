@@ -175,3 +175,25 @@ fn offset_spec_formats_hours_as_signed_hhmm() {
     assert_eq!(zone::offset_spec(14.0), "+14:00");
     assert_eq!(zone::offset_spec(0.0), "UTC");
 }
+
+#[test]
+fn local_zone_summary_names_the_resolved_zone() {
+    // "Local" alone doesn't say which zone — surface the resolved IANA name:
+    // "Local (Asia/Shanghai (CST) = UTC+08:00)".
+    let z = ZoneChoice {
+        zone: RenderZone::parse("Asia/Shanghai").unwrap(),
+        label: "Local".to_string(),
+        loud: true,
+    };
+    let s = zone::zone_summary(&z, WINTER);
+    assert!(s.starts_with("Local ("), "{s}");
+    assert!(s.contains("Asia/Shanghai (CST)"), "{s}");
+    assert!(s.contains("= UTC+08"), "{s}");
+    assert!(!s.contains('⚠'), "{s}");
+}
+
+#[test]
+fn continent_label_lowercases_etc() {
+    assert_eq!(zone::continent_label("Etc"), "etc.");
+    assert_eq!(zone::continent_label("America"), "America");
+}
