@@ -27,6 +27,27 @@ impl Default for ZoneChoice {
     }
 }
 
+/// A human display label for a zone name. The POSIX `Etc/GMT±N` ids invert the
+/// sign (`Etc/GMT-8` is 8h *east* = UTC+08:00), which misleads, so they are
+/// rewritten to their true offset; every other name passes through unchanged.
+#[must_use]
+pub fn clean_label(name: &str) -> String {
+    if let Some(rest) = name.strip_prefix("Etc/GMT") {
+        if rest.is_empty() {
+            return "UTC".to_string();
+        }
+        if let Ok(n) = rest.parse::<i32>() {
+            let real = -n; // POSIX Etc/GMT sign is inverted
+            if real == 0 {
+                return "UTC".to_string();
+            }
+            let sign = if real < 0 { '-' } else { '+' };
+            return format!("UTC{sign}{:02}:00", real.abs());
+        }
+    }
+    name.to_string()
+}
+
 /// Parse a zone spec into a [`ZoneChoice`], or `None` if unrecognised.
 ///
 /// `""` / `UTC` / `Z` → UTC (the calm default); `local` / `system` → the host's
@@ -49,7 +70,7 @@ pub fn parse_zone(input: &str) -> Option<ZoneChoice> {
     let zone = RenderZone::parse(s).ok()?;
     Some(ZoneChoice {
         zone,
-        label: s.to_string(),
+        label: clean_label(s),
         loud: true,
     })
 }
@@ -87,6 +108,12 @@ pub fn zones_in(continent: &str) -> Vec<String> {
 /// the offset is shown at selection time.
 #[must_use]
 pub fn menu_label(name: &str, at: PosixNs) -> String {
+    // A sign-inverted Etc/GMT id is already its own offset once cleaned — show it
+    // once rather than "(UTC+08:00) Etc/GMT-8".
+    let clean = clean_label(name);
+    if clean != name {
+        return clean;
+    }
     match RenderZone::parse(name) {
         Ok(zone) => match tzinfo::stamp(&zone, at) {
             Some(s) => {
