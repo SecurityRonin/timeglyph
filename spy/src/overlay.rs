@@ -147,11 +147,8 @@ struct SpyApp {
     /// The display timezone. Session-scoped, UTC by default: it never persists
     /// across launches, so a prior case's zone can't silently apply to the next.
     zone: ZoneChoice,
-    /// Cached IANA continents (first level of the Continent → Zone picker).
+    /// Cached IANA continents (top level of the cascading Region → Zone picker).
     continents: Vec<String>,
-    /// Selected continent and its zones (second level of the picker).
-    continent: String,
-    zones: Vec<String>,
     /// Optional global longitude (°E): refines every reading's 干支 hour pillar to
     /// true solar time. Its footer entry buffer.
     longitude: Option<f64>,
@@ -177,8 +174,6 @@ impl SpyApp {
             hits: Vec::new(),
             zone: ZoneChoice::default(),
             continents: zone::continents(),
-            continent: String::new(),
-            zones: Vec::new(),
             longitude: None,
             longitude_input: String::new(),
             show_map: false,
@@ -396,7 +391,6 @@ impl SpyApp {
             ui.add_space(8.0);
             if ui.small_button("UTC").clicked() {
                 self.zone = ZoneChoice::default();
-                self.continent.clear();
                 self.map_pick = None;
                 changed = true;
             }
@@ -413,41 +407,25 @@ impl SpyApp {
             {
                 self.show_map = !self.show_map;
             }
-            // Continent → Zone picker. Iterate over clones so the closures don't
-            // alias the fields they mutate.
+            // One cascading picker: a Region button whose menu lists continents,
+            // each a submenu of its zones (pops to the side). Iterate over a clone
+            // so the closure doesn't alias the field it reads.
             let conts = self.continents.clone();
-            egui::ComboBox::from_id_salt("tz_continent")
-                .selected_text(if self.continent.is_empty() {
-                    "Region…".to_string()
-                } else {
-                    self.continent.clone()
-                })
-                .show_ui(ui, |ui| {
-                    for c in &conts {
-                        if ui.selectable_label(&self.continent == c, c).clicked() {
-                            self.continent = c.clone();
-                            self.zones = zone::zones_in(c);
-                        }
-                    }
-                });
-            let zones = self.zones.clone();
-            if !zones.is_empty() {
-                egui::ComboBox::from_id_salt("tz_zone")
-                    .selected_text("Zone…")
-                    .show_ui(ui, |ui| {
-                        for z in &zones {
-                            if ui
-                                .selectable_label(false, zone::menu_label(z, at))
-                                .clicked()
-                            {
-                                if let Some(zc) = parse_zone(z) {
+            ui.menu_button("Region / Zone…", |ui| {
+                for c in &conts {
+                    ui.menu_button(c, |ui| {
+                        for z in zone::zones_in(c) {
+                            if ui.button(zone::menu_label(&z, at)).clicked() {
+                                if let Some(zc) = parse_zone(&z) {
                                     self.zone = zc;
                                     changed = true;
                                 }
+                                ui.close_menu();
                             }
                         }
                     });
-            }
+                }
+            });
 
             // Global longitude (°E): refines every reading's 干支 hour pillar to
             // true solar time. Only meaningful for 干支, so it is hidden when 干支
