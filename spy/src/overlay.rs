@@ -346,6 +346,9 @@ impl SpyApp {
     fn zone_footer(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
         let pal = self.settings().theme.palette();
         let mut changed = false;
+        // Hide the preset button for the zone that's already active.
+        let is_utc = matches!(self.zone.zone, RenderZone::Utc);
+        let is_local = self.zone.label == "Local";
         ui.horizontal_wrapped(|ui| {
             ui.label(
                 RichText::new("time zone")
@@ -371,12 +374,12 @@ impl SpyApp {
                     );
                 });
             ui.add_space(8.0);
-            if ui.small_button("UTC").clicked() {
+            if !is_utc && ui.small_button("UTC").clicked() {
                 self.zone = ZoneChoice::default();
                 self.map_pick = None;
                 changed = true;
             }
-            if ui.small_button("Local").clicked() {
+            if !is_local && ui.small_button("Local").clicked() {
                 if let Some(z) = parse_zone("local") {
                     self.zone = z;
                     changed = true;
