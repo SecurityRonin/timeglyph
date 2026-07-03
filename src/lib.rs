@@ -184,6 +184,8 @@ pub enum Unit {
     Seconds,
     /// Milliseconds (Java/JS).
     Millis,
+    /// Centiseconds — 10-millisecond units (Sonyflake's embedded time field).
+    CentiSecond,
     /// Microseconds (Chrome/WebKit, PostgreSQL).
     Micros,
     /// 100-nanosecond intervals (FILETIME, .NET ticks).
@@ -201,6 +203,7 @@ impl Unit {
         match self {
             Self::Seconds => 1_000_000_000,
             Self::Millis => 1_000_000,
+            Self::CentiSecond => 10_000_000,
             Self::Micros => 1_000,
             Self::HundredNanos => 100,
             Self::Nanos => 1,
@@ -216,6 +219,7 @@ impl Unit {
     pub const fn sub_second_digits(self) -> u32 {
         match self {
             Self::Seconds | Self::Days => 0,
+            Self::CentiSecond => 2,
             Self::Millis => 3,
             Self::Micros => 6,
             Self::HundredNanos => 7,
@@ -321,7 +325,11 @@ impl Format {
             Strategy::Embedded { .. } | Strategy::LinearFloat { .. } => 8,
             Strategy::LinearInt { unit, .. } => match unit {
                 Unit::Seconds | Unit::Days => 4,
-                Unit::Millis | Unit::Micros | Unit::HundredNanos | Unit::Nanos => 8,
+                Unit::CentiSecond
+                | Unit::Millis
+                | Unit::Micros
+                | Unit::HundredNanos
+                | Unit::Nanos => 8,
             },
         }
     }

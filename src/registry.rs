@@ -53,6 +53,316 @@ fn decode_fat_dos(value: i64) -> Result<PosixNs, ChronoError> {
     Ok(PosixNs(ts.as_nanosecond()))
 }
 
+/// Build an instant from packed civil fields read as naive UTC (the [`Format`]
+/// carries `LocalNaive` so callers know it is wall-clock, not real UTC). Invalid
+/// fields surface as an error, never a panic. Shared by the packed decoders.
+fn packed_civil(
+    year: i16,
+    month: i8,
+    day: i8,
+    hour: i8,
+    minute: i8,
+    second: i8,
+) -> Result<PosixNs, ChronoError> {
+    let dt = jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0)
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    let ts = dt
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        // cov:unreachable: to_zoned(UTC) of an already-valid civil datetime cannot fail.
+        .map_err(|e| ChronoError::Render(e.to_string()))?
+        .timestamp();
+    Ok(PosixNs(ts.as_nanosecond()))
+}
+
+/// exFAT 32-bit packed timestamp (MSB-first): year(7,+1980) month(4) day(5)
+/// hour(5) minute(6) 2-second(5). LOCAL time. [Microsoft exFAT spec]
+fn decode_exfat(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "exFAT packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        1980 + ((p >> 25) & 0x7F) as i16,
+        ((p >> 21) & 0x0F) as i8,
+        ((p >> 16) & 0x1F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 5) & 0x3F) as i8,
+        ((p & 0x1F) * 2) as i8,
+    )
+}
+
+/// Microsoft DTTM 32-bit packed date (MSB-first): dayOfWeek(3, ignored)
+/// year(9,+1900) month(4) day(5) hour(5) minute(6); no seconds. LOCAL time.
+fn decode_dttm(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "DTTM packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        1900 + ((p >> 20) & 0x1FF) as i16,
+        ((p >> 16) & 0x0F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 6) & 0x1F) as i8,
+        (p & 0x3F) as i8,
+        0,
+    )
+}
+
+/// Samsung/LG BitDate: the 4 bytes are byte-reversed, then MSB-first year(12)
+/// month(4) day(5) hour(5) minute(6); no seconds. LOCAL time.
+fn decode_bitdate(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value)
+        .map_err(|_| ChronoError::OutOfRange {
+            what: "BitDate packed value (not a u32)",
+            value: i128::from(value),
+        })?
+        .swap_bytes();
+    packed_civil(
+        ((p >> 20) & 0xFFF) as i16,
+        ((p >> 16) & 0x0F) as i8,
+        ((p >> 11) & 0x1F) as i8,
+        ((p >> 6) & 0x1F) as i8,
+        (p & 0x3F) as i8,
+        0,
+    )
+}
+
+/// Bitwise Decimal: a decimal value bit-packed year(>>20) month(&15 at >>16)
+/// day(&31 at >>11) hour(&31 at >>6) minute(&63); no seconds. LOCAL time.
+fn decode_bitdec(value: i64) -> Result<PosixNs, ChronoError> {
+    if value < 0 {
+        return Err(ChronoError::OutOfRange {
+            what: "Bitwise Decimal value (negative)",
+            value: i128::from(value),
+        });
+    }
+    packed_civil(
+        i16::try_from(value >> 20).map_err(|_| ChronoError::OutOfRange {
+            what: "Bitwise Decimal year",
+            value: i128::from(value),
+        })?,
+        ((value >> 16) & 15) as i8,
+        ((value >> 11) & 31) as i8,
+        ((value >> 6) & 31) as i8,
+        (value & 63) as i8,
+        0,
+    )
+}
+
+/// Binary-Coded-Decimal: 12 decimal digits as pairs YY(+2000) MM DD HH MM SS,
+/// LOCAL time. The value is read as its zero-padded 12-digit decimal string.
+fn decode_bcd(value: i64) -> Result<PosixNs, ChronoError> {
+    if !(0..1_000_000_000_000).contains(&value) {
+        return Err(ChronoError::OutOfRange {
+            what: "BCD value (not 12 decimal digits)",
+            value: i128::from(value),
+        });
+    }
+    let s = format!("{value:012}");
+    let pair = |i: usize| -> i8 { s[i..i + 2].parse().unwrap_or(-1) };
+    packed_civil(
+        2000 + i16::from(pair(0)),
+        pair(2),
+        pair(4),
+        pair(6),
+        pair(8),
+        pair(10),
+    )
+}
+
+/// Motorola 6-byte timestamp: one byte per field — year(+1970) month day hour
+/// minute second. UTC.
+fn decode_moto(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Motorola (not a 6-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    packed_civil(
+        1970 + i16::from(((v >> 40) & 0xFF) as u8),
+        byte(32),
+        byte(24),
+        byte(16),
+        byte(8),
+        byte(0),
+    )
+}
+
+/// Symantec AV 6-byte timestamp: like Motorola, but the month byte is +1. UTC.
+fn decode_symantec(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Symantec (not a 6-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    packed_civil(
+        1970 + i16::from(((v >> 40) & 0xFF) as u8),
+        byte(32).wrapping_add(1),
+        byte(24),
+        byte(16),
+        byte(8),
+        byte(0),
+    )
+}
+
+/// DVR (WFS/DHFS) 32-bit packed timestamp (MSB-first): year(6,+2000) month(4)
+/// day(5) hour(5) minute(6) second(6). LOCAL time.
+fn decode_dvr(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = u32::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "DVR packed value (not a u32)",
+        value: i128::from(value),
+    })?;
+    packed_civil(
+        2000 + ((p >> 26) & 0x3F) as i16,
+        ((p >> 22) & 0x0F) as i8,
+        ((p >> 17) & 0x1F) as i8,
+        ((p >> 12) & 0x1F) as i8,
+        ((p >> 6) & 0x3F) as i8,
+        (p & 0x3F) as i8,
+    )
+}
+
+/// Nokia S40 7-byte timestamp: year(BE u16) then month/day/hour/minute/second,
+/// each a raw byte value. UTC.
+fn decode_ns40(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Nokia S40 (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = i16::try_from((v >> 40) & 0xFFFF).map_err(|_| ChronoError::OutOfRange {
+        what: "Nokia S40 year",
+        value: i128::from(value),
+    })?;
+    packed_civil(yr, byte(32), byte(24), byte(16), byte(8), byte(0))
+}
+
+/// Nokia S40 LE: like ns40 but the year u16 is little-endian. UTC.
+fn decode_ns40le(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "Nokia S40 LE (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = i16::try_from((((v >> 40) & 0xFFFF) as u16).swap_bytes()).map_err(|_| {
+        ChronoError::OutOfRange {
+            what: "Nokia S40 LE year",
+            value: i128::from(value),
+        }
+    })?;
+    packed_civil(yr, byte(32), byte(24), byte(16), byte(8), byte(0))
+}
+
+/// JET LogTime 8-byte timestamp, reversed field order: sec min hour day month
+/// year(+1900), then 2 filler bytes. UTC.
+fn decode_logtime(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value).map_err(|_| ChronoError::OutOfRange {
+        what: "JET LogTime (negative)",
+        value: i128::from(value),
+    })?;
+    let byte = |sh: u32| ((v >> sh) & 0xFF) as i8;
+    let yr = 1900 + ((v >> 16) & 0xFF) as i16;
+    packed_civil(yr, byte(24), byte(32), byte(40), byte(48), byte(56))
+}
+
+/// Decode one nibble-swapped semi-octet byte/pair to its decimal value, or -1
+/// (an invalid field that `packed_civil` will reject) when a nibble exceeds 9.
+fn semi_pair(low: u8, high: u8) -> i8 {
+    i8::try_from(low * 10 + high).unwrap_or(-1)
+}
+
+/// Semi-Octet decimal: 12 digits, each pair nibble-swapped → YY(+2000) MM DD HH
+/// MM SS. LOCAL time.
+fn decode_semioctet(value: i64) -> Result<PosixNs, ChronoError> {
+    if !(0..1_000_000_000_000).contains(&value) {
+        return Err(ChronoError::OutOfRange {
+            what: "Semi-Octet (not 12 decimal digits)",
+            value: i128::from(value),
+        });
+    }
+    let s = format!("{value:012}");
+    let b = s.as_bytes();
+    let pair = |i: usize| semi_pair(b[i + 1] - b'0', b[i] - b'0');
+    packed_civil(
+        2000 + i16::from(pair(0)),
+        pair(2),
+        pair(4),
+        pair(6),
+        pair(8),
+        pair(10),
+    )
+}
+
+/// GSM 7-byte semi-octet timestamp: per byte nibble-swap → decimal, YY(+2000)
+/// MM DD HH MM SS, then a timezone byte (ignored). UTC.
+fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = u64::try_from(value)
+        .ok()
+        .filter(|v| *v <= 0xFF_FFFF_FFFF_FFFF)
+        .ok_or(ChronoError::OutOfRange {
+            what: "GSM (not a 7-byte value)",
+            value: i128::from(value),
+        })?;
+    let semi = |sh: u32| {
+        let byte = ((v >> sh) & 0xFF) as u8;
+        semi_pair(byte & 0x0F, byte >> 4)
+    };
+    packed_civil(
+        2000 + i16::from(semi(48)),
+        semi(40),
+        semi(32),
+        semi(24),
+        semi(16),
+        semi(8),
+    )
+}
+
+/// Nokia time LE: 4 bytes reversed, then a two's-complement count of seconds
+/// remaining before 2050 (`to_int − 0xFFFF_FFFF + secs(1970→2050)`). UTC.
+fn decode_nokiale(value: i64) -> Result<PosixNs, ChronoError> {
+    let p = i64::from(
+        u32::try_from(value)
+            .map_err(|_| ChronoError::OutOfRange {
+                what: "Nokia LE (not a u32)",
+                value: i128::from(value),
+            })?
+            .swap_bytes(),
+    );
+    let unix = p - 0xFFFF_FFFF + 2_524_608_000; // secs(1970→2050)
+    Ok(PosixNs(i128::from(unix) * 1_000_000_000))
+}
+
+/// SQL Server `datetime`: 8 bytes = int32 days since 1900-01-01 + uint32 ticks
+/// of 1/300 second. UTC.
+fn decode_sqlserver(value: i64) -> Result<PosixNs, ChronoError> {
+    let v = value as u64;
+    let days = i128::from((v >> 32) as i32);
+    let ticks = v & 0xFFFF_FFFF;
+    if ticks >= 25_920_000 {
+        // 300 ticks/s × 86400 s — a tick count of a full day or more is invalid.
+        return Err(ChronoError::OutOfRange {
+            what: "SQL Server datetime ticks (>= one day)",
+            value: i128::from(ticks),
+        });
+    }
+    let ns = SQLSERVER_EPOCH_NS
+        + days * 86_400 * 1_000_000_000
+        + (i128::from(ticks) * 1_000_000_000) / 300;
+    Ok(PosixNs(ns))
+}
+
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
 // (seconds between the format epoch and 1970-01-01) × 1e9.
 const NS: i128 = 1_000_000_000;
@@ -65,11 +375,16 @@ const POSTGRES_EPOCH_NS: i128 = 946_684_800 * NS; //     2000-01-01  (PostgreSQL
                                                   // Julian Day 0 = noon, 24 Nov 4714 BC (proleptic Gregorian). unix_seconds(JD 0)
                                                   // = (0 - 2440587.5) × 86400, since JD 2440587.5 == the Unix epoch (SQLite docs).
 const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
-// Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
+// Modified Julian Day 0 = 1858-11-17 00:00 UTC (= JD − 2400000.5). MJD 40587 =
+// 1970-01-01, so MJD day 0 is 40587 days before the Unix epoch.
+const MJD_EPOCH_NS: i128 = -3_506_716_800 * NS;
+const SQLSERVER_EPOCH_NS: i128 = -2_208_988_800 * NS; // 1900-01-01 (SQL Server datetime)
+                                                      // Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
 const MS: i128 = 1_000_000;
 const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
 const DISCORD_EPOCH_NS: i128 = 1_420_070_400_000 * MS; // 2015-01-01 (Discord)
-                                                       // KSUID epoch: Unix second 1_400_000_000 == 2014-05-13T16:53:20Z (Segment KSUID).
+const SONY_EPOCH_NS: i128 = 1_409_529_600 * NS; //        2014-09-01 (Sonyflake, 10ms units)
+                                                // KSUID epoch: Unix second 1_400_000_000 == 2014-05-13T16:53:20Z (Segment KSUID).
 const KSUID_EPOCH_NS: i128 = 1_400_000_000 * NS;
 
 // Plausibility window for auto-detect ranking: 1990-01-01 .. 2040-01-01.
@@ -394,6 +709,185 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::Seconds,
         },
         citation: "TikTok ID (Unix-seconds epoch, 32-bit shift); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    // --- Packed bit-field formats (HANDOFF §5a long tail), LOCAL/naive time,
+    // each cross-checked vs the MIT time-decode oracle (tests/packed.rs). ------
+    Format {
+        id: "exfat",
+        label: "exFAT packed timestamp (LOCAL time)",
+        family: "exFAT filesystem",
+        strategy: Strategy::Packed(decode_exfat),
+        citation: "Microsoft exFAT spec (32-bit packed timestamp); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "dttm",
+        label: "Microsoft DTTM packed date (LOCAL time)",
+        family: "Microsoft Compound File / Office DTTM",
+        strategy: Strategy::Packed(decode_dttm),
+        citation: "Microsoft DTTM packed date (year since 1900); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bitdate",
+        label: "Samsung/LG BitDate (byte-reversed packed, LOCAL time)",
+        family: "Samsung / LG device timestamps",
+        strategy: Strategy::Packed(decode_bitdate),
+        citation: "Samsung/LG BitDate (byte-reversed 32-bit packed); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bitdec",
+        label: "Bitwise Decimal packed date (LOCAL time)",
+        family: "Bitwise Decimal packed timestamps",
+        strategy: Strategy::Packed(decode_bitdec),
+        citation: "Bitwise Decimal (decimal bit-packed date); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "bcd",
+        label: "Binary-Coded-Decimal YYMMDDHHMMSS (LOCAL time)",
+        family: "BCD digit-pair timestamps",
+        strategy: Strategy::Packed(decode_bcd),
+        citation: "Binary-Coded-Decimal (YY+2000 MM DD HH MM SS pairs); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "moto",
+        label: "Motorola 6-byte timestamp",
+        family: "Motorola device timestamps",
+        strategy: Strategy::Packed(decode_moto),
+        citation: "Motorola 6-byte (one byte per field, year+1970); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "symantec",
+        label: "Symantec AV 6-byte timestamp",
+        family: "Symantec antivirus logs",
+        strategy: Strategy::Packed(decode_symantec),
+        citation: "Symantec AV 6-byte (year+1970, month+1); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "dvr",
+        label: "DVR (WFS/DHFS) packed timestamp (LOCAL time)",
+        family: "DVR WFS / DHFS filesystems",
+        strategy: Strategy::Packed(decode_dvr),
+        citation: "DVR WFS/DHFS 32-bit packed (year since 2000); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "sony",
+        label: "Sonyflake ID (10ms units since 2014-09-01, <<24)",
+        family: "Sonyflake distributed IDs",
+        strategy: Strategy::Embedded {
+            epoch_ns: SONY_EPOCH_NS,
+            shift_bits: 24,
+            unit: Unit::CentiSecond,
+        },
+        citation: "Sonyflake (id>>24 in 10ms units, 2014-09-01 epoch); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "ns40",
+        label: "Nokia S40 7-byte timestamp",
+        family: "Nokia S40 devices",
+        strategy: Strategy::Packed(decode_ns40),
+        citation: "Nokia S40 7-byte (year BE u16 + field bytes); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "ns40le",
+        label: "Nokia S40 7-byte timestamp (LE year)",
+        family: "Nokia S40 devices",
+        strategy: Strategy::Packed(decode_ns40le),
+        citation: "Nokia S40 7-byte, little-endian year u16; vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "logtime",
+        label: "JET LogTime 8-byte timestamp",
+        family: "Microsoft JET / ESE database logs",
+        strategy: Strategy::Packed(decode_logtime),
+        citation: "JET LogTime (reversed field bytes, year+1900); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "semioctet",
+        label: "Semi-Octet decimal (LOCAL time)",
+        family: "Semi-octet (nibble-swapped) timestamps",
+        strategy: Strategy::Packed(decode_semioctet),
+        citation: "Semi-Octet decimal (nibble-swapped pairs, YY+2000); vs time-decode",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "gsm",
+        label: "GSM 7-byte semi-octet timestamp",
+        family: "GSM mobile timestamps",
+        strategy: Strategy::Packed(decode_gsm),
+        citation: "GSM semi-octet (per-byte nibble swap + tz byte); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "nokiale",
+        label: "Nokia time LE (seconds before 2050)",
+        family: "Nokia devices",
+        strategy: Strategy::Packed(decode_nokiale),
+        citation: "Nokia LE (byte-reversed two's-complement seconds before 2050); vs time-decode",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "mjd",
+        label: "Modified Julian Day (float days since 1858-11-17)",
+        family: "astronomy / VMS / scientific timestamps",
+        strategy: Strategy::LinearFloat {
+            epoch_ns: MJD_EPOCH_NS,
+            unit: Unit::Days,
+        },
+        citation: "Modified Julian Day (JD − 2400000.5; day 0 = 1858-11-17)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "sqlserver",
+        label: "SQL Server datetime (days since 1900 + 1/300s ticks)",
+        family: "Microsoft SQL Server datetime",
+        strategy: Strategy::Packed(decode_sqlserver),
+        citation: "SQL Server datetime (int32 days since 1900-01-01 + uint32 1/300s ticks)",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,
