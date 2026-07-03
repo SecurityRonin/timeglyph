@@ -355,11 +355,9 @@ impl SpyApp {
                     .font(FontId::proportional(11.0))
                     .color(pal.faint),
             );
-            let (fill, fg) = if self.zone.loud {
-                (pal.bg_chip, pal.amber)
-            } else {
-                (pal.bg_card, pal.mute)
-            };
+            // The zone status is always highlighted amber — including UTC — so the
+            // active frame is unmistakable at a glance.
+            let (fill, fg) = (pal.bg_chip, pal.amber);
             let summary = zone::zone_summary(&self.zone, at);
             Frame::none()
                 .fill(fill)
