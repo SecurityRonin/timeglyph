@@ -44,3 +44,21 @@ fn text_tones_clear_wcag_aa_on_panel() {
         assert!(r >= 3.0, "{theme:?} faint: contrast {r:.2} < 3.0");
     }
 }
+
+#[test]
+fn confidence_dots_are_visible_on_panel() {
+    // The traffic-light confidence dots are indicators, not text, but must still
+    // read against the panel on both themes (AA non-text / UI ≥ 3:1) — the light
+    // palette especially, where a bright amber/green would wash out.
+    for theme in [Theme::Dark, Theme::Light] {
+        let p = theme.palette();
+        for (name, c) in [
+            ("conf_high", p.conf_high),
+            ("conf_mid", p.conf_mid),
+            ("conf_low", p.conf_low),
+        ] {
+            let r = contrast(c, p.bg_deep);
+            assert!(r >= 3.0, "{theme:?} {name}: contrast {r:.2} < 3.0");
+        }
+    }
+}
