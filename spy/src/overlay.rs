@@ -9,6 +9,7 @@
 //! footer selects the display timezone (UTC by default, any other zone "loud").
 //! High-contrast warm-dark palette (WCAG AA on `BG_DEEP`) with a brass accent.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eframe::egui;
@@ -37,7 +38,11 @@ const MAX_READINGS: usize = 4;
 
 /// Open the overlay window and run until it is closed.
 pub fn run() -> Result<(), String> {
-    let picker = Picker::new()?;
+    // Fail-fast: verify the picker initializes (e.g. Accessibility permission is
+    // granted) before opening the window. The poll thread builds its own picker
+    // so the AX handle / COM apartment stays on that thread; this probe is
+    // dropped immediately.
+    let _ = Picker::new()?;
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([560.0, 400.0])
@@ -52,10 +57,34 @@ pub fn run() -> Result<(), String> {
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
             install_theme(&cc.egui_ctx);
-            Ok(Box::new(SpyApp::new(picker)))
+            let latest = Arc::new(Mutex::new(String::new()));
+            spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
+            Ok(Box::new(SpyApp::new(latest)))
         }),
     )
     .map_err(|e| e.to_string())
+}
+
+/// Poll the element under the cursor on a background thread so the render thread
+/// never blocks on the (cross-process, sometimes slow) AX / UI-Automation read.
+/// Writes the latest text into `latest` and wakes the UI only when it changes.
+/// The picker is built here so its AX handle / COM apartment stays on this thread.
+fn spawn_cursor_poll(ctx: egui::Context, latest: Arc<Mutex<String>>) {
+    std::thread::spawn(move || {
+        let Ok(picker) = Picker::new() else { return };
+        let mut prev = String::new();
+        loop {
+            let text = picker.text_under_cursor().unwrap_or_default();
+            if text != prev {
+                prev.clone_from(&text);
+                if let Ok(mut slot) = latest.lock() {
+                    *slot = text;
+                }
+                ctx.request_repaint();
+            }
+            std::thread::sleep(Duration::from_millis(70));
+        }
+    });
 }
 
 /// Append the OS fallback fonts (a CJK face for the 干支 pillars + lunar date, a
@@ -98,7 +127,9 @@ fn install_theme(ctx: &egui::Context) {
 }
 
 struct SpyApp {
-    picker: Picker,
+    /// Latest text under the cursor, produced by the background poll thread; the
+    /// render thread only reads this snapshot (never the AX/UIA API directly).
+    latest: Arc<Mutex<String>>,
     last_text: String,
     /// The raw element text under the cursor (shown as a de-emphasised caption).
     source: String,
@@ -123,9 +154,9 @@ struct SpyApp {
 }
 
 impl SpyApp {
-    fn new(picker: Picker) -> Self {
+    fn new(latest: Arc<Mutex<String>>) -> Self {
         Self {
-            picker,
+            latest,
             last_text: String::new(),
             source: String::new(),
             hits: Vec::new(),
@@ -144,7 +175,11 @@ impl SpyApp {
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut dirty = false;
-        let text = self.picker.text_under_cursor().unwrap_or_default();
+        let text = self
+            .latest
+            .lock()
+            .map(|slot| slot.clone())
+            .unwrap_or_default();
         if text != self.last_text {
             self.last_text.clone_from(&text);
             let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
@@ -253,8 +288,10 @@ impl eframe::App for SpyApp {
 
         self.hits = hits;
 
-        // Poll the cursor a few times a second without busy-spinning.
-        ctx.request_repaint_after(Duration::from_millis(200));
+        // The background poll thread drives repaints when the cursor's element
+        // changes; a slow heartbeat keeps the footer's live clock and hover
+        // states fresh without busy-spinning the render thread.
+        ctx.request_repaint_after(Duration::from_secs(1));
     }
 }
 
