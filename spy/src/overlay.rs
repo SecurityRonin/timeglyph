@@ -598,6 +598,16 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                             .strong(),
                     );
                 }
+            } else if r.rendered.ends_with('Z') {
+                // UTC display zone: show a "UTC" designator like a named zone shows
+                // its abbreviation, for consistency — even though the value's own
+                // `Z` already says UTC.
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("UTC")
+                        .font(FontId::monospace(11.0))
+                        .color(pal.mute),
+                );
             }
         }
         if r.local {
