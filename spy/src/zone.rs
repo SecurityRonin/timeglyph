@@ -27,9 +27,25 @@ impl Default for ZoneChoice {
     }
 }
 
+/// Format a UTC offset in hours as the `parse_zone` spec form — `±HH:MM`, or
+/// `UTC` for zero. `-5.0` → `-05:00`, `5.5` → `+05:30`, `0.0` → `UTC`. The single
+/// offset formatter shared by [`clean_label`] and the map.
+#[must_use]
+pub fn offset_spec(hours: f64) -> String {
+    if hours == 0.0 {
+        return "UTC".to_string();
+    }
+    let sign = if hours < 0.0 { '-' } else { '+' };
+    let a = hours.abs();
+    let h = a.trunc() as u32;
+    let m = ((a - a.trunc()) * 60.0).round() as u32;
+    format!("{sign}{h:02}:{m:02}")
+}
+
 /// A human display label for a zone name. The POSIX `Etc/GMT±N` ids invert the
 /// sign (`Etc/GMT-8` is 8h *east* = UTC+08:00), which misleads, so they are
-/// rewritten to their true offset; every other name passes through unchanged.
+/// rewritten to their true offset (via [`offset_spec`]); every other name passes
+/// through unchanged.
 #[must_use]
 pub fn clean_label(name: &str) -> String {
     if let Some(rest) = name.strip_prefix("Etc/GMT") {
@@ -37,12 +53,13 @@ pub fn clean_label(name: &str) -> String {
             return "UTC".to_string();
         }
         if let Ok(n) = rest.parse::<i32>() {
-            let real = -n; // POSIX Etc/GMT sign is inverted
-            if real == 0 {
-                return "UTC".to_string();
-            }
-            let sign = if real < 0 { '-' } else { '+' };
-            return format!("UTC{sign}{:02}:00", real.abs());
+            // POSIX Etc/GMT sign is inverted; offset_spec gives "UTC" for zero.
+            let spec = offset_spec(f64::from(-n));
+            return if spec == "UTC" {
+                spec
+            } else {
+                format!("UTC{spec}")
+            };
         }
     }
     name.to_string()

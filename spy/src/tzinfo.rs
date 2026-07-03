@@ -17,6 +17,13 @@ pub struct ZoneStamp {
     pub dst: bool,
 }
 
+/// Central meridian (degrees east) of a UTC offset in hours — offset × 15°. The
+/// single offset→meridian formula, shared by [`meridian_longitude`] and the map.
+#[must_use]
+pub fn meridian_of_offset(hours: f64) -> f64 {
+    hours * 15.0
+}
+
 /// The central meridian of `zone` at `instant`, in degrees east — its *standard*
 /// UTC offset × 15°. DST is removed (a zone's geography doesn't shift in summer),
 /// so New York is `-75.0` in both seasons and London `0.0` whether GMT or BST.
@@ -37,7 +44,7 @@ pub fn meridian_longitude(zone: &RenderZone, instant: PosixNs) -> Option<f64> {
             h
         }
     };
-    Some(hours * 15.0)
+    Some(meridian_of_offset(hours))
 }
 
 /// Resolve the [`ZoneStamp`] for `instant` in `zone`. `None` for [`RenderZone::Utc`]

@@ -720,19 +720,6 @@ fn empty_state(ui: &mut egui::Ui, title: &str, sub: &str, pal: Palette) {
     });
 }
 
-/// Format a UTC offset (hours) as a `parse_zone` spec: `-5.0` → `-05:00`,
-/// `5.5` → `+05:30`, `0.0` → `UTC`.
-fn offset_spec(off: f64) -> String {
-    if off == 0.0 {
-        return "UTC".to_string();
-    }
-    let sign = if off < 0.0 { '-' } else { '+' };
-    let a = off.abs();
-    let h = a.trunc() as u32;
-    let m = ((a - a.trunc()) * 60.0).round() as u32;
-    format!("{sign}{h:02}:{m:02}")
-}
-
 impl SpyApp {
     /// The clickable world time-zone map (a floating window). Region *boundaries*
     /// are drawn (Natural Earth, public domain); clicking resolves the point to a
@@ -796,13 +783,13 @@ impl SpyApp {
                             let spec = pick
                                 .iana
                                 .clone()
-                                .unwrap_or_else(|| offset_spec(pick.offset));
+                                .unwrap_or_else(|| zone::offset_spec(pick.offset));
                             if let Some(z) = parse_zone(&spec) {
                                 self.zone = z;
                                 self.map_pick = Some(pick.offset);
                                 // The map band offset is already standard time, so
-                                // its meridian is offset × 15° directly.
-                                self.set_longitude(pick.offset * 15.0);
+                                // its meridian follows directly.
+                                self.set_longitude(tzinfo::meridian_of_offset(pick.offset));
                                 changed = true;
                             }
                         }
