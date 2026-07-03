@@ -28,6 +28,10 @@ pub struct Palette {
     pub mute: Color32,
     pub faint: Color32,
     pub glyph: Color32,
+    /// Confidence traffic-light dots: high (green), mid (amber), low (red).
+    pub conf_high: Color32,
+    pub conf_mid: Color32,
+    pub conf_low: Color32,
     pub base_dark: bool,
 }
 
@@ -54,6 +58,9 @@ pub const DARK: Palette = Palette {
     mute: Color32::from_rgb(179, 169, 145), // labels
     faint: Color32::from_rgb(143, 134, 116), // captions
     glyph: Color32::from_rgb(92, 82, 64),  // large empty-state mark
+    conf_high: Color32::from_rgb(63, 185, 80), // green
+    conf_mid: Color32::from_rgb(240, 180, 41), // amber
+    conf_low: Color32::from_rgb(229, 83, 75), // red
     base_dark: true,
 };
 
@@ -70,5 +77,8 @@ pub const LIGHT: Palette = Palette {
     mute: Color32::from_rgb(92, 84, 66), // labels
     faint: Color32::from_rgb(122, 112, 90), // captions
     glyph: Color32::from_rgb(201, 191, 168), // large empty-state mark
+    conf_high: Color32::from_rgb(26, 127, 55), // dark green (visible on light)
+    conf_mid: Color32::from_rgb(138, 90, 0), // bronze
+    conf_low: Color32::from_rgb(196, 52, 43), // dark red
     base_dark: false,
 };
