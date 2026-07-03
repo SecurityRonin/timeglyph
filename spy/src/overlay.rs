@@ -41,7 +41,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: Theme::default(),
-            show_lunar: true,
+            show_lunar: false,
         }
     }
 }
