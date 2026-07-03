@@ -19,3 +19,4 @@ and are reflected in the shipped v0.3.0 code.
 | [0006](0006-single-crate-humble-object.md) | One crate, lib + thin CLI (Humble Object) — no `-core` split |
 | [0007](0007-clean-room-validation.md) | Clean-room validation: specs + `time_decode` oracle; never decompile DCode |
 | [0008](0008-convention-relative-lunisolar.md) | Lunisolar conversion is convention-relative — `--tz` required |
+| [0009](0009-spy-zone-display-conventions.md) | timeglyph-spy zone & time display conventions (amber chip, no ⚠, `Local (…)`, `etc.`) |
