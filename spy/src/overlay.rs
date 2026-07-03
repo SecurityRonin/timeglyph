@@ -509,7 +509,7 @@ impl SpyApp {
             egui::ViewportId::from_hash_of("settings"),
             egui::ViewportBuilder::default()
                 .with_title("timeglyph-spy — Settings")
-                .with_inner_size([300.0, 168.0])
+                .with_inner_size([440.0, 172.0])
                 .with_resizable(false),
             move |ctx, _class| {
                 let pal = settings
@@ -537,7 +537,15 @@ impl SpyApp {
                             ui.add_space(10.0);
                             ui.separator();
                             ui.add_space(10.0);
-                            ui.checkbox(&mut s.show_lunar, "Show 干支 (lunar)");
+                            ui.label(
+                                RichText::new("Calendar")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                            ui.checkbox(
+                                &mut s.show_lunar,
+                                "Chinese lunisolar and heavenly stem / earthly branch",
+                            );
                         }
                     });
                 if ctx.input(|i| i.viewport().close_requested()) {
