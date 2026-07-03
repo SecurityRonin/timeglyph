@@ -20,3 +20,18 @@
   the map is offset-keyed, not exact-IANA — the Continent → Zone dropdown remains
   the precise IANA selector.
 - **Consumed by:** `src/tzmap.rs` (`regions()`, `zone_at()`).
+
+## `land.json` — world land outlines (coastlines over the map)
+
+- **Source:** Natural Earth, *Land* (`ne_110m_land`), via the
+  `nvkelso/natural-earth-vector` GeoJSON mirror:
+  `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson`
+- **Downloaded:** 2026-07-03
+- **License:** **Public domain** (Natural Earth — see above; safe to bundle).
+- **Processing:** each polygon simplified with Shapely 2.1
+  (`simplify(0.5, preserve_topology=True)`), exterior rings only, major
+  landmasses only (area ≥ 2 deg²), coordinates rounded to 2 decimals.
+  138 KB → 59 rings / 1,408 vertices (~21 KB).
+- **Schema:** a JSON array of rings, each `[ [lon, lat], … ]`.
+- **Consumed by:** `src/tzmap.rs` (`land()`) — drawn as coastline strokes over the
+  offset bands so continents read distinctly from ocean.

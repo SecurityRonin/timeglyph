@@ -41,6 +41,19 @@ pub fn regions() -> &'static [Region] {
         .as_slice()
 }
 
+/// Simplified land outlines (Natural Earth `ne_110m_land`, public domain) — major
+/// landmasses only — for drawing coastlines over the offset bands so the
+/// continents read distinctly from ocean. See `assets/README.md`.
+#[must_use]
+pub fn land() -> &'static [Vec<[f32; 2]>] {
+    static LAND: OnceLock<Vec<Vec<[f32; 2]>>> = OnceLock::new();
+    LAND.get_or_init(|| {
+        serde_json::from_str(include_str!("../assets/land.json"))
+            .expect("bundled land.json is valid at build time")
+    })
+    .as_slice()
+}
+
 /// Resolve a map click at (`lon`, `lat`) in degrees to a zone, or `None` when the
 /// point is outside every region (off-map) or not finite.
 #[must_use]

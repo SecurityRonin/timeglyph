@@ -730,11 +730,16 @@ impl SpyApp {
         if !self.show_map {
             return false;
         }
+        // Dismiss like a popup selection box: Escape closes it (clicking a band
+        // closes it too — see below; and the 🌐 button toggles it).
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_map = false;
+        }
         let pal = self.settings().theme.palette();
         let mut changed = false;
-        let mut open = true;
         egui::Window::new("time zone map")
-            .open(&mut open)
+            .title_bar(false)
+            .resizable(false)
             .default_size([540.0, 300.0])
             .show(ctx, |ui| {
                 ui.label(
@@ -775,6 +780,18 @@ impl SpyApp {
                         }));
                     }
                 }
+                // Coastline overlay: outline the continents over the offset bands
+                // so land reads distinctly from ocean. Stroke only — filling these
+                // very concave polygons makes egui's tessellator spike.
+                for ring in tzmap::land() {
+                    let pts: Vec<egui::Pos2> = ring.iter().map(|c| proj(c[0], c[1])).collect();
+                    p.add(egui::Shape::Path(egui::epaint::PathShape {
+                        points: pts,
+                        closed: true,
+                        fill: Color32::TRANSPARENT,
+                        stroke: Stroke::new(1.0, Color32::from_rgb(238, 235, 228)).into(),
+                    }));
+                }
                 if resp.clicked() {
                     if let Some(pos) = resp.interact_pointer_pos() {
                         let lon = (pos.x - rect.left()) / rect.width() * 360.0 - 180.0;
@@ -791,14 +808,14 @@ impl SpyApp {
                                 // its meridian follows directly.
                                 self.set_longitude(tzinfo::meridian_of_offset(pick.offset));
                                 changed = true;
+                                // Selection box: close the map as soon as a band
+                                // is picked.
+                                self.show_map = false;
                             }
                         }
                     }
                 }
             });
-        if !open {
-            self.show_map = false;
-        }
         changed
     }
 }
