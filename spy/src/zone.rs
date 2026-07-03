@@ -118,11 +118,14 @@ pub fn continents() -> Vec<String> {
     set.into_iter().collect()
 }
 
-/// The active-zone summary for the footer chip: `⚠ Asia/Shanghai · UTC+08:00 CST`
-/// for a named zone at `at`; just `⚠ UTC-05:00` when the label already encodes the
-/// offset (a fixed offset or a cleaned `Etc/GMT` zone — repeating it would double
-/// it); or the bare label for UTC. Offset/abbr/DST are per-instant, resolved at
-/// `at`.
+/// The active-zone summary for the footer chip (no caution sign — the always-amber
+/// chip and the explicit offset already flag the frame; offset/abbr/DST resolved
+/// at `at`):
+/// - `UTC` and offset-only labels (fixed / cleaned `Etc/GMT`) stand alone;
+/// - a named zone: `Asia/Shanghai (CST = UTC+08:00)`, or `Asia/Kolkata (UTC+05:30)`
+///   when the zone has no letter code;
+/// - `Local`: the resolved system zone is surfaced —
+///   `Local (Asia/Shanghai (HKT) = UTC+08:00)`.
 #[must_use]
 pub fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
     // A label that is already an offset (fixed offset, or a cleaned Etc/GMT zone)
@@ -133,16 +136,44 @@ pub fn zone_summary(zone: &ZoneChoice, at: PosixNs) -> String {
         Some(_) if label_is_offset => zone.label.clone(),
         Some(s) => {
             let dst = if s.dst { " ☀ DST" } else { "" };
-            // "Local (HKT = UTC+08:00)" / "Asia/Shanghai (CST = UTC+08:00)", or
-            // "(UTC+08:00)" when the zone has no letter code. No caution sign — the
-            // always-amber chip and the explicit offset already flag the frame.
-            if s.abbr.is_empty() {
+            // What identifies the zone inside the parens: for Local, the resolved
+            // system-zone name (+ abbr); otherwise just the abbr (the label already
+            // names the zone).
+            let ident = if zone.label == "Local" {
+                match iana_name(&zone.zone) {
+                    Some(n) if !s.abbr.is_empty() => format!("{n} ({})", s.abbr),
+                    Some(n) => n,
+                    None => s.abbr.clone(),
+                }
+            } else {
+                s.abbr.clone()
+            };
+            if ident.is_empty() {
                 format!("{} (UTC{}{dst})", zone.label, s.offset)
             } else {
-                format!("{} ({} = UTC{}{dst})", zone.label, s.abbr, s.offset)
+                format!("{} ({ident} = UTC{}{dst})", zone.label, s.offset)
             }
         }
         None => zone.label.clone(),
+    }
+}
+
+/// The IANA name of a zone, if it is a named zone (e.g. `Local` → `Asia/Shanghai`).
+fn iana_name(zone: &RenderZone) -> Option<String> {
+    match zone {
+        RenderZone::Named(tz) => tz.iana_name().map(str::to_string),
+        _ => None,
+    }
+}
+
+/// The picker display name for a continent path-segment. `Etc` — a non-geographic
+/// offset-alias bag — is shown as `etc.`; every real region passes through.
+#[must_use]
+pub fn continent_label(continent: &str) -> String {
+    if continent == "Etc" {
+        "etc.".to_string()
+    } else {
+        continent.to_string()
     }
 }
 

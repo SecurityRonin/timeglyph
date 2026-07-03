@@ -400,7 +400,7 @@ impl SpyApp {
                     .max_height(max_h)
                     .show(ui, |ui| {
                         for c in &conts {
-                            ui.menu_button(c, |ui| {
+                            ui.menu_button(zone::continent_label(c), |ui| {
                                 egui::ScrollArea::vertical()
                                     .max_height(max_h)
                                     .show(ui, |ui| {
