@@ -408,23 +408,35 @@ impl SpyApp {
                 self.show_map = !self.show_map;
             }
             // One cascading picker: a Region button whose menu lists continents,
-            // each a submenu of its zones (pops to the side). Iterate over a clone
-            // so the closure doesn't alias the field it reads.
+            // each a submenu of its zones. egui clips popups to this small
+            // always-on-top window, so both levels are wrapped in a height-bounded
+            // ScrollArea — a long zone list scrolls instead of being truncated at
+            // the window edge. Iterate over a clone so the closure doesn't alias
+            // the field it reads.
             let conts = self.continents.clone();
+            let max_h = (ui.ctx().screen_rect().height() - 48.0).max(160.0);
             ui.menu_button("Region / Zone…", |ui| {
-                for c in &conts {
-                    ui.menu_button(c, |ui| {
-                        for z in zone::zones_in(c) {
-                            if ui.button(zone::menu_label(&z, at)).clicked() {
-                                if let Some(zc) = parse_zone(&z) {
-                                    self.zone = zc;
-                                    changed = true;
-                                }
-                                ui.close_menu();
-                            }
+                egui::ScrollArea::vertical()
+                    .max_height(max_h)
+                    .show(ui, |ui| {
+                        for c in &conts {
+                            ui.menu_button(c, |ui| {
+                                egui::ScrollArea::vertical()
+                                    .max_height(max_h)
+                                    .show(ui, |ui| {
+                                        for z in zone::zones_in(c) {
+                                            if ui.button(zone::menu_label(&z, at)).clicked() {
+                                                if let Some(zc) = parse_zone(&z) {
+                                                    self.zone = zc;
+                                                    changed = true;
+                                                }
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
+                            });
                         }
                     });
-                }
             });
 
             // Global longitude (°E): refines every reading's 干支 hour pillar to
