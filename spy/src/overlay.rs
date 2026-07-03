@@ -350,13 +350,9 @@ impl SpyApp {
         let is_utc = matches!(self.zone.zone, RenderZone::Utc);
         let is_local = self.zone.label == "Local";
         ui.horizontal_wrapped(|ui| {
-            ui.label(
-                RichText::new("time zone")
-                    .font(FontId::proportional(11.0))
-                    .color(pal.faint),
-            );
             // The zone status is always highlighted amber — including UTC — so the
-            // active frame is unmistakable at a glance.
+            // active frame is unmistakable at a glance. (No "time zone" caption: the
+            // amber chip and the UTC/Local/Region controls make it self-evident.)
             let (fill, fg) = (pal.bg_chip, pal.amber);
             let summary = zone::zone_summary(&self.zone, at);
             Frame::none()
