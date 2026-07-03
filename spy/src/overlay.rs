@@ -10,6 +10,7 @@
 //! opens settings (dark/light theme, whether to show 干支). Both palettes clear
 //! WCAG AA (see [`timeglyph_spy::theme`]).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,22 +29,13 @@ const MAX_READINGS: usize = 4;
 
 /// Session settings (never persisted — like the zone, a prior case's preferences
 /// can't silently apply to the next launch).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Settings {
     /// Dark (default) or light palette.
     theme: Theme,
     /// Whether to show the 干支 / lunisolar line (and, with it, the longitude
-    /// input, which only refines the 干支 hour pillar).
+    /// input, which only refines the 干支 hour pillar). Off by default.
     show_lunar: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            theme: Theme::default(),
-            show_lunar: false,
-        }
-    }
 }
 
 /// Open the overlay window and run until it is closed.
@@ -168,10 +160,12 @@ struct SpyApp {
     /// (used to highlight the whole band, not a single polygon).
     show_map: bool,
     map_pick: Option<f64>,
-    /// Whether the settings dialog is open.
-    show_settings: bool,
-    /// Session settings (theme, whether to show 干支).
-    settings: Settings,
+    /// Whether the settings window is open. Shared with its viewport, which flips
+    /// it false on close.
+    show_settings: Arc<AtomicBool>,
+    /// Session settings (theme, whether to show 干支). Shared with the settings
+    /// viewport so its controls write back to the main window.
+    settings: Arc<Mutex<Settings>>,
 }
 
 impl SpyApp {
@@ -189,20 +183,26 @@ impl SpyApp {
             longitude_input: String::new(),
             show_map: false,
             map_pick: None,
-            show_settings: false,
-            settings: Settings::default(),
+            show_settings: Arc::new(AtomicBool::new(false)),
+            settings: Arc::new(Mutex::new(Settings::default())),
         }
+    }
+
+    /// A snapshot of the current settings, read on the main thread each frame.
+    fn settings(&self) -> Settings {
+        self.settings.lock().map(|g| *g).unwrap_or_default()
     }
 }
 
 impl eframe::App for SpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let pal = self.settings.theme.palette();
+        let cur = self.settings();
+        let pal = cur.theme.palette();
         install_theme(ctx, &pal);
 
-        // The native macOS menu's Settings… item opens the same dialog as ⚙.
+        // The native macOS menu's Settings… item opens the settings window.
         if crate::macmenu::settings_selected() {
-            self.show_settings = true;
+            self.show_settings.store(true, Ordering::Relaxed);
         }
 
         let mut dirty = false;
@@ -263,7 +263,7 @@ impl eframe::App for SpyApp {
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
-        let show_lunar = self.settings.show_lunar;
+        let show_lunar = cur.show_lunar;
 
         let panel = Frame::none()
             .fill(pal.bg_deep)
@@ -367,7 +367,7 @@ impl SpyApp {
     /// longitude input. Returns `true` when the *zone* changed (settings changes
     /// are purely presentational and need no re-decode).
     fn zone_footer(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
-        let pal = self.settings.theme.palette();
+        let pal = self.settings().theme.palette();
         let mut changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -452,10 +452,10 @@ impl SpyApp {
             // Global longitude (°E): refines every reading's 干支 hour pillar to
             // true solar time. Only meaningful for 干支, so it is hidden when 干支
             // is off. Optional — empty/invalid means no correction.
-            if self.settings.show_lunar {
+            if self.settings().show_lunar {
                 ui.add_space(8.0);
                 ui.label(
-                    RichText::new("long")
+                    RichText::new("longitude")
                         .font(FontId::proportional(11.0))
                         .color(pal.faint),
                 );
@@ -470,51 +470,81 @@ impl SpyApp {
                 }
             }
         });
-        // ⚙ opens the settings dialog from the footer's bottom-right corner.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .add(
-                    egui::Button::new(RichText::new("⚙").font(FontId::proportional(15.0)))
-                        .frame(false),
-                )
-                .on_hover_text("settings")
-                .clicked()
-            {
-                self.show_settings = !self.show_settings;
-            }
-        });
+        // Selecting a location defaults the 干支 longitude to that zone's central
+        // meridian (the user can still override it).
+        if changed {
+            self.adopt_zone_meridian(at);
+        }
         changed
+    }
+
+    /// Set the 干支 longitude to `deg` (degrees east), keeping the input buffer in
+    /// sync so it round-trips through `parse_longitude`.
+    fn set_longitude(&mut self, deg: f64) {
+        self.longitude = Some(deg);
+        self.longitude_input = format!("{deg}");
+    }
+
+    /// Adopt the current zone's central meridian as the 干支 longitude.
+    fn adopt_zone_meridian(&mut self, at: PosixNs) {
+        if let Some(m) = tzinfo::meridian_longitude(&self.zone.zone, at) {
+            self.set_longitude(m);
+        }
     }
 
     /// The settings dialog (theme, whether to show 干支), anchored to the window's
     /// bottom-right. Opened by the footer's ⚙ button; session-scoped, not saved.
+    /// The settings dialog as its own floating OS window — a *deferred* egui
+    /// viewport (an independent window that honors the builder size, unlike an
+    /// immediate viewport), not a panel pinned inside the always-on-top overlay.
+    /// Opened from the native macOS menu's Settings… item; its controls write
+    /// back through the shared `settings`, and closing it clears `show_settings`.
     fn settings_window(&mut self, ctx: &egui::Context) {
-        if !self.show_settings {
+        if !self.show_settings.load(Ordering::Relaxed) {
             return;
         }
-        let pal = self.settings.theme.palette();
-        let mut open = self.show_settings;
-        egui::Window::new("Settings")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::RIGHT_BOTTOM, [-12.0, -12.0])
-            .show(ctx, |ui| {
-                ui.label(
-                    RichText::new("Theme")
-                        .font(FontId::proportional(11.0))
-                        .color(pal.faint),
-                );
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
-                    ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
-                });
-                ui.add_space(6.0);
-                ui.separator();
-                ui.add_space(6.0);
-                ui.checkbox(&mut self.settings.show_lunar, "Show 干支 (lunar)");
-            });
-        self.show_settings = open;
+        let settings = Arc::clone(&self.settings);
+        let open = Arc::clone(&self.show_settings);
+        ctx.show_viewport_deferred(
+            egui::ViewportId::from_hash_of("settings"),
+            egui::ViewportBuilder::default()
+                .with_title("timeglyph-spy — Settings")
+                .with_inner_size([300.0, 168.0])
+                .with_resizable(false),
+            move |ctx, _class| {
+                let pal = settings
+                    .lock()
+                    .map(|g| g.theme.palette())
+                    .unwrap_or_else(|_| Theme::Dark.palette());
+                install_theme(ctx, &pal);
+                egui::CentralPanel::default()
+                    .frame(
+                        Frame::none()
+                            .fill(pal.bg_deep)
+                            .inner_margin(Margin::same(16.0)),
+                    )
+                    .show(ctx, |ui| {
+                        if let Ok(mut s) = settings.lock() {
+                            ui.label(
+                                RichText::new("Theme")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.selectable_value(&mut s.theme, Theme::Dark, "Dark");
+                                ui.selectable_value(&mut s.theme, Theme::Light, "Light");
+                            });
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.add_space(10.0);
+                            ui.checkbox(&mut s.show_lunar, "Show 干支 (lunar)");
+                        }
+                    });
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    open.store(false, Ordering::Relaxed);
+                }
+            },
+        );
     }
 }
 
@@ -733,7 +763,7 @@ impl SpyApp {
         if !self.show_map {
             return false;
         }
-        let pal = self.settings.theme.palette();
+        let pal = self.settings().theme.palette();
         let mut changed = false;
         let mut open = true;
         egui::Window::new("time zone map")
@@ -790,6 +820,9 @@ impl SpyApp {
                             if let Some(z) = parse_zone(&spec) {
                                 self.zone = z;
                                 self.map_pick = Some(pick.offset);
+                                // The map band offset is already standard time, so
+                                // its meridian is offset × 15° directly.
+                                self.set_longitude(pick.offset * 15.0);
                                 changed = true;
                             }
                         }
