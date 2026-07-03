@@ -809,10 +809,27 @@ fn region_fill(offset: f64, selected: bool) -> Color32 {
     if selected {
         return Color32::from_rgb(214, 158, 46); // amber — the picked band stands out
     }
-    // Slate land tones that read clearly against the near-black map background,
-    // stepped by offset so adjacent zone bands are distinguishable (the earlier
-    // rgb ~30-46 was invisible on the dark panel).
-    let k = u8::try_from((offset.round() as i64).rem_euclid(3)).unwrap_or(0);
-    let base = 60 + k * 22; // 60 / 82 / 104
-    Color32::from_rgb(base.saturating_sub(8), base, base.saturating_add(10))
+    // A distinct hue per UTC offset (−12..+14 mapped around most of the colour
+    // wheel), muted so the banded continents read like a time-zone map without
+    // clashing with the dark panel.
+    let t = ((offset + 12.0) / 26.0).clamp(0.0, 1.0);
+    hsv(t * 0.82, 0.48, 0.60)
+}
+
+/// Minimal HSV→sRGB (`h`, `s`, `v` in `0..1`) for the offset-keyed map bands.
+fn hsv(h: f64, s: f64, v: f64) -> Color32 {
+    let h6 = (h - h.floor()) * 6.0;
+    let i = h6.floor();
+    let f = h6 - i;
+    let (p, q, w) = (v * (1.0 - s), v * (1.0 - s * f), v * (1.0 - s * (1.0 - f)));
+    let (r, g, b) = match i as i32 {
+        0 => (v, w, p),
+        1 => (q, v, p),
+        2 => (p, v, w),
+        3 => (p, q, v),
+        4 => (w, p, v),
+        _ => (v, p, q),
+    };
+    let c = |x: f64| (x * 255.0).round().clamp(0.0, 255.0) as u8;
+    Color32::from_rgb(c(r), c(g), c(b))
 }
