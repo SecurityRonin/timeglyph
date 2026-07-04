@@ -19,8 +19,34 @@ mod imp {
 
     use muda::accelerator::{Accelerator, Code, Modifiers};
     use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use objc2_foundation::NSString;
 
     use super::Selected;
+
+    /// AppKit shows the *executable* name ("timeglyph-lens") in the menu bar and
+    /// Dock for a non-bundled binary, ignoring the app-menu title. Override it by
+    /// writing CFBundleName into the main-bundle info dictionary (mutable in
+    /// practice) — call before building the menu.
+    fn set_app_name(name: &str) {
+        // SAFETY: plain AppKit calls on the main thread; -infoDictionary returns a
+        // dictionary that is mutable in practice, the documented way bare apps set
+        // their display name.
+        unsafe {
+            let bundle: *mut AnyObject = msg_send![class!(NSBundle), mainBundle];
+            if bundle.is_null() {
+                return;
+            }
+            let info: *mut AnyObject = msg_send![bundle, infoDictionary];
+            if info.is_null() {
+                return;
+            }
+            let key = NSString::from_str("CFBundleName");
+            let value = NSString::from_str(name);
+            let _: () = msg_send![info, setObject: &*value, forKey: &*key];
+        }
+    }
 
     static SETTINGS_ID: OnceLock<MenuId> = OnceLock::new();
     static ABOUT_ID: OnceLock<MenuId> = OnceLock::new();
@@ -30,6 +56,7 @@ mod imp {
     /// About item is a plain item we handle ourselves (a custom dialog), not the
     /// system about panel.
     pub fn install() {
+        set_app_name("TimeGlyph Lens");
         let menu = Menu::new();
         let app = Submenu::new("TimeGlyph Lens", true);
         let about = MenuItem::new("About TimeGlyph Lens", true, None);

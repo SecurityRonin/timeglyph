@@ -55,6 +55,10 @@ accessibility-sys = "0.1"
 core-foundation = "0.10"
 core-graphics = "0.24"
 muda = "0.19.3"
+# Set the menu-bar / Dock app name ("TimeGlyph Lens") at runtime — AppKit derives
+# it from the executable name for a non-bundled binary, ignoring the menu title.
+objc2 = "0.6"
+objc2-foundation = "0.3"
 
 # The Win32 / UIA shell is FFI — unsafe is required here (unlike the engine,
 # which forbids it). The scan core stays safe.
