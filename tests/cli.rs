@@ -148,3 +148,17 @@ fn csv_auto_is_the_default() {
         "{out}"
     );
 }
+
+#[test]
+fn scan_finds_timestamps_and_respects_min_digits() {
+    // scan sweeps arbitrary text and decodes every candidate.
+    let (out, code) = run(&["scan", "created=1577836800 v7"]);
+    assert!(
+        out.contains("1577836800") && out.contains("2020-01-01"),
+        "{out}"
+    );
+    assert_eq!(code, 0);
+    // A higher digit floor drops the 10-digit run.
+    let (out2, _) = run(&["scan", "--min-digits", "20", "1577836800"]);
+    assert!(!out2.contains("2020-01-01"), "min-digits floor: {out2}");
+}
