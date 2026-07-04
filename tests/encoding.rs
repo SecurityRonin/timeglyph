@@ -134,6 +134,40 @@ fn encode_fat_rejects_out_of_range() {
 }
 
 #[test]
+fn packed_encoders_place_fields_correctly_at_a_nontrivial_instant() {
+    // Regression guard for the midnight blind spot: at 00:00:00 a mis-shifted
+    // hour/minute/second field is invisible (it caught nothing when encode_fat_dos
+    // shifted minute by 6 instead of 5). Encode a non-trivial instant and
+    // round-trip through the decoder — which is INDEPENDENTLY oracle-validated at
+    // non-trivial times (e.g. FAT `a45a597a` → 2025-05-04 15:18:50), so a
+    // field-placement bug surfaces as a wrong minute/hour, not a compensating pair.
+    // Supplements the per-format tier-1 time-decode tests; seconds vary by
+    // granularity so this asserts to the minute.
+    let inst = format("unix").unwrap().decode_int(1_592_228_842).unwrap(); // 2020-06-15T13:47:22Z
+    for id in [
+        "fat",
+        "exfat",
+        "dttm",
+        "bitdate",
+        "bitdec",
+        "bcd",
+        "logtime",
+        "semioctet",
+        "gsm",
+        "nokiale",
+        "sqlserver",
+    ] {
+        let f = format(id).unwrap();
+        let v = f.encode_int(inst).unwrap();
+        let back = f.decode_int(v).unwrap().to_rfc3339().unwrap();
+        assert!(
+            back.starts_with("2020-06-15T13:47"),
+            "{id}: encode→decode gave {back}, expected 2020-06-15T13:47"
+        );
+    }
+}
+
+#[test]
 fn fat_on_disk_hex_decodes_to_fat() {
     // The FAT/DOS on-disk layout stores a date word then a time word, each
     // little-endian. time-decode's example `a45a597a` => 2025-05-04 15:18:50.
