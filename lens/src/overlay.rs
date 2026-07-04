@@ -48,11 +48,8 @@ pub fn run(verbose: u8) -> Result<(), String> {
     // macOS gates the picker behind Accessibility; surface the system prompt on
     // first launch (no-op once granted / on other platforms).
     crate::picker::prompt_accessibility();
-    if verbose >= 1 {
-        eprintln!(
-            "[lens] verbose logging on (level {verbose}); -vv also shows the raw element text"
-        );
-    }
+    init_tracing(verbose);
+    tracing::info!(verbose, "TimeGlyph Lens starting");
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([560.0, 400.0])
         .with_min_inner_size([380.0, 220.0])
@@ -111,6 +108,24 @@ fn load_png_texture(ctx: &egui::Context, name: &str, bytes: &[u8]) -> Option<egu
 /// glyph if it can't be decoded).
 fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     load_png_texture(ctx, "timeglyph-logo", include_bytes!("../assets/icon.png"))
+}
+
+/// Install a stderr tracing subscriber gated by verbosity (`RUST_LOG` overrides):
+/// `-v` → info, `-vv` → debug, silent otherwise. Replaces the ad-hoc eprintln
+/// verbose dump with structured, filterable events.
+fn init_tracing(verbose: u8) {
+    use tracing_subscriber::EnvFilter;
+    let level = match verbose {
+        0 => "warn",
+        1 => "info",
+        _ => "debug",
+    };
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("timeglyph_lens={level},timeglyph={level}")));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
 }
 
 /// Poll the element under the cursor on a background thread so the render thread
@@ -288,12 +303,18 @@ impl eframe::App for LensApp {
             if !new_hits.is_empty() {
                 self.source = text;
                 self.hits = new_hits;
-                if self.verbose >= 1 {
-                    eprintln!("[lens] {:?}", self.source);
-                    for nr in &self.hits {
-                        for r in &nr.readings {
-                            eprintln!("      {}  {}  ({})", nr.number, r.rendered, r.format_id);
-                        }
+                // Level does the -v/-vv gating: -v → the summary, -vv → the raw
+                // element text and every reading.
+                tracing::info!(hits = self.hits.len(), "decoded element under cursor");
+                tracing::debug!(source = ?self.source, "raw element text");
+                for nr in &self.hits {
+                    for r in &nr.readings {
+                        tracing::debug!(
+                            number = %nr.number,
+                            rendered = %r.rendered,
+                            format = %r.format_id,
+                            "reading"
+                        );
                     }
                 }
             }

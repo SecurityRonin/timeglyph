@@ -22,6 +22,10 @@ path = "src/main.rs"
 # `lunisolar` powers the opt-in 干支 expansion; `holiday` annotates each reading
 # with the public holiday (if any) for its date in the display zone.
 timeglyph = { path = "..", features = ["lunisolar", "holiday"] }
+# Structured instrumentation for debuggability; the subscriber is installed by
+# `run()` and gated by -v / -vv (silent by default).
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # tz math (host-zone resolution for the "Local" display option). Reused from the
 # same jiff the engine uses — never reinvented.
 jiff = "0.2"
