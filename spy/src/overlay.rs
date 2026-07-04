@@ -449,6 +449,12 @@ impl SpyApp {
             if ui.button("🌐").on_hover_text("time-zone map").clicked() {
                 self.show_map = !self.show_map;
             }
+            // In-window settings opener — the only way in on Windows/Linux (the
+            // ⌘, native menu item is macOS-only), so theme / 干支 / longitude are
+            // reachable on every platform.
+            if ui.button("⚙").on_hover_text("settings").clicked() {
+                self.show_settings.store(true, Ordering::Relaxed);
+            }
             // Quick presets to the right of the map button (each hidden when it's
             // the active zone).
             if !is_utc && ui.button("UTC").clicked() {
