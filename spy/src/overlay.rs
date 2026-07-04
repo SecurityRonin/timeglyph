@@ -575,25 +575,43 @@ fn header(ui: &mut egui::Ui, source: &str, pal: Palette) {
 /// Grid column 1: the amber format chip. The verbose format name is a hover
 /// tooltip on the chip (not an always-shown line), keeping each reading compact.
 fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
-    Frame::none()
-        .fill(pal.bg_chip)
-        .rounding(Rounding::same(4.0))
-        .inner_margin(Margin::symmetric(6.0, 2.0))
-        .show(ui, |ui| {
-            ui.label(
-                RichText::new(&r.format_id)
-                    .font(FontId::monospace(11.0))
-                    .color(pal.amber)
-                    .strong(),
-            );
-        })
-        .response
-        .on_hover_text(r.label.as_str());
+    ui.vertical(|ui| {
+        if r.local {
+            ui.add_space(LOCAL_ROW_PAD);
+        }
+        Frame::none()
+            .fill(pal.bg_chip)
+            .rounding(Rounding::same(4.0))
+            .inner_margin(Margin::symmetric(6.0, 2.0))
+            .show(ui, |ui| {
+                // Never wrap: the `vertical` wrapper (added for the local-row top
+                // pad) would otherwise collapse the grid column and break the id
+                // across lines.
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(&r.format_id)
+                            .font(FontId::monospace(11.0))
+                            .color(pal.amber)
+                            .strong(),
+                    )
+                    .wrap_mode(egui::TextWrapMode::Extend),
+                );
+            })
+            .response
+            .on_hover_text(r.label.as_str());
+    });
 }
 
 /// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
 /// DST (the numeric offset is already in `rendered`; a location alone is
 /// ambiguous, so these disambiguate), an optional local tag, and the confidence.
+/// Top pad applied to every grid cell of a *local* reading row. The datetime
+/// cell carries a two-line "local time / (not time-zone adjusted)" tag; egui's
+/// grid and horizontal layouts top-align, so nudging each cell's single-line
+/// content down by half a line lands the whole row (confidence, format,
+/// datetime, weekday) on the tag's vertical middle.
+const LOCAL_ROW_PAD: f32 = 6.0;
+
 fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
     let datetime = || {
         RichText::new(&r.rendered)
@@ -602,14 +620,8 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
     };
     ui.horizontal(|ui| {
         if r.local {
-            // A naive wall-clock reading carries a two-line
-            // "local time / (not time-zone adjusted)" tag. egui's horizontal
-            // layout top-aligns items, so wrap the single-line datetime and
-            // weekday in a half-line top pad to sit them at the tag's vertical
-            // middle.
-            let center_pad = 6.0;
             ui.vertical(|ui| {
-                ui.add_space(center_pad);
+                ui.add_space(LOCAL_ROW_PAD);
                 ui.label(datetime());
             });
             ui.add_space(6.0);
@@ -628,7 +640,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
             if let Some(wd) = scan::weekday(&r.rendered) {
                 ui.add_space(6.0);
                 ui.vertical(|ui| {
-                    ui.add_space(center_pad);
+                    ui.add_space(LOCAL_ROW_PAD);
                     ui.label(
                         RichText::new(wd)
                             .font(FontId::proportional(11.0))
@@ -694,29 +706,34 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     } else {
         pal.conf_low
     };
-    let resp = ui
-        .horizontal(|ui| {
-            ui.label(
-                RichText::new("●")
-                    .font(FontId::proportional(10.0))
-                    .color(dot),
-            );
-            ui.label(
-                RichText::new(format!("{pct}%"))
-                    .font(FontId::monospace(11.0))
-                    .color(pal.mute),
-            );
-        })
-        .response;
-    if !r.components.is_empty() {
-        let tip = r
-            .components
-            .iter()
-            .map(|(n, v)| format!("{n}  {v:.2}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        resp.on_hover_text(format!("plausibility score  {pct}%\n{tip}"));
-    }
+    ui.vertical(|ui| {
+        if r.local {
+            ui.add_space(LOCAL_ROW_PAD);
+        }
+        let resp = ui
+            .horizontal(|ui| {
+                ui.label(
+                    RichText::new("●")
+                        .font(FontId::proportional(10.0))
+                        .color(dot),
+                );
+                ui.label(
+                    RichText::new(format!("{pct}%"))
+                        .font(FontId::monospace(11.0))
+                        .color(pal.mute),
+                );
+            })
+            .response;
+        if !r.components.is_empty() {
+            let tip = r
+                .components
+                .iter()
+                .map(|(n, v)| format!("{n}  {v:.2}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            resp.on_hover_text(format!("plausibility score  {pct}%\n{tip}"));
+        }
+    });
 }
 
 /// Grid column 2 (row 2): the 干支 line, led by the lunar date so it left-aligns
