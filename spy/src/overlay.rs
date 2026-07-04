@@ -824,41 +824,44 @@ fn ganzhi_cell(
                 .color(pal.faint),
         );
         ui.add_space(8.0);
-        for (unit, pillar) in [
-            ("年", &v.year_pillar),
-            ("月", &v.month_pillar),
-            ("日", &v.day_pillar),
-            ("時", &v.hour_pillar),
-        ] {
-            // Stem (天干) over branch (地支), stacked like the local tag, each
-            // spot-coloured by its 五行; the unit character kept as a faint suffix
-            // beside the stack (辛巳年 reads top-down: 辛 / 巳, unit 年).
-            let mut chars = pillar.chars();
-            let stem = chars.next().unwrap_or(' ');
-            let branch = chars.next().unwrap_or(' ');
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
+        // Four pillars as an aligned chart: the four stems (天干) on one level
+        // row, the four branches (地支) on the next, each spot-coloured by its
+        // 五行, with a faint unit footer (年月日時) labelling the columns. A Grid
+        // keeps the eight characters on level, column-aligned rows (a plain
+        // horizontal of stacks does not).
+        let pillars: [(&str, &str); 4] = [
+            ("年", v.year_pillar.as_str()),
+            ("月", v.month_pillar.as_str()),
+            ("日", v.day_pillar.as_str()),
+            ("時", v.hour_pillar.as_str()),
+        ];
+        let glyph = |ch: char| {
+            RichText::new(ch.to_string())
+                .font(FontId::monospace(13.0))
+                .color(element_color(ch, pal))
+        };
+        egui::Grid::new(("ganzhi", instant.0))
+            .num_columns(pillars.len())
+            .spacing([8.0, 0.0])
+            .min_col_width(15.0)
+            .show(ui, |ui| {
+                for (_, p) in pillars {
+                    ui.label(glyph(p.chars().next().unwrap_or(' ')));
+                }
+                ui.end_row();
+                for (_, p) in pillars {
+                    ui.label(glyph(p.chars().nth(1).unwrap_or(' ')));
+                }
+                ui.end_row();
+                for (unit, _) in pillars {
                     ui.label(
-                        RichText::new(stem.to_string())
-                            .font(FontId::monospace(13.0))
-                            .color(element_color(stem, pal)),
+                        RichText::new(unit)
+                            .font(FontId::proportional(9.0))
+                            .color(pal.faint),
                     );
-                    ui.label(
-                        RichText::new(branch.to_string())
-                            .font(FontId::monospace(13.0))
-                            .color(element_color(branch, pal)),
-                    );
-                });
-                ui.label(
-                    RichText::new(unit)
-                        .font(FontId::proportional(9.0))
-                        .color(pal.faint),
-                );
+                }
+                ui.end_row();
             });
-            ui.add_space(6.0);
-        }
     });
 }
 
