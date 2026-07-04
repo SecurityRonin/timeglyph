@@ -238,6 +238,76 @@ struct LensApp {
 }
 
 impl LensApp {
+    /// Drain the native macOS menu: Settings… / About open their windows.
+    fn sync_native_menu(&self) {
+        let menu = crate::macmenu::selected();
+        if menu.settings {
+            self.show_settings.store(true, Ordering::Relaxed);
+        }
+        if menu.about {
+            self.show_about.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Pull the latest text the poll thread saw under the cursor and, when it
+    /// changed, re-decode it. Only REPLACE the shown reading when the new element
+    /// actually decodes to something — so moving the cursor across blank /
+    /// non-timestamp UI (including this panel, which exposes no accessible text)
+    /// leaves the reading intact instead of wiping it.
+    fn ingest_cursor_text(&mut self) {
+        let text = self
+            .latest
+            .lock()
+            .map(|slot| slot.clone())
+            .unwrap_or_default();
+        if text == self.last_text {
+            return;
+        }
+        self.last_text.clone_from(&text);
+        let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
+        if new_hits.is_empty() {
+            return;
+        }
+        self.source = text;
+        self.hits = new_hits;
+        // Level does the -v/-vv gating: -v → the summary, -vv → the raw element
+        // text and every reading.
+        tracing::info!(hits = self.hits.len(), "decoded element under cursor");
+        tracing::debug!(source = ?self.source, "raw element text");
+        for nr in &self.hits {
+            for r in &nr.readings {
+                tracing::debug!(
+                    number = %nr.number,
+                    rendered = %r.rendered,
+                    format = %r.format_id,
+                    "reading"
+                );
+            }
+        }
+    }
+
+    /// The theme-matched Security Ronin wordmark in the lower-right corner, tall
+    /// enough to span the footer's two rows and anchored so it stays put over any
+    /// panel content. Click it for the About dialog, where the version lives — the
+    /// main window stays uncluttered.
+    fn render_branding(&self, ctx: &egui::Context, sr_logo: Option<&egui::TextureHandle>) {
+        let Some(sr) = sr_logo else { return };
+        egui::Area::new(egui::Id::new("lens-branding"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -8.0))
+            .show(ctx, |ui| {
+                let h = 48.0; // native aspect ~1505×721
+                let img = egui::Image::new(egui::load::SizedTexture::from_handle(sr))
+                    .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
+                if ui
+                    .add(egui::ImageButton::new(img).frame(false))
+                    .on_hover_text("About TimeGlyph Lens")
+                    .clicked()
+                {
+                    self.show_about.store(true, Ordering::Relaxed);
+                }
+            });
+    }
+
     fn new(
         latest: Arc<Mutex<String>>,
         verbose: u8,
@@ -278,47 +348,10 @@ impl eframe::App for LensApp {
         let pal = cur.theme.palette();
         install_theme(ctx, &pal);
 
-        // The native macOS menu's Settings… / About items open their windows.
-        let menu = crate::macmenu::selected();
-        if menu.settings {
-            self.show_settings.store(true, Ordering::Relaxed);
-        }
-        if menu.about {
-            self.show_about.store(true, Ordering::Relaxed);
-        }
+        self.sync_native_menu();
 
         let mut dirty = false;
-        let text = self
-            .latest
-            .lock()
-            .map(|slot| slot.clone())
-            .unwrap_or_default();
-        if text != self.last_text {
-            self.last_text.clone_from(&text);
-            let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
-            // Only REPLACE the shown reading when the new element actually decodes
-            // to something — so moving the cursor across blank / non-timestamp UI
-            // (including this panel, which exposes no accessible text) leaves the
-            // reading intact instead of wiping it.
-            if !new_hits.is_empty() {
-                self.source = text;
-                self.hits = new_hits;
-                // Level does the -v/-vv gating: -v → the summary, -vv → the raw
-                // element text and every reading.
-                tracing::info!(hits = self.hits.len(), "decoded element under cursor");
-                tracing::debug!(source = ?self.source, "raw element text");
-                for nr in &self.hits {
-                    for r in &nr.readings {
-                        tracing::debug!(
-                            number = %nr.number,
-                            rendered = %r.rendered,
-                            format = %r.format_id,
-                            "reading"
-                        );
-                    }
-                }
-            }
-        }
+        self.ingest_cursor_text();
 
         // The reference instant for the footer's offset/abbr/DST resolution: the
         // top reading's instant (offset is per-instant), else now.
@@ -381,105 +414,13 @@ impl eframe::App for LensApp {
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
-                if crate::picker::accessibility_ok() {
-                    empty_state(
-                        ui,
-                        "Hover an element with a number",
-                        "Point at any on-screen value to decode it",
-                        pal,
-                        logo.as_ref(),
-                    );
-                } else {
-                    // macOS without the Accessibility grant: readings never
-                    // arrive, so guide the user to enable it rather than sit on a
-                    // silent empty state. The button jumps straight to the
-                    // Accessibility pane — the user only has to flip the switch.
-                    empty_state(
-                        ui,
-                        "Grant Accessibility to TimeGlyph Lens",
-                        "Flip the TimeGlyph Lens switch, then relaunch",
-                        pal,
-                        logo.as_ref(),
-                    );
-                    ui.add_space(8.0);
-                    ui.vertical_centered(|ui| {
-                        if ui.button("Open Accessibility Settings").clicked() {
-                            let _ = std::process::Command::new("open")
-                                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-                                .spawn();
-                        }
-                    });
-                }
+                render_empty(ui, pal, logo.as_ref());
             } else {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        for nr in &hits {
-                            Frame::none()
-                                .fill(pal.bg_card)
-                                .rounding(Rounding::same(8.0))
-                                .inner_margin(Margin::symmetric(14.0, 12.0))
-                                .stroke(Stroke::new(1.0, pal.hairline))
-                                .show(ui, |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.label(
-                                        RichText::new(&nr.number)
-                                            .font(FontId::monospace(21.0))
-                                            .color(pal.ink)
-                                            .strong(),
-                                    );
-                                    ui.add_space(8.0);
-                                    // 2-column grid: the format chip is column 1
-                                    // (a tab stop), so every datetime — and the
-                                    // 干支 line beneath it — left-aligns in column 2.
-                                    egui::Grid::new(nr.number.as_str())
-                                        .num_columns(3)
-                                        .spacing([10.0, 8.0])
-                                        .show(ui, |ui| {
-                                            for r in &nr.readings {
-                                                conf_cell(ui, r, pal);
-                                                chip_cell(ui, r, pal);
-                                                datetime_cell(ui, r, &zone, pal);
-                                                ui.end_row();
-                                                if show_lunar {
-                                                    ui.label(""); // col 1 (confidence)
-                                                    ui.label(""); // col 2 (format)
-                                                    ganzhi_cell(
-                                                        ui, r.instant, &zone, longitude, pal,
-                                                    );
-                                                    ui.end_row();
-                                                }
-                                            }
-                                        });
-                                });
-                            ui.add_space(10.0);
-                        }
-                    });
+                render_readings(ui, &hits, &zone, longitude, show_lunar, pal);
             }
         });
 
-        // Product identity, tucked into the lower-right corner: "timeglyph
-        // <version>" and the theme-matched Security Ronin wordmark. An anchored
-        // overlay so it stays put regardless of the panel's content.
-        // The theme-matched Security Ronin logo in the lower-right corner (tall
-        // enough to span the footer's two rows). Click it for the About dialog,
-        // where the version lives — the main window stays uncluttered.
-        if let Some(sr) = sr_logo.as_ref() {
-            egui::Area::new(egui::Id::new("lens-branding"))
-                .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -8.0))
-                .show(ctx, |ui| {
-                    let h = 48.0; // native aspect ~1505×721
-                    let img = egui::Image::new(egui::load::SizedTexture::from_handle(sr))
-                        .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
-                    if ui
-                        .add(egui::ImageButton::new(img).frame(false))
-                        .on_hover_text("About TimeGlyph Lens")
-                        .clicked()
-                    {
-                        self.show_about.store(true, Ordering::Relaxed);
-                    }
-                });
-        }
+        self.render_branding(ctx, sr_logo.as_ref());
 
         self.hits = hits;
 
@@ -488,6 +429,91 @@ impl eframe::App for LensApp {
         // states fresh without busy-spinning the render thread.
         ctx.request_repaint_after(Duration::from_secs(1));
     }
+}
+
+/// The central panel's empty state. On macOS without the Accessibility grant
+/// readings never arrive, so prompt for it (with a button that jumps to the
+/// pane) instead of sitting on a silent blank.
+fn render_empty(ui: &mut egui::Ui, pal: Palette, logo: Option<&egui::TextureHandle>) {
+    if crate::picker::accessibility_ok() {
+        empty_state(
+            ui,
+            "Hover an element with a number",
+            "Point at any on-screen value to decode it",
+            pal,
+            logo,
+        );
+    } else {
+        empty_state(
+            ui,
+            "Grant Accessibility to TimeGlyph Lens",
+            "Flip the TimeGlyph Lens switch, then relaunch",
+            pal,
+            logo,
+        );
+        ui.add_space(8.0);
+        ui.vertical_centered(|ui| {
+            if ui.button("Open Accessibility Settings").clicked() {
+                let _ = std::process::Command::new("open")
+                    .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                    .spawn();
+            }
+        });
+    }
+}
+
+/// The scrollable list of decoded readings: one card per number, each a
+/// confidence / format-chip / datetime grid, with the optional 干支 line beneath.
+fn render_readings(
+    ui: &mut egui::Ui,
+    hits: &[scan::NumberReadings],
+    zone: &RenderZone,
+    longitude: Option<f64>,
+    show_lunar: bool,
+    pal: Palette,
+) {
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            for nr in hits {
+                Frame::none()
+                    .fill(pal.bg_card)
+                    .rounding(Rounding::same(8.0))
+                    .inner_margin(Margin::symmetric(14.0, 12.0))
+                    .stroke(Stroke::new(1.0, pal.hairline))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(
+                            RichText::new(&nr.number)
+                                .font(FontId::monospace(21.0))
+                                .color(pal.ink)
+                                .strong(),
+                        );
+                        ui.add_space(8.0);
+                        // 2-column grid: the format chip is column 1 (a tab stop),
+                        // so every datetime — and the 干支 line beneath it —
+                        // left-aligns in column 2.
+                        egui::Grid::new(nr.number.as_str())
+                            .num_columns(3)
+                            .spacing([10.0, 8.0])
+                            .show(ui, |ui| {
+                                for r in &nr.readings {
+                                    conf_cell(ui, r, pal);
+                                    chip_cell(ui, r, pal);
+                                    datetime_cell(ui, r, zone, pal);
+                                    ui.end_row();
+                                    if show_lunar {
+                                        ui.label(""); // col 1 (confidence)
+                                        ui.label(""); // col 2 (format)
+                                        ganzhi_cell(ui, r.instant, zone, longitude, pal);
+                                        ui.end_row();
+                                    }
+                                }
+                            });
+                    });
+                ui.add_space(10.0);
+            }
+        });
 }
 
 /// Current wall-clock instant, used as the footer's reference when no reading is
