@@ -128,6 +128,27 @@ fn decode_exfat(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Inverse of [`decode_exfat`]: pack an instant into the exFAT 32-bit word
+/// (MSB-first year(7,+1980) month(4) day(5) hour(5) minute(6) 2-second(5)).
+/// LOCAL naive, 2-second granularity; the year must fit the 7-bit field
+/// (1980–2107).
+fn encode_exfat(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(1980..=2107).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "exFAT year (1980-2107)",
+            value: i128::from(year),
+        });
+    }
+    let p = (u32::from((year - 1980) as u16) << 25)
+        | (u32::from(month as u8) << 21)
+        | (u32::from(day as u8) << 16)
+        | (u32::from(hour as u8) << 11)
+        | (u32::from(minute as u8) << 5)
+        | u32::from((second / 2) as u8);
+    Ok(i64::from(p))
+}
+
 /// Microsoft DTTM 32-bit packed date (MSB-first): dayOfWeek(3, ignored)
 /// year(9,+1900) month(4) day(5) hour(5) minute(6); no seconds. LOCAL time.
 fn decode_dttm(value: i64) -> Result<PosixNs, ChronoError> {
@@ -143,6 +164,26 @@ fn decode_dttm(value: i64) -> Result<PosixNs, ChronoError> {
         (p & 0x3F) as i8,
         0,
     )
+}
+
+/// Inverse of [`decode_dttm`]: pack an instant into the DTTM 32-bit word
+/// (MSB-first year(9,+1900) month(4) day(5) hour(5) minute(6); no seconds).
+/// LOCAL naive. dayOfWeek(3) is display-only and is written as 0. The year must
+/// fit the 9-bit field (1900–2411).
+fn encode_dttm(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, _second) = civil_fields(instant)?;
+    if !(1900..=2411).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "DTTM year (1900-2411)",
+            value: i128::from(year),
+        });
+    }
+    let p = (u32::from((year - 1900) as u16) << 20)
+        | (u32::from(month as u8) << 16)
+        | (u32::from(day as u8) << 11)
+        | (u32::from(hour as u8) << 6)
+        | u32::from(minute as u8);
+    Ok(i64::from(p))
 }
 
 /// Samsung/LG BitDate: the 4 bytes are byte-reversed, then MSB-first year(12)
@@ -162,6 +203,26 @@ fn decode_bitdate(value: i64) -> Result<PosixNs, ChronoError> {
         (p & 0x3F) as i8,
         0,
     )
+}
+
+/// Inverse of [`decode_bitdate`]: pack an instant MSB-first (year(12) month(4)
+/// day(5) hour(5) minute(6); no seconds), then byte-reverse — the same
+/// `swap_bytes` the decoder applies, so encode∘decode is identity. LOCAL naive.
+/// The year must fit the 12-bit field (0–4095).
+fn encode_bitdate(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, _second) = civil_fields(instant)?;
+    if !(0..=4095).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "BitDate year (0-4095)",
+            value: i128::from(year),
+        });
+    }
+    let p = (u32::from(year as u16) << 20)
+        | (u32::from(month as u8) << 16)
+        | (u32::from(day as u8) << 11)
+        | (u32::from(hour as u8) << 6)
+        | u32::from(minute as u8);
+    Ok(i64::from(p.swap_bytes()))
 }
 
 /// Bitwise Decimal: a decimal value bit-packed year(>>20) month(&15 at >>16)
@@ -186,6 +247,25 @@ fn decode_bitdec(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Inverse of [`decode_bitdec`]: bit-pack the civil fields into a decimal value
+/// (year(<<20) month(<<16,&15) day(<<11,&31) hour(<<6,&31) minute(&63); no
+/// seconds). LOCAL naive. The year must be non-negative and fit the decoder's
+/// `i16` year field (0–32767).
+fn encode_bitdec(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, _second) = civil_fields(instant)?;
+    if year < 0 {
+        return Err(ChronoError::OutOfRange {
+            what: "Bitwise Decimal year (non-negative)",
+            value: i128::from(year),
+        });
+    }
+    Ok((i64::from(year) << 20)
+        | (i64::from(month) << 16)
+        | (i64::from(day) << 11)
+        | (i64::from(hour) << 6)
+        | i64::from(minute))
+}
+
 /// Binary-Coded-Decimal: 12 decimal digits as pairs YY(+2000) MM DD HH MM SS,
 /// LOCAL time. The value is read as its zero-padded 12-digit decimal string.
 fn decode_bcd(value: i64) -> Result<PosixNs, ChronoError> {
@@ -205,6 +285,33 @@ fn decode_bcd(value: i64) -> Result<PosixNs, ChronoError> {
         pair(8),
         pair(10),
     )
+}
+
+/// Inverse of [`decode_bcd`]: render the civil fields as the 12-digit decimal
+/// value YY(year-2000) MM DD HH MM SS. LOCAL naive. The year must fit the
+/// 2-digit YY field (2000–2099).
+fn encode_bcd(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(2000..=2099).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "BCD year (2000-2099)",
+            value: i128::from(year),
+        });
+    }
+    let s = format!(
+        "{:02}{:02}{:02}{:02}{:02}{:02}",
+        year - 2000,
+        month,
+        day,
+        hour,
+        minute,
+        second
+    );
+    s.parse().map_err(|_| ChronoError::OutOfRange {
+        // cov:unreachable: six 2-digit fields always form a valid 12-digit i64.
+        what: "BCD packed value",
+        value: i128::from(year),
+    })
 }
 
 /// Motorola 6-byte timestamp: one byte per field — year(+1970) month day hour
@@ -761,7 +868,7 @@ pub static FORMATS: &[Format] = &[
         family: "exFAT filesystem",
         strategy: Strategy::Packed {
             decode: decode_exfat,
-            encode: None,
+            encode: Some(encode_exfat),
         },
         citation: "Microsoft exFAT spec (32-bit packed timestamp); vs time-decode",
         tz: LocalNaive,
@@ -774,7 +881,7 @@ pub static FORMATS: &[Format] = &[
         family: "Microsoft Compound File / Office DTTM",
         strategy: Strategy::Packed {
             decode: decode_dttm,
-            encode: None,
+            encode: Some(encode_dttm),
         },
         citation: "Microsoft DTTM packed date (year since 1900); vs time-decode",
         tz: LocalNaive,
@@ -787,7 +894,7 @@ pub static FORMATS: &[Format] = &[
         family: "Samsung / LG device timestamps",
         strategy: Strategy::Packed {
             decode: decode_bitdate,
-            encode: None,
+            encode: Some(encode_bitdate),
         },
         citation: "Samsung/LG BitDate (byte-reversed 32-bit packed); vs time-decode",
         tz: LocalNaive,
@@ -800,7 +907,7 @@ pub static FORMATS: &[Format] = &[
         family: "Bitwise Decimal packed timestamps",
         strategy: Strategy::Packed {
             decode: decode_bitdec,
-            encode: None,
+            encode: Some(encode_bitdec),
         },
         citation: "Bitwise Decimal (decimal bit-packed date); vs time-decode",
         tz: LocalNaive,
@@ -813,7 +920,7 @@ pub static FORMATS: &[Format] = &[
         family: "BCD digit-pair timestamps",
         strategy: Strategy::Packed {
             decode: decode_bcd,
-            encode: None,
+            encode: Some(encode_bcd),
         },
         citation: "Binary-Coded-Decimal (YY+2000 MM DD HH MM SS pairs); vs time-decode",
         tz: LocalNaive,
