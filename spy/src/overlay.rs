@@ -416,27 +416,6 @@ impl SpyApp {
                             .strong(),
                     );
                 });
-
-            // Global longitude (°E): refines every reading's 干支 hour pillar to
-            // true solar time. Only meaningful for 干支, so it is hidden when 干支
-            // is off. Optional — empty/invalid means no correction.
-            if self.settings().show_lunar {
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("longitude")
-                        .font(FontId::proportional(11.0))
-                        .color(pal.faint),
-                );
-                let resp = ui.add(
-                    egui::TextEdit::singleline(&mut self.longitude_input)
-                        .hint_text("°E")
-                        .desired_width(52.0)
-                        .font(FontId::monospace(12.0)),
-                );
-                if resp.changed() {
-                    self.longitude = ganzhi::parse_longitude(&self.longitude_input);
-                }
-            }
         });
         // Row 2: the cascading Region → Zone picker, then the 🌐 map toggle to its
         // right. egui clips popups to this small window, so both menu levels use a
@@ -482,6 +461,31 @@ impl SpyApp {
                     self.zone = z;
                     changed = true;
                 }
+            }
+            // Global longitude for the 干支 hour-pillar true-solar-time
+            // correction — to the right of the presets, shown only with 干支 on;
+            // a trailing °E labels the unit. Empty/invalid means no correction.
+            if self.settings().show_lunar {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("longitude")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.longitude_input)
+                        .hint_text("120")
+                        .desired_width(48.0)
+                        .font(FontId::monospace(12.0)),
+                );
+                if resp.changed() {
+                    self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+                }
+                ui.label(
+                    RichText::new("°E")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
             }
         });
         // Selecting a location defaults the 干支 longitude to that zone's central
