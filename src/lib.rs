@@ -40,6 +40,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod csv_enrich;
+/// Whole-world public-holiday lookup (ISO-3166 country + date → holiday name),
+/// behind the `holiday` feature. An embedded python-holidays export; a hit is
+/// "consistent with a public holiday", an annotation rather than a guarantee.
+#[cfg(feature = "holiday")]
+pub mod holiday;
 pub mod interpret;
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
 /// separate from the POSIX [`PosixNs`] spine (ADR 0003).
@@ -50,15 +55,14 @@ pub mod leap;
 /// longitude), unlike the instant↔instant rest of the crate.
 #[cfg(feature = "lunisolar")]
 pub mod lunisolar;
-/// Whole-world public-holiday lookup (ISO-3166 country + date → holiday name),
-/// behind the `holiday` feature. An embedded python-holidays export; a hit is
-/// "consistent with a public holiday", an annotation rather than a guarantee.
-#[cfg(feature = "holiday")]
-pub mod holiday;
 pub mod registry;
 /// Scan arbitrary text for timestamp candidates and decode each into ranked
 /// readings (the CLI `scan` command and the timeglyph-lens overlay share this).
 pub mod scan;
+
+/// The engine's version (`CARGO_PKG_VERSION`), for callers that surface it — e.g.
+/// the timeglyph-lens overlay's landing screen.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Errors from decoding, encoding, or rendering a timestamp.
 #[derive(Debug, thiserror::Error)]

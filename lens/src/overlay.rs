@@ -81,21 +81,36 @@ pub fn run(verbose: u8) -> Result<(), String> {
                 latest,
                 verbose,
                 load_logo(&cc.egui_ctx),
+                load_png_texture(
+                    &cc.egui_ctx,
+                    "sr-dark",
+                    include_bytes!("../assets/securityronin-dark.png"),
+                ),
+                load_png_texture(
+                    &cc.egui_ctx,
+                    "sr-light",
+                    include_bytes!("../assets/securityronin-light.png"),
+                ),
             )))
         }),
     )
     .map_err(|e| e.to_string())
 }
 
-/// Decode the embedded app icon into a texture for the header and empty-state.
-/// `None` if it can't be decoded — the UI then falls back to the ◷ glyph.
-fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
-    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).ok()?;
+/// Decode embedded PNG bytes into a texture. `None` if it can't be decoded.
+fn load_png_texture(ctx: &egui::Context, name: &str, bytes: &[u8]) -> Option<egui::TextureHandle> {
+    let icon = eframe::icon_data::from_png_bytes(bytes).ok()?;
     let image = egui::ColorImage::from_rgba_unmultiplied(
         [icon.width as usize, icon.height as usize],
         &icon.rgba,
     );
-    Some(ctx.load_texture("timeglyph-logo", image, egui::TextureOptions::LINEAR))
+    Some(ctx.load_texture(name, image, egui::TextureOptions::LINEAR))
+}
+
+/// The app icon texture for the header and empty-state (falls back to the ◷
+/// glyph if it can't be decoded).
+fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    load_png_texture(ctx, "timeglyph-logo", include_bytes!("../assets/icon.png"))
 }
 
 /// Poll the element under the cursor on a background thread so the render thread
@@ -198,10 +213,20 @@ struct LensApp {
     /// The app logo as a texture, for the header and empty-state. `None` if the
     /// embedded icon can't be decoded — the UI falls back to the ◷ glyph.
     logo: Option<egui::TextureHandle>,
+    /// Security Ronin wordmark for the landing screen, in dark- and
+    /// light-background variants (picked by the active theme).
+    sr_logo_dark: Option<egui::TextureHandle>,
+    sr_logo_light: Option<egui::TextureHandle>,
 }
 
 impl LensApp {
-    fn new(latest: Arc<Mutex<String>>, verbose: u8, logo: Option<egui::TextureHandle>) -> Self {
+    fn new(
+        latest: Arc<Mutex<String>>,
+        verbose: u8,
+        logo: Option<egui::TextureHandle>,
+        sr_logo_dark: Option<egui::TextureHandle>,
+        sr_logo_light: Option<egui::TextureHandle>,
+    ) -> Self {
         Self {
             latest,
             last_text: String::new(),
@@ -217,6 +242,8 @@ impl LensApp {
             settings: Arc::new(Mutex::new(Settings::default())),
             verbose,
             logo,
+            sr_logo_dark,
+            sr_logo_light,
         }
     }
 
@@ -310,6 +337,11 @@ impl eframe::App for LensApp {
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
         let logo = self.logo.clone();
+        let sr_logo = if pal.base_dark {
+            self.sr_logo_dark.clone()
+        } else {
+            self.sr_logo_light.clone()
+        };
 
         let panel = Frame::none()
             .fill(pal.bg_deep)
@@ -326,6 +358,7 @@ impl eframe::App for LensApp {
                         "Point at any on-screen value to decode it",
                         pal,
                         logo.as_ref(),
+                        sr_logo.as_ref(),
                     );
                 } else {
                     // macOS without the Accessibility grant: readings never
@@ -338,6 +371,7 @@ impl eframe::App for LensApp {
                         "Flip the timeglyph-lens switch, then relaunch",
                         pal,
                         logo.as_ref(),
+                        sr_logo.as_ref(),
                     );
                     ui.add_space(8.0);
                     ui.vertical_centered(|ui| {
@@ -916,6 +950,7 @@ fn empty_state(
     sub: &str,
     pal: Palette,
     logo: Option<&egui::TextureHandle>,
+    sr_logo: Option<&egui::TextureHandle>,
 ) {
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
@@ -944,6 +979,21 @@ fn empty_state(
                 .font(FontId::proportional(12.0))
                 .color(pal.faint),
         );
+        // Product + version, then the Security Ronin wordmark (theme-matched).
+        ui.add_space(10.0);
+        ui.label(
+            RichText::new(format!("timeglyph {}", timeglyph::VERSION))
+                .font(FontId::monospace(11.0))
+                .color(pal.faint),
+        );
+        if let Some(sr) = sr_logo {
+            ui.add_space(14.0);
+            // Native aspect is ~1505×721; fit to a modest width.
+            ui.add(
+                egui::Image::new(egui::load::SizedTexture::from_handle(sr))
+                    .fit_to_exact_size(egui::vec2(150.0, 150.0 * 721.0 / 1505.0)),
+            );
+        }
     });
 }
 
