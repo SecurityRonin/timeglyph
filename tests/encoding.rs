@@ -122,6 +122,18 @@ fn encode_fat_matches_time_decode_vector() {
 }
 
 #[test]
+fn encode_fat_rejects_out_of_range() {
+    // Pre-1980 is below the FAT 7-bit year field (year - 1980 would be negative).
+    let y1970 = format("unix").unwrap().decode_int(0).unwrap();
+    assert!(format("fat").unwrap().encode_int(y1970).is_err());
+    // An instant outside jiff's civil range yields no civil fields at all.
+    assert!(format("fat")
+        .unwrap()
+        .encode_int(PosixNs(i128::MAX))
+        .is_err());
+}
+
+#[test]
 fn fat_on_disk_hex_decodes_to_fat() {
     // The FAT/DOS on-disk layout stores a date word then a time word, each
     // little-endian. time-decode's example `a45a597a` => 2025-05-04 15:18:50.

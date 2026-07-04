@@ -350,3 +350,32 @@ fn differential_encode_embedded_family() {
         );
     }
 }
+
+#[test]
+fn differential_encode_fat() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
+        return;
+    }
+    // Tier-1, live: time-decode prints FAT as the on-disk little-endian
+    // wFatDate/wFatTime bytes; parse them into timeglyph's packed int (date<<16 |
+    // time) and compare to timeglyph's fat encoder.
+    let vectors = oracle_timestamp("2020-01-01 00:00:00");
+    let ondisk = vectors
+        .iter()
+        .find(|(l, _)| l == "FAT Date + Time")
+        .unwrap_or_else(|| panic!("FAT missing from oracle --timestamp"))
+        .1
+        .clone();
+    let b = u32::from_str_radix(&ondisk, 16).unwrap().to_be_bytes();
+    let want = (i64::from(u16::from_le_bytes([b[0], b[1]])) << 16)
+        | i64::from(u16::from_le_bytes([b[2], b[3]]));
+    let inst = timeglyph::format("unix")
+        .unwrap()
+        .decode_int(1_577_836_800)
+        .unwrap();
+    assert_eq!(
+        timeglyph::format("fat").unwrap().encode_int(inst).unwrap(),
+        want
+    );
+}

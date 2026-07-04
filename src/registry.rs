@@ -74,6 +74,43 @@ fn packed_civil(
     Ok(PosixNs(ts.as_nanosecond()))
 }
 
+/// The inverse of [`packed_civil`]: the UTC civil fields (year, month, day,
+/// hour, minute, second) of an instant. Packed formats store naive wall-clock,
+/// so the fields are read in UTC. Shared by the packed encoders.
+fn civil_fields(instant: PosixNs) -> Result<(i16, i8, i8, i8, i8, i8), ChronoError> {
+    let ts = jiff::Timestamp::from_nanosecond(instant.0)
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    let dt = jiff::tz::Offset::UTC.to_datetime(ts);
+    Ok((
+        dt.year(),
+        dt.month(),
+        dt.day(),
+        dt.hour(),
+        dt.minute(),
+        dt.second(),
+    ))
+}
+
+/// Inverse of [`decode_fat_dos`]: pack an instant into the FAT/DOS date+time
+/// word pair (`date << 16 | time`). LOCAL naive, 2-second granularity; the year
+/// must fit the 7-bit field (1980–2107).
+fn encode_fat_dos(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(1980..=2107).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "FAT/DOS year (1980-2107)",
+            value: i128::from(year),
+        });
+    }
+    let date = (u32::from((year - 1980) as u16) << 9)
+        | (u32::from(month as u8) << 5)
+        | u32::from(day as u8);
+    let time = (u32::from(hour as u8) << 11)
+        | (u32::from(minute as u8) << 6)
+        | u32::from((second / 2) as u8);
+    Ok(i64::from((date << 16) | time))
+}
+
 /// exFAT 32-bit packed timestamp (MSB-first): year(7,+1980) month(4) day(5)
 /// hour(5) minute(6) 2-second(5). LOCAL time. [Microsoft exFAT spec]
 fn decode_exfat(value: i64) -> Result<PosixNs, ChronoError> {
@@ -598,7 +635,7 @@ pub static FORMATS: &[Format] = &[
         family: "FAT/exFAT, ZIP, DOS",
         strategy: Strategy::Packed {
             decode: decode_fat_dos,
-            encode: None,
+            encode: Some(encode_fat_dos),
         },
         citation: "Microsoft FAT spec / ECMA-107 (DOS date/time fields)",
         // FAT stores wall-clock LOCAL time with NO offset — the rendered instant
