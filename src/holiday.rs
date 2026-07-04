@@ -35,14 +35,26 @@ type Table = HashMap<String, HashMap<String, String>>;
 /// count), so a runtime failure here means a packaging regression, caught there.
 fn table() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
-    TABLE.get_or_init(|| decode().unwrap_or_default())
+    TABLE.get_or_init(|| load_or_empty("holidays", decode(RAW)))
 }
 
-fn decode() -> Option<Table> {
-    let mut gz = flate2::read::GzDecoder::new(RAW);
+/// Degrade a decode `Result` to `T::default()` with a LOUD log on failure, shared
+/// by `table()` and `zones()` (DRY). The embedded blobs are CI-validated, so a
+/// runtime failure means a packaging regression — logged at error level, never a
+/// silent empty table that reads like "no holidays".
+fn load_or_empty<T: Default>(what: &str, decoded: Result<T, String>) -> T {
+    decoded.unwrap_or_else(|e| {
+        tracing::error!(table = what, error = %e, "embedded holiday data failed to decode; degrading to empty");
+        T::default()
+    })
+}
+
+fn decode(raw: &[u8]) -> Result<Table, String> {
+    let mut gz = flate2::read::GzDecoder::new(raw);
     let mut json = String::new();
-    gz.read_to_string(&mut json).ok()?;
-    serde_json::from_str(&json).ok()
+    gz.read_to_string(&mut json)
+        .map_err(|e| format!("gzip inflate of holidays.json.gz failed: {e}"))?;
+    serde_json::from_str(&json).map_err(|e| format!("JSON parse of holiday table failed: {e}"))
 }
 
 /// Public-holiday name for `date` in `country` (ISO-3166 alpha-2, case-insensitive),
@@ -98,5 +110,62 @@ pub fn in_zone_rendered(zone: &RenderZone, rendered: &str) -> Option<String> {
 fn zones() -> &'static HashMap<String, String> {
     static ZONES: OnceLock<HashMap<String, String>> = OnceLock::new();
     static RAW: &str = include_str!("../data/zone_country.json");
-    ZONES.get_or_init(|| serde_json::from_str(RAW).unwrap_or_default())
+    ZONES.get_or_init(|| load_or_empty("zone→country", decode_zones(RAW)))
+}
+
+fn decode_zones(raw: &str) -> Result<HashMap<String, String>, String> {
+    serde_json::from_str(raw).map_err(|e| format!("JSON parse of zone→country table failed: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_rejects_non_gzip_input() {
+        let err = decode(b"this is plainly not a gzip stream").unwrap_err();
+        assert!(err.contains("gzip inflate"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn decode_rejects_valid_gzip_with_bad_json() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(b"{ not valid json").unwrap();
+        let gz = enc.finish().unwrap();
+        let err = decode(&gz).unwrap_err();
+        assert!(err.contains("JSON parse"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn decode_zones_rejects_bad_json() {
+        let err = decode_zones("{ not valid json").unwrap_err();
+        assert!(err.contains("JSON parse"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn load_or_empty_degrades_loudly_on_err() {
+        // The loud-degrade path shared by table()/zones(): a decode failure must
+        // yield an empty default, not propagate — exercised here for real (the
+        // embedded blobs never fail, so this is the only way to reach the arm).
+        // A subscriber is installed so tracing actually formats the error field
+        // (tracing is lazy — without an interested subscriber the event is a no-op).
+        let sub = tracing_subscriber::fmt()
+            .with_writer(std::io::sink)
+            .finish();
+        let degraded: Table = tracing::subscriber::with_default(sub, || {
+            load_or_empty("test", Err("simulated corruption".to_string()))
+        });
+        assert!(degraded.is_empty());
+    }
+
+    #[test]
+    fn load_or_empty_passes_ok_through() {
+        let mut m = Table::new();
+        m.insert("XX".to_string(), HashMap::new());
+        let kept = load_or_empty("test", Ok(m));
+        assert_eq!(kept.len(), 1);
+    }
 }
