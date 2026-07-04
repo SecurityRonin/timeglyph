@@ -595,44 +595,23 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
 /// DST (the numeric offset is already in `rendered`; a location alone is
 /// ambiguous, so these disambiguate), an optional local tag, and the confidence.
 fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
+    let datetime = || {
+        RichText::new(&r.rendered)
+            .font(FontId::monospace(14.0))
+            .color(pal.ink)
+    };
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(&r.rendered)
-                .font(FontId::monospace(14.0))
-                .color(pal.ink),
-        );
-        if !r.local {
-            if let Some(s) = tzinfo::stamp(zone, r.instant) {
-                if !s.abbr.is_empty() {
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new(&s.abbr)
-                            .font(FontId::monospace(11.0))
-                            .color(pal.mute),
-                    );
-                }
-                if s.dst {
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new("☀ DST")
-                            .font(FontId::proportional(10.0))
-                            .color(pal.amber)
-                            .strong(),
-                    );
-                }
-            } else if r.rendered.ends_with('Z') {
-                // UTC display zone: show a "UTC" designator like a named zone shows
-                // its abbreviation, for consistency — even though the value's own
-                // `Z` already says UTC.
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new("UTC")
-                        .font(FontId::monospace(11.0))
-                        .color(pal.mute),
-                );
-            }
-        }
         if r.local {
+            // A naive wall-clock reading carries a two-line
+            // "local time / (not time-zone adjusted)" tag. egui's horizontal
+            // layout top-aligns items, so wrap the single-line datetime and
+            // weekday in a half-line top pad to sit them at the tag's vertical
+            // middle.
+            let center_pad = 6.0;
+            ui.vertical(|ui| {
+                ui.add_space(center_pad);
+                ui.label(datetime());
+            });
             ui.add_space(6.0);
             ui.vertical(|ui| {
                 ui.label(
@@ -646,6 +625,48 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                         .color(pal.faint),
                 );
             });
+            if let Some(wd) = scan::weekday(&r.rendered) {
+                ui.add_space(6.0);
+                ui.vertical(|ui| {
+                    ui.add_space(center_pad);
+                    ui.label(
+                        RichText::new(wd)
+                            .font(FontId::proportional(11.0))
+                            .color(pal.faint),
+                    );
+                });
+            }
+            return;
+        }
+        ui.label(datetime());
+        if let Some(s) = tzinfo::stamp(zone, r.instant) {
+            if !s.abbr.is_empty() {
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(&s.abbr)
+                        .font(FontId::monospace(11.0))
+                        .color(pal.mute),
+                );
+            }
+            if s.dst {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("☀ DST")
+                        .font(FontId::proportional(10.0))
+                        .color(pal.amber)
+                        .strong(),
+                );
+            }
+        } else if r.rendered.ends_with('Z') {
+            // UTC display zone: show a "UTC" designator like a named zone shows
+            // its abbreviation, for consistency — even though the value's own
+            // `Z` already says UTC.
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("UTC")
+                    .font(FontId::monospace(11.0))
+                    .color(pal.mute),
+            );
         }
         // Weekday of the displayed date — handy for spotting what day an event
         // fell on.
