@@ -576,11 +576,9 @@ fn header(ui: &mut egui::Ui, source: &str, pal: Palette) {
 /// tooltip on the chip (not an always-shown line), keeping each reading compact.
 fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     ui.horizontal(|ui| {
-        // Match the datetime cell's fixed height on local rows so Align::Center
-        // lands the chip on the same midline as the two-line tag.
-        if r.local {
-            ui.set_min_height(local_row_h(ui));
-        }
+        // Uniform row height (see `row_h`) so the format chip centers on the same
+        // midline as every other cell and the dots stay evenly spaced.
+        ui.set_min_height(row_h(ui));
         Frame::none()
             .fill(pal.bg_chip)
             .rounding(Rounding::same(4.0))
@@ -601,19 +599,15 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     });
 }
 
-/// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
-/// DST (the numeric offset is already in `rendered`; a location alone is
-/// ambiguous, so these disambiguate), an optional local tag, and the confidence.
-/// Exact height of the two-line "local time / (not time-zone adjusted)" tag —
-/// the sum of its two lines' font row heights (they stack with zero inter-line
-/// spacing). Every cell of a *local* reading row is pinned to this height, so:
-/// the datetime cell's tag fills the row exactly (its inter-line gap lands on
-/// the row's vertical center regardless of whether egui centers the block), the
-/// single-line datetime/weekday centre onto that same gap, and the confidence
-/// and format cells share the midline too. Using the exact height (not a padded
-/// constant) also stops the local row adding slack that would inflate the gap to
-/// its neighbours.
-fn local_row_h(ui: &egui::Ui) -> f32 {
+/// The uniform height of *every* reading row — the two-line "local time /
+/// (not time-zone adjusted)" tag's height (its two lines' font row heights,
+/// stacked with zero inter-line spacing), which is the tallest a row gets.
+/// Pinning all three cells of all rows to this one height is what makes the
+/// confidence dots evenly spaced: dot spacing = row height + grid spacing, so it
+/// is constant only when every row is the same height. Single-line rows gain a
+/// little breathing room (content centered in the taller row); the local row's
+/// tag fills it exactly, its inter-line gap landing on the shared midline.
+fn row_h(ui: &egui::Ui) -> f32 {
     ui.fonts(|f| {
         f.row_height(&FontId::proportional(11.0)) + f.row_height(&FontId::proportional(10.0))
     })
@@ -626,12 +620,11 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
             .color(pal.ink)
     };
     ui.horizontal(|ui| {
+        // Uniform row height (see `row_h`) across all rows so dots stay evenly
+        // spaced; egui's Align::Center then centers each cell's content on the
+        // shared midline.
+        ui.set_min_height(row_h(ui));
         if r.local {
-            // Pin the row to a fixed height so egui's Align::Center centers the
-            // single-line datetime and weekday on the two-line tag's midline —
-            // the same height the confidence and format cells use, so the whole
-            // grid row shares one midline.
-            ui.set_min_height(local_row_h(ui));
             ui.label(datetime());
             ui.add_space(6.0);
             ui.vertical(|ui| {
@@ -717,11 +710,9 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     };
     let resp = ui
         .horizontal(|ui| {
-            // Match the datetime cell's fixed height on local rows so the dot and
-            // percent center on the same midline as the two-line tag.
-            if r.local {
-                ui.set_min_height(local_row_h(ui));
-            }
+            // Uniform row height (see `row_h`) so the dot centers on the shared
+            // midline and the dots stay evenly spaced down the list.
+            ui.set_min_height(row_h(ui));
             ui.label(
                 RichText::new("●")
                     .font(FontId::proportional(10.0))
