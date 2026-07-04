@@ -409,8 +409,8 @@ fn run_scan(text: Option<&str>, min_digits: usize, all: bool, zone: &RenderZone)
     } else {
         use std::io::Read;
         let mut s = String::new();
-        if std::io::stdin().read_to_string(&mut s).is_err() {
-            eprintln!("error: could not read stdin");
+        if let Err(e) = std::io::stdin().read_to_string(&mut s) {
+            eprintln!("error: could not read stdin: {e}");
             return EXIT_ERR;
         }
         s
@@ -495,8 +495,8 @@ fn run_csv(
 ) -> u8 {
     let input = if path == "-" {
         let mut s = String::new();
-        if std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).is_err() {
-            eprintln!("error: failed to read stdin");
+        if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut s) {
+            eprintln!("error: could not read stdin: {e}");
             return EXIT_ERR;
         }
         s
