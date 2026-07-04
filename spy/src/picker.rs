@@ -7,7 +7,7 @@
 //! Each backend exposes the same `Picker::new() -> Result<Self, String>` and
 //! `text_under_cursor(&self) -> Option<String>`, so the overlay is identical.
 
-pub use imp::Picker;
+pub use imp::{accessibility_ok, prompt_accessibility, Picker};
 
 #[cfg(windows)]
 mod imp {
@@ -18,6 +18,16 @@ mod imp {
     };
     use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    /// UI Automation needs no special permission grant, so the picker is always
+    /// ready. (Reading an *elevated* window still requires an elevated process,
+    /// but that is not a per-app permission we can request.)
+    pub fn accessibility_ok() -> bool {
+        true
+    }
+
+    /// No system permission prompt on Windows.
+    pub fn prompt_accessibility() {}
 
     pub struct Picker {
         uia: IUIAutomation,
@@ -50,13 +60,37 @@ mod imp {
 mod imp {
     use accessibility_sys::{
         kAXDescriptionAttribute, kAXErrorSuccess, kAXRangeForPositionParameterizedAttribute,
-        kAXTitleAttribute, kAXValueAttribute, kAXValueTypeCFRange, kAXValueTypeCGPoint,
+        kAXTitleAttribute, kAXTrustedCheckOptionPrompt, kAXValueAttribute, kAXValueTypeCFRange,
+        kAXValueTypeCGPoint, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
         AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition,
         AXUIElementCopyParameterizedAttributeValue, AXUIElementCreateSystemWide, AXUIElementRef,
         AXValueCreate, AXValueGetValue, AXValueRef,
     };
     use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeRef, TCFType};
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::dictionary::CFDictionary;
     use core_foundation::string::{CFString, CFStringGetTypeID, CFStringRef};
+
+    /// True when this process is trusted for the macOS Accessibility API — the
+    /// grant the picker needs. When false the overlay shows no readings, so it
+    /// surfaces a "grant Accessibility" reminder instead.
+    pub fn accessibility_ok() -> bool {
+        unsafe { AXIsProcessTrusted() }
+    }
+
+    /// Show the system Accessibility prompt if this process isn't trusted yet
+    /// (idempotent — a no-op once granted). Called once at startup so a
+    /// first-time user is guided straight to the grant.
+    pub fn prompt_accessibility() {
+        let key = unsafe { CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt) };
+        let opts = CFDictionary::from_CFType_pairs(&[(
+            key.as_CFType(),
+            CFBoolean::true_value().as_CFType(),
+        )]);
+        unsafe {
+            AXIsProcessTrustedWithOptions(opts.as_concrete_TypeRef());
+        }
+    }
     use core_graphics::event::CGEvent;
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
@@ -184,6 +218,12 @@ mod imp {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 mod imp {
+    pub fn accessibility_ok() -> bool {
+        true
+    }
+
+    pub fn prompt_accessibility() {}
+
     pub struct Picker;
 
     impl Picker {

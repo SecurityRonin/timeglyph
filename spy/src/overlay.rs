@@ -45,6 +45,9 @@ pub fn run(verbose: u8) -> Result<(), String> {
     // so the AX handle / COM apartment stays on that thread; this probe is
     // dropped immediately.
     let _ = Picker::new()?;
+    // macOS gates the picker behind Accessibility; surface the system prompt on
+    // first launch (no-op once granted / on other platforms).
+    crate::picker::prompt_accessibility();
     if verbose >= 1 {
         eprintln!(
             "[spy] verbose logging on (level {verbose}); -vv also shows the raw element text"
@@ -316,13 +319,26 @@ impl eframe::App for SpyApp {
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
-                empty_state(
-                    ui,
-                    "Hover an element with a number",
-                    "Point at any on-screen value to decode it",
-                    pal,
-                    logo.as_ref(),
-                );
+                if crate::picker::accessibility_ok() {
+                    empty_state(
+                        ui,
+                        "Hover an element with a number",
+                        "Point at any on-screen value to decode it",
+                        pal,
+                        logo.as_ref(),
+                    );
+                } else {
+                    // macOS without the Accessibility grant: readings never
+                    // arrive, so guide the user to enable it rather than sit on a
+                    // silent empty state.
+                    empty_state(
+                        ui,
+                        "Grant Accessibility to timeglyph-spy",
+                        "System Settings → Privacy & Security → Accessibility, then relaunch",
+                        pal,
+                        logo.as_ref(),
+                    );
+                }
             } else {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])

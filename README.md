@@ -50,30 +50,23 @@ source family.
 
 ## Install
 
-**Windows** ([winget](https://learn.microsoft.com/windows/package-manager/winget/))
+**Windows**
 ```powershell
-winget install SecurityRonin.timeglyph   # installs both the timeglyph CLI and the timeglyph-spy overlay
+winget install SecurityRonin.timeglyph
 ```
 
-**macOS / Linux** ([Homebrew](https://brew.sh))
+**macOS**
 ```bash
-brew install securityronin/tap/timeglyph   # on macOS this also installs the timeglyph-spy overlay
+brew install securityronin/tap/timeglyph
 ```
 
-**Cargo** (any platform with a Rust toolchain)
+**Debian / Ubuntu**
 ```bash
-cargo install timeglyph                       # core registry
-cargo install timeglyph --features leap       # + leap-aware GPS / TAI64 / NTP
-cargo install timeglyph --features lunisolar  # + Chinese lunisolar calendar / 干支
+curl -1sLf 'https://dl.cloudsmith.io/public/securityronin/timeglyph/setup.deb.sh' | sudo -E bash
+sudo apt install timeglyph
 ```
 
-**Prebuilt binaries** — grab a static build from the [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest):
-macOS (Apple Silicon + Intel), Linux (x86-64 + ARM64, musl), and Windows (x86-64).
-Verify against `checksums.txt`, then put it on your `PATH`:
-```bash
-tar xzf timeglyph-*-aarch64-apple-darwin.tar.gz
-install timeglyph /usr/local/bin/
-```
+On Windows and macOS this also installs the [`timeglyph-spy`](#timeglyph-spy--hover-anything-read-the-time) overlay.
 
 ## timeglyph-spy — hover anything, read the time
 
@@ -89,16 +82,21 @@ for that date in the chosen zone, and — opt-in — the Chinese lunisolar date 
   <img src="assets/spy.png" alt="the timeglyph-spy overlay up close" width="420" />
 </p>
 
-- **Platforms:** macOS and Windows — the picker reads the element under the cursor
-  via the Accessibility API and UI&nbsp;Automation respectively. Linux is not yet
-  supported (no picker backend).
-- **Windows:** `winget install SecurityRonin.timeglyph` installs both the CLI and
-  the spy overlay (`timeglyph-spy`) — or grab the `.zip` from the
-  [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest).
-- **macOS:** `brew install securityronin/tap/timeglyph` installs it alongside the
-  CLI; or download the `timeglyph-spy` binary from the release, or build from
-  source — `cargo build --release --manifest-path spy/Cargo.toml`. Grant
-  Accessibility permission on first launch.
+It installs with the CLI (`winget install SecurityRonin.timeglyph` on Windows,
+`brew install securityronin/tap/timeglyph` on macOS) and reads the element under
+the cursor through the platform accessibility layer — the Accessibility API on
+macOS, UI Automation on Windows. (Linux support is in progress.)
+
+**First launch on macOS — grant Accessibility.** macOS gates the Accessibility
+API behind an explicit grant, so the overlay shows no readings until you allow it:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Turn on **timeglyph-spy** (click **+** and add it if it isn't listed).
+3. Quit and relaunch timeglyph-spy.
+
+**Windows** needs no special permission. To inspect an *elevated*
+(Run-as-administrator) window, launch timeglyph-spy elevated too — Windows blocks
+UI access across privilege levels.
 
 ## Status
 

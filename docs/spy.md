@@ -66,8 +66,24 @@ The **⚙** button (and, on macOS, the ⌘, menu item) opens Settings:
 | Linux | not supported | no picker backend |
 
 On macOS the picker narrows to the exact word under the cursor; on Windows it
-reads the hovered element's name. **Grant Accessibility permission on first
-launch** (macOS: System Settings → Privacy & Security → Accessibility).
+reads the hovered element's name.
+
+### First launch on macOS — grant Accessibility
+
+macOS gates the Accessibility API behind an explicit grant. On first launch
+timeglyph-spy triggers the system prompt; until you allow it, the overlay shows a
+**"Grant Accessibility to timeglyph-spy"** reminder and no readings appear. To
+grant it:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Turn on **timeglyph-spy** (click **+** and add it if it isn't listed).
+3. Quit and relaunch timeglyph-spy.
+
+### Windows
+
+No special permission is needed. To inspect an **elevated** (Run-as-administrator)
+window, run timeglyph-spy elevated too — Windows isolates UI access across
+privilege levels (UIPI).
 
 ## Install
 
