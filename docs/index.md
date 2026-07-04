@@ -80,10 +80,36 @@ $ timeglyph decode filetime 132223104000000000  # decode under one known format
 $ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
 $ timeglyph hex 0060947C58B2D501              # raw bytes (LE/BE + packed on-disk)
 $ timeglyph string 20200101000000Z           # ASN.1 / ISO / RFC string forms
+$ timeglyph scan app.log                     # find & decode every timestamp in text/stdin
 $ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
+$ timeglyph lunisolar 2020-01-25 --tz Asia/Shanghai  # Chinese calendar + 干支 (--features lunisolar)
 $ timeglyph csv events.csv                   # enrich a CSV (human-readable timestamp columns)
 $ timeglyph list                             # the registry, with spec citations
 ```
 
 Exit codes are pipeline-safe: `0` a clear top reading, `2` ambiguous or a
 [sentinel](concepts/sentinel-values.md) (review needed), `1` error.
+
+## Beyond decoding
+
+Optional, feature-gated layers extend the engine past raw instant↔instant mapping:
+
+- **Leap-aware scales** (`--features leap`) — GPS / TAI64 / NTP with leap-correct
+  UTC via `hifitime`, kept separate from the POSIX spine.
+- **Chinese lunisolar + 干支** (`--features lunisolar`) — the lunisolar date and
+  Heavenly-Stem / Earthly-Branch four pillars for an instant at a chosen meridian,
+  via the `stem-branch` ephemeris. A convention-relative reading, not a verdict.
+- **Whole-world public holidays** (`--features holiday`) — is a date a public
+  holiday in a given country? 248 countries, 1980–2100, generated from the MIT
+  `python-holidays` project (names in each country's own locale). Framed as
+  *consistent with a public holiday*, an annotation rather than proof.
+
+## timeglyph-spy — the cursor overlay
+
+`timeglyph-spy` is the interactive front-end: an always-on-top window that follows
+your cursor and shows timeglyph's ranked readings for any number in the element
+under the pointer — with the weekday, the public holiday for that date in the
+chosen zone, and the opt-in 干支 pillars colored by 五行. macOS and Windows (the
+picker uses the Accessibility API / UI Automation respectively); see the
+[README](https://github.com/SecurityRonin/timeglyph#timeglyph-spy--hover-anything-read-the-time)
+to install.
