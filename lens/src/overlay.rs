@@ -204,6 +204,9 @@ struct LensApp {
     /// Whether the settings window is open. Shared with its viewport, which flips
     /// it false on close.
     show_settings: Arc<AtomicBool>,
+    /// Whether the About window is open. Shared with its viewport (flips false on
+    /// close). Opened from the macOS About menu item or the clickable corner logo.
+    show_about: Arc<AtomicBool>,
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
@@ -239,6 +242,7 @@ impl LensApp {
             show_map: false,
             map_pick: None,
             show_settings: Arc::new(AtomicBool::new(false)),
+            show_about: Arc::new(AtomicBool::new(false)),
             settings: Arc::new(Mutex::new(Settings::default())),
             verbose,
             logo,
@@ -259,9 +263,13 @@ impl eframe::App for LensApp {
         let pal = cur.theme.palette();
         install_theme(ctx, &pal);
 
-        // The native macOS menu's Settings… item opens the settings window.
-        if crate::macmenu::settings_selected() {
+        // The native macOS menu's Settings… / About items open their windows.
+        let menu = crate::macmenu::selected();
+        if menu.settings {
             self.show_settings.store(true, Ordering::Relaxed);
+        }
+        if menu.about {
+            self.show_about.store(true, Ordering::Relaxed);
         }
 
         let mut dirty = false;
@@ -319,6 +327,7 @@ impl eframe::App for LensApp {
         }
         // The settings dialog (bottom-right), if open.
         self.settings_window(ctx);
+        self.about_window(ctx);
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
@@ -431,25 +440,25 @@ impl eframe::App for LensApp {
         // Product identity, tucked into the lower-right corner: "timeglyph
         // <version>" and the theme-matched Security Ronin wordmark. An anchored
         // overlay so it stays put regardless of the panel's content.
-        egui::Area::new(egui::Id::new("lens-branding"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -8.0))
-            .interactable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    ui.label(
-                        RichText::new(format!("timeglyph {}", timeglyph::VERSION))
-                            .font(FontId::monospace(10.0))
-                            .color(pal.faint),
-                    );
-                    if let Some(sr) = sr_logo.as_ref() {
-                        ui.add(
-                            egui::Image::new(egui::load::SizedTexture::from_handle(sr))
-                                .fit_to_exact_size(egui::vec2(48.0, 48.0 * 721.0 / 1505.0)),
-                        );
+        // The theme-matched Security Ronin logo in the lower-right corner (tall
+        // enough to span the footer's two rows). Click it for the About dialog,
+        // where the version lives — the main window stays uncluttered.
+        if let Some(sr) = sr_logo.as_ref() {
+            egui::Area::new(egui::Id::new("lens-branding"))
+                .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -8.0))
+                .show(ctx, |ui| {
+                    let h = 48.0; // native aspect ~1505×721
+                    let img = egui::Image::new(egui::load::SizedTexture::from_handle(sr))
+                        .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
+                    if ui
+                        .add(egui::ImageButton::new(img).frame(false))
+                        .on_hover_text("About timeglyph-lens")
+                        .clicked()
+                    {
+                        self.show_about.store(true, Ordering::Relaxed);
                     }
                 });
-            });
+        }
 
         self.hits = hits;
 
@@ -653,6 +662,78 @@ impl LensApp {
                                 "Chinese lunisolar and heavenly stem / earthly branch",
                             );
                         }
+                    });
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    open.store(false, Ordering::Relaxed);
+                }
+            },
+        );
+    }
+
+    /// The About dialog: a deferred viewport showing the theme-matched Security
+    /// Ronin logo and the version. Opened from the macOS About item or the
+    /// clickable corner logo; closing clears `show_about`.
+    fn about_window(&mut self, ctx: &egui::Context) {
+        if !self.show_about.load(Ordering::Relaxed) {
+            return;
+        }
+        let settings = Arc::clone(&self.settings);
+        let open = Arc::clone(&self.show_about);
+        let sr_dark = self.sr_logo_dark.clone();
+        let sr_light = self.sr_logo_light.clone();
+        ctx.show_viewport_deferred(
+            egui::ViewportId::from_hash_of("about"),
+            egui::ViewportBuilder::default()
+                .with_title("About timeglyph-lens")
+                .with_inner_size([360.0, 260.0])
+                .with_resizable(false),
+            move |ctx, _class| {
+                let pal = settings
+                    .lock()
+                    .map(|g| g.theme.palette())
+                    .unwrap_or_else(|_| Theme::Dark.palette());
+                install_theme(ctx, &pal);
+                let sr = if pal.base_dark {
+                    sr_dark.as_ref()
+                } else {
+                    sr_light.as_ref()
+                };
+                egui::CentralPanel::default()
+                    .frame(
+                        Frame::none()
+                            .fill(pal.bg_deep)
+                            .inner_margin(Margin::same(20.0)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(6.0);
+                            if let Some(tex) = sr {
+                                let h = 96.0; // native aspect ~1505×721
+                                ui.add(
+                                    egui::Image::new(egui::load::SizedTexture::from_handle(tex))
+                                        .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h)),
+                                );
+                            }
+                            ui.add_space(14.0);
+                            ui.label(
+                                RichText::new("timeglyph-lens")
+                                    .font(FontId::monospace(16.0))
+                                    .color(pal.ink)
+                                    .strong(),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                RichText::new(format!("timeglyph {}", timeglyph::VERSION))
+                                    .font(FontId::proportional(12.0))
+                                    .color(pal.mute),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                RichText::new("© 2026 Security Ronin Ltd")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                        });
                     });
                 if ctx.input(|i| i.viewport().close_requested()) {
                     open.store(false, Ordering::Relaxed);

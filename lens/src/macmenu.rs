@@ -1,9 +1,17 @@
-//! The native macOS application menu with a standard `Settings…` item (⌘,),
-//! following normal Mac convention. The menu bar is only shown while
-//! timeglyph-lens is the frontmost app, so this complements — does not replace —
-//! the in-window ⚙ button (which stays reachable while the tool is unfocused).
+//! The native macOS application menu with standard `About timeglyph-lens` and
+//! `Settings…` (⌘,) items, following normal Mac convention. The menu bar shows
+//! only while timeglyph-lens is frontmost, so it complements — does not replace —
+//! the in-window ⚙ button and the clickable corner logo (both reachable while
+//! the tool is unfocused).
 //!
 //! No-op on other platforms (egui draws its own chrome there).
+
+/// Which menu item(s) fired since the last poll.
+#[derive(Default, Clone, Copy)]
+pub struct Selected {
+    pub settings: bool,
+    pub about: bool,
+}
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -12,23 +20,26 @@ mod imp {
     use muda::accelerator::{Accelerator, Code, Modifiers};
     use muda::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
-    /// Id of the `Settings…` item, set once at [`install`], matched in
-    /// [`settings_selected`].
-    static SETTINGS_ID: OnceLock<MenuId> = OnceLock::new();
+    use super::Selected;
 
-    /// Build the standard app menu (About · Settings… ⌘, · Hide · Quit) and set it
-    /// as the `NSApplication` main menu. Call once, on the main thread, after the
-    /// app is initialized.
+    static SETTINGS_ID: OnceLock<MenuId> = OnceLock::new();
+    static ABOUT_ID: OnceLock<MenuId> = OnceLock::new();
+
+    /// Build the app menu (About · Settings… ⌘, · Hide · Quit) and set it as the
+    /// `NSApplication` main menu. Call once, on the main thread, after init. The
+    /// About item is a plain item we handle ourselves (a custom dialog), not the
+    /// system about panel.
     pub fn install() {
         let menu = Menu::new();
         let app = Submenu::new("timeglyph-lens", true);
+        let about = MenuItem::new("About timeglyph-lens", true, None);
         let settings = MenuItem::new(
             "Settings…",
             true,
             Some(Accelerator::new(Some(Modifiers::SUPER), Code::Comma)),
         );
         let _ = app.append_items(&[
-            &PredefinedMenuItem::about(Some("timeglyph-lens"), None),
+            &about,
             &PredefinedMenuItem::separator(),
             &settings,
             &PredefinedMenuItem::separator(),
@@ -38,34 +49,42 @@ mod imp {
         let _ = menu.append(&app);
         menu.init_for_nsapp();
         let _ = SETTINGS_ID.set(settings.id().clone());
+        let _ = ABOUT_ID.set(about.id().clone());
         // Keep the native menu alive for the process lifetime. muda's wrappers are
         // !Send/!Sync so they can't live in a static; leaking them at startup is
         // the intended one-time cost.
         std::mem::forget(menu);
         std::mem::forget(app);
+        std::mem::forget(about);
         std::mem::forget(settings);
     }
 
-    /// Drain pending menu events; `true` if `Settings…` was chosen since the last
-    /// call. Polled once per frame from the overlay's update loop.
-    pub fn settings_selected() -> bool {
-        let mut hit = false;
+    /// Drain pending menu events once; report which items fired. Polled once per
+    /// frame from the overlay's update loop (a single drain, so events aren't
+    /// lost between separate checks).
+    pub fn selected() -> Selected {
+        let mut sel = Selected::default();
         while let Ok(ev) = muda::MenuEvent::receiver().try_recv() {
             if SETTINGS_ID.get() == Some(&ev.id) {
-                hit = true;
+                sel.settings = true;
+            }
+            if ABOUT_ID.get() == Some(&ev.id) {
+                sel.about = true;
             }
         }
-        hit
+        sel
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
+    use super::Selected;
+
     pub fn install() {}
 
-    pub fn settings_selected() -> bool {
-        false
+    pub fn selected() -> Selected {
+        Selected::default()
     }
 }
 
-pub use imp::{install, settings_selected};
+pub use imp::{install, selected};
