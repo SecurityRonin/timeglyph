@@ -156,6 +156,11 @@ fn packed_encoders_place_fields_correctly_at_a_nontrivial_instant() {
         "gsm",
         "nokiale",
         "sqlserver",
+        "moto",
+        "symantec",
+        "dvr",
+        "ns40",
+        "ns40le",
     ] {
         let f = format(id).unwrap();
         let v = f.encode_int(inst).unwrap();
@@ -163,6 +168,19 @@ fn packed_encoders_place_fields_correctly_at_a_nontrivial_instant() {
         assert!(
             back.starts_with("2020-06-15T13:47"),
             "{id}: encode→decode gave {back}, expected 2020-06-15T13:47"
+        );
+    }
+}
+
+#[test]
+fn encode_g2_packed_rejects_out_of_range_year() {
+    // A deeply negative instant (year ≈ -252) is below every G2 format's year
+    // field, exercising each encoder's range guard (no panic, Err).
+    let ancient = format("unix").unwrap().decode_int(-70_000_000_000).unwrap();
+    for id in ["moto", "symantec", "dvr", "ns40", "ns40le"] {
+        assert!(
+            format(id).unwrap().encode_int(ancient).is_err(),
+            "{id}: expected out-of-range year to error"
         );
     }
 }

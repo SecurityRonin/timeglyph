@@ -379,3 +379,39 @@ fn differential_encode_fat() {
         want
     );
 }
+
+#[test]
+fn differential_encode_g2_packed() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
+        return;
+    }
+    // Tier-1, live, at a NON-TRIVIAL instant (2020-06-15T13:47:22Z — every field
+    // distinct and non-zero, so a mis-placed field can't hide). Encode, feed the
+    // value as the format's fixed-width hex to time-decode's own decoder, and
+    // require it reads the instant back.
+    let inst = timeglyph::format("unix")
+        .unwrap()
+        .decode_int(1_592_228_842)
+        .unwrap();
+    for (id, flag, width) in [
+        ("moto", "--moto", 12usize),
+        ("symantec", "--symantec", 12),
+        ("dvr", "--dvr", 8),
+        ("ns40", "--ns40", 14),
+        ("ns40le", "--ns40le", 14),
+    ] {
+        let v = timeglyph::format(id).unwrap().encode_int(inst).unwrap();
+        let hex = format!("{v:0width$x}");
+        let out = Command::new("time-decode")
+            .arg(flag)
+            .arg(&hex)
+            .output()
+            .expect("run time-decode");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains("2020-06-15 13:47:22"),
+            "{id} ({hex}): oracle said {text}"
+        );
+    }
+}

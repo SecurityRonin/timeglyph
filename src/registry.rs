@@ -409,6 +409,93 @@ fn decode_ns40le(value: i64) -> Result<PosixNs, ChronoError> {
     packed_civil(yr, byte(32), byte(24), byte(16), byte(8), byte(0))
 }
 
+/// Inverse of [`decode_moto`]: 6 bytes, MSB-first,
+/// `[year-1970][month][day][hour][minute][second]`. LOCAL naive; year 1970–2225.
+fn encode_moto(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    let yb = u8::try_from(year - 1970).map_err(|_| ChronoError::OutOfRange {
+        what: "Motorola year (1970-2225)",
+        value: i128::from(year),
+    })?;
+    let v = (u64::from(yb) << 40)
+        | (u64::from(month as u8) << 32)
+        | (u64::from(day as u8) << 24)
+        | (u64::from(hour as u8) << 16)
+        | (u64::from(minute as u8) << 8)
+        | u64::from(second as u8);
+    Ok(v as i64)
+}
+
+/// Inverse of [`decode_symantec`]: like Motorola, but the month byte stores
+/// month-1 (0-based). LOCAL naive; year 1970–2225.
+fn encode_symantec(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    let yb = u8::try_from(year - 1970).map_err(|_| ChronoError::OutOfRange {
+        what: "Symantec year (1970-2225)",
+        value: i128::from(year),
+    })?;
+    let v = (u64::from(yb) << 40)
+        | (u64::from((month - 1) as u8) << 32)
+        | (u64::from(day as u8) << 24)
+        | (u64::from(hour as u8) << 16)
+        | (u64::from(minute as u8) << 8)
+        | u64::from(second as u8);
+    Ok(v as i64)
+}
+
+/// Inverse of [`decode_dvr`]: u32 (MSB-first) year(6,+2000) month(4) day(5)
+/// hour(5) minute(6) second(6). LOCAL naive; year 2000–2063.
+fn encode_dvr(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(2000..=2063).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "DVR year (2000-2063)",
+            value: i128::from(year),
+        });
+    }
+    let p = (u32::from((year - 2000) as u8) << 26)
+        | (u32::from(month as u8) << 22)
+        | (u32::from(day as u8) << 17)
+        | (u32::from(hour as u8) << 12)
+        | (u32::from(minute as u8) << 6)
+        | u32::from(second as u8);
+    Ok(i64::from(p))
+}
+
+/// Inverse of [`decode_ns40`]: 7 bytes, MSB-first — a big-endian year u16 then
+/// `[month][day][hour][minute][second]`. LOCAL naive.
+fn encode_ns40(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    let yr = u16::try_from(year).map_err(|_| ChronoError::OutOfRange {
+        what: "Nokia S40 year (0-65535)",
+        value: i128::from(year),
+    })?;
+    let v = (u64::from(yr) << 40)
+        | (u64::from(month as u8) << 32)
+        | (u64::from(day as u8) << 24)
+        | (u64::from(hour as u8) << 16)
+        | (u64::from(minute as u8) << 8)
+        | u64::from(second as u8);
+    Ok(v as i64)
+}
+
+/// Inverse of [`decode_ns40le`]: like Nokia S40, but the year u16 is stored
+/// little-endian. LOCAL naive.
+fn encode_ns40le(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    let yr = u16::try_from(year).map_err(|_| ChronoError::OutOfRange {
+        what: "Nokia S40 LE year (0-65535)",
+        value: i128::from(year),
+    })?;
+    let v = (u64::from(yr.swap_bytes()) << 40)
+        | (u64::from(month as u8) << 32)
+        | (u64::from(day as u8) << 24)
+        | (u64::from(hour as u8) << 16)
+        | (u64::from(minute as u8) << 8)
+        | u64::from(second as u8);
+    Ok(v as i64)
+}
+
 /// JET LogTime 8-byte timestamp, reversed field order: sec min hour day month
 /// year(+1900), then 2 filler bytes. UTC.
 fn decode_logtime(value: i64) -> Result<PosixNs, ChronoError> {
@@ -1051,7 +1138,7 @@ pub static FORMATS: &[Format] = &[
         family: "Motorola device timestamps",
         strategy: Strategy::Packed {
             decode: decode_moto,
-            encode: None,
+            encode: Some(encode_moto),
         },
         citation: "Motorola 6-byte (one byte per field, year+1970); vs time-decode",
         tz: Utc,
@@ -1064,7 +1151,7 @@ pub static FORMATS: &[Format] = &[
         family: "Symantec antivirus logs",
         strategy: Strategy::Packed {
             decode: decode_symantec,
-            encode: None,
+            encode: Some(encode_symantec),
         },
         citation: "Symantec AV 6-byte (year+1970, month+1); vs time-decode",
         tz: Utc,
@@ -1077,7 +1164,7 @@ pub static FORMATS: &[Format] = &[
         family: "DVR WFS / DHFS filesystems",
         strategy: Strategy::Packed {
             decode: decode_dvr,
-            encode: None,
+            encode: Some(encode_dvr),
         },
         citation: "DVR WFS/DHFS 32-bit packed (year since 2000); vs time-decode",
         tz: LocalNaive,
@@ -1104,7 +1191,7 @@ pub static FORMATS: &[Format] = &[
         family: "Nokia S40 devices",
         strategy: Strategy::Packed {
             decode: decode_ns40,
-            encode: None,
+            encode: Some(encode_ns40),
         },
         citation: "Nokia S40 7-byte (year BE u16 + field bytes); vs time-decode",
         tz: Utc,
@@ -1117,7 +1204,7 @@ pub static FORMATS: &[Format] = &[
         family: "Nokia S40 devices",
         strategy: Strategy::Packed {
             decode: decode_ns40le,
-            encode: None,
+            encode: Some(encode_ns40le),
         },
         citation: "Nokia S40 7-byte, little-endian year u16; vs time-decode",
         tz: Utc,
