@@ -127,3 +127,24 @@ pub fn parse_longitude(s: &str) -> Option<f64> {
     let v: f64 = s.trim().parse().ok()?;
     (v.is_finite() && v.abs() <= 180.0).then_some(v)
 }
+
+/// The 五行 (Five Element) a 天干 / 地支 character belongs to — the fixed,
+/// definitional assignment used to spot-colour the pillars.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Element {
+    Wood,
+    Fire,
+    Earth,
+    Metal,
+    Water,
+}
+
+/// The Five Element of a stem or branch character (甲乙→Wood, 丙丁→Fire, …；
+/// 寅卯→Wood, 巳午→Fire, 申酉→Metal, 亥子→Water, 辰戌丑未→Earth). `None` for a
+/// non-干支 character.
+#[must_use]
+pub fn five_element(ch: char) -> Option<Element> {
+    // GREEN in the next commit.
+    let _ = ch;
+    None
+}

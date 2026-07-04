@@ -93,3 +93,22 @@ fn parse_longitude_accepts_in_range_rejects_the_rest() {
     assert_eq!(ganzhi::parse_longitude("999"), None); // out of ±180
     assert_eq!(ganzhi::parse_longitude("east"), None); // not a number
 }
+
+#[test]
+fn five_element_classifies_stems_and_branches() {
+    use ganzhi::Element::*;
+    // Heavenly stems
+    assert_eq!(ganzhi::five_element('甲'), Some(Wood));
+    assert_eq!(ganzhi::five_element('丙'), Some(Fire));
+    assert_eq!(ganzhi::five_element('戊'), Some(Earth));
+    assert_eq!(ganzhi::five_element('辛'), Some(Metal));
+    assert_eq!(ganzhi::five_element('壬'), Some(Water));
+    // Earthly branches
+    assert_eq!(ganzhi::five_element('寅'), Some(Wood));
+    assert_eq!(ganzhi::five_element('巳'), Some(Fire));
+    assert_eq!(ganzhi::five_element('申'), Some(Metal));
+    assert_eq!(ganzhi::five_element('子'), Some(Water));
+    assert_eq!(ganzhi::five_element('辰'), Some(Earth));
+    // Non-干支
+    assert_eq!(ganzhi::five_element('X'), None);
+}
