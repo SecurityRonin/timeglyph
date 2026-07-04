@@ -79,6 +79,8 @@ nav:
       - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
       - String forms (ISO, RFC, ASN.1): formats/strings.md
   - CSV enrichment: csv.md
+  - The spy overlay: spy.md
+  - Public holidays: holidays.md
   - Validation: validation.md
   - Decisions (ADRs):
       - Overview: decisions/README.md
@@ -90,6 +92,7 @@ nav:
       - 0006 · Single crate (Humble Object): decisions/0006-single-crate-humble-object.md
       - 0007 · Clean-room validation: decisions/0007-clean-room-validation.md
       - 0008 · Convention-relative lunisolar: decisions/0008-convention-relative-lunisolar.md
+      - 0009 · Spy zone display conventions: decisions/0009-spy-zone-display-conventions.md
   - Glossary: glossary.md
   - References: references.md
   - Privacy Policy: privacy.md
