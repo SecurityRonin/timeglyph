@@ -4,7 +4,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::csv_enrich::{enrich, Conversion, EnrichOptions};
-use timeglyph::{format, interpret, scan, PosixNs, RenderZone, TzSemantics};
+use timeglyph::{format, interpret, scan, DateStyle, PosixNs, RenderZone, TzSemantics};
 
 #[test]
 fn invalid_hex_is_an_error() {
@@ -107,6 +107,7 @@ fn render_in_zone_passes_offset_embedded_native_through() {
         PosixNs(0),
         "2020-01-01T12:00:00+08:00",
         &RenderZone::Utc,
+        DateStyle::Iso8601,
     );
     assert_eq!(rendered, "2020-01-01T12:00:00+08:00");
     assert!(!lossy);
@@ -115,7 +116,14 @@ fn render_in_zone_passes_offset_embedded_native_through() {
 #[test]
 fn readings_for_a_non_number_is_empty() {
     // The `let Ok(value) = number.parse::<i64>() else { return Vec::new() }` arm.
-    assert!(scan::readings_for_opts("not_a_number", 5, false, &RenderZone::Utc).is_empty());
+    assert!(scan::readings_for_opts(
+        "not_a_number",
+        5,
+        false,
+        &RenderZone::Utc,
+        DateStyle::Iso8601
+    )
+    .is_empty());
 }
 
 #[test]

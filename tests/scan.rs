@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::scan;
-use timeglyph::{PosixNs, RenderZone, TzSemantics};
+use timeglyph::{DateStyle, PosixNs, RenderZone, TzSemantics};
 
 #[test]
 fn extracts_only_long_numeric_runs() {
@@ -47,8 +47,15 @@ fn render_in_zone_respects_tz_semantics() {
     let east = RenderZone::parse("-05:00").unwrap();
 
     // UTC-anchored: the display zone shifts it and stamps the explicit offset.
-    let (utc, _) = scan::render_in_zone(TzSemantics::Utc, inst, &native, &RenderZone::Utc);
-    let (shifted, shifted_local) = scan::render_in_zone(TzSemantics::Utc, inst, &native, &east);
+    let (utc, _) = scan::render_in_zone(
+        TzSemantics::Utc,
+        inst,
+        &native,
+        &RenderZone::Utc,
+        DateStyle::Iso8601,
+    );
+    let (shifted, shifted_local) =
+        scan::render_in_zone(TzSemantics::Utc, inst, &native, &east, DateStyle::Iso8601);
     assert!(utc.ends_with('Z'));
     assert!(
         shifted.contains("2020-06-15T07:00:00") && shifted.contains("-05:00") && !shifted_local,
@@ -57,9 +64,20 @@ fn render_in_zone_respects_tz_semantics() {
 
     // Local-naive: NEVER shifted by a display zone (no UTC anchor); flagged local
     // and carrying no zone designator.
-    let (a, a_local) =
-        scan::render_in_zone(TzSemantics::LocalNaive, inst, &native, &RenderZone::Utc);
-    let (b, _) = scan::render_in_zone(TzSemantics::LocalNaive, inst, &native, &east);
+    let (a, a_local) = scan::render_in_zone(
+        TzSemantics::LocalNaive,
+        inst,
+        &native,
+        &RenderZone::Utc,
+        DateStyle::Iso8601,
+    );
+    let (b, _) = scan::render_in_zone(
+        TzSemantics::LocalNaive,
+        inst,
+        &native,
+        &east,
+        DateStyle::Iso8601,
+    );
     assert!(a_local, "local-naive must be flagged local");
     assert_eq!(a, b, "local-naive must not be shifted by the display zone");
     assert!(
@@ -77,6 +95,7 @@ fn render_in_zone_falls_back_to_native_when_out_of_range() {
         PosixNs(i128::MAX),
         "9999-12-31T23:59:59Z",
         &RenderZone::Utc,
+        DateStyle::Iso8601,
     );
     assert_eq!(rendered, "9999-12-31T23:59:59Z");
     assert!(!local);

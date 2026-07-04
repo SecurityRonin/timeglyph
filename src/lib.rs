@@ -40,6 +40,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod csv_enrich;
+pub mod datefmt;
+pub use datefmt::DateStyle;
 /// Whole-world public-holiday lookup (ISO-3166 country + date → holiday name),
 /// behind the `holiday` feature. An embedded python-holidays export; a hit is
 /// "consistent with a public holiday", an annotation rather than a guarantee.
