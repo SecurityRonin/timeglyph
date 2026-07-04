@@ -300,10 +300,10 @@ impl LensApp {
                     .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
                 if ui
                     .add(egui::ImageButton::new(img).frame(false))
-                    .on_hover_text("Albert Hui on LinkedIn")
+                    .on_hover_text("About TimeGlyph Lens")
                     .clicked()
                 {
-                    open_url(AUTHOR_URL);
+                    self.show_about.store(true, Ordering::Relaxed);
                 }
             });
     }
