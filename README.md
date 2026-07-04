@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="timeglyph" width="180" />
+</p>
+
 # timeglyph
 
 [![Crates.io](https://img.shields.io/crates/v/timeglyph.svg)](https://crates.io/crates/timeglyph)
