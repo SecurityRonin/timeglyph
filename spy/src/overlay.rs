@@ -692,6 +692,18 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                     .color(pal.faint),
             );
         }
+        // Public holiday for this date in the display zone — only a named IANA
+        // zone maps to a country. An annotation ("consistent with a public
+        // holiday there"), in the country's own locale; not proof it was observed.
+        if let Some(name) = timeglyph::holiday::in_zone_rendered(zone, &r.rendered) {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(name)
+                    .font(FontId::proportional(11.0))
+                    .color(pal.amber)
+                    .strong(),
+            );
+        }
     });
 }
 
