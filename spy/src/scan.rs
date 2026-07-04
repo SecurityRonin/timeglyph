@@ -32,6 +32,23 @@ pub struct Reading {
     pub components: Vec<(&'static str, f64)>,
 }
 
+/// The weekday name of a reading's *displayed* value — parsed from its leading
+/// ISO date (`YYYY-MM-DD`), so it always matches the shown date regardless of
+/// zone or format. `None` if the value doesn't start with a valid date.
+#[must_use]
+pub fn weekday(rendered: &str) -> Option<&'static str> {
+    let date: jiff::civil::Date = rendered.get(..10)?.parse().ok()?;
+    Some(match date.weekday() {
+        jiff::civil::Weekday::Monday => "Monday",
+        jiff::civil::Weekday::Tuesday => "Tuesday",
+        jiff::civil::Weekday::Wednesday => "Wednesday",
+        jiff::civil::Weekday::Thursday => "Thursday",
+        jiff::civil::Weekday::Friday => "Friday",
+        jiff::civil::Weekday::Saturday => "Saturday",
+        jiff::civil::Weekday::Sunday => "Sunday",
+    })
+}
+
 /// Render a `[0, 1]` plausibility [`score`](Reading::score) as a whole-number
 /// percentage, clamped to `0..=100`.
 #[must_use]

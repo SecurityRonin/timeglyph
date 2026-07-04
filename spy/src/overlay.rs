@@ -618,6 +618,16 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                     .color(pal.faint),
             );
         }
+        // Weekday of the displayed date — handy for spotting what day an event
+        // fell on.
+        if let Some(wd) = scan::weekday(&r.rendered) {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!("· {wd}"))
+                    .font(FontId::proportional(11.0))
+                    .color(pal.faint),
+            );
+        }
     });
 }
 
