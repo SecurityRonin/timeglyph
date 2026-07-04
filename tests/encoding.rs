@@ -5,7 +5,63 @@
 //! wrong one (see docs/concepts/input-conventions.md).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use timeglyph::interpret;
+use timeglyph::{format, interpret, Encoded, PosixNs};
+
+/// The instant 2020-01-01T00:00:00Z, via the unix decoder (unix seconds is
+/// itself anchored to the time-decode oracle in tests/oracle.rs).
+fn instant_2020() -> PosixNs {
+    format("unix").unwrap().decode_int(1_577_836_800).unwrap()
+}
+
+#[test]
+fn encode_float_matches_time_decode_vectors() {
+    // Tier-1: ground-truth values are `time-decode --timestamp "2020-01-01
+    // 00:00:00"` output (third-party authored), NOT a round-trip of our own
+    // encoder. See docs/validation.md.
+    let inst = instant_2020();
+    for (id, expected) in [
+        ("ole", 43831.0_f64),           // Windows OLE Automation Date
+        ("sqlite_julian", 2_458_849.5), // Julian Date decimal
+        ("excel1904", 42369.0),         // Microsoft Excel 1904 Date
+        ("cocoa_float", 599_529_600.0), // Apple NSDate - Mac Absolute
+    ] {
+        let got = format(id).unwrap().encode_float(inst).unwrap();
+        assert!(
+            (got - expected).abs() < 1e-6,
+            "{id}: encoded {got}, oracle says {expected}"
+        );
+    }
+}
+
+#[test]
+fn encode_dispatches_float_vs_int() {
+    let inst = instant_2020();
+    assert_eq!(
+        format("unix").unwrap().encode(inst).unwrap(),
+        Encoded::Int(1_577_836_800)
+    );
+    assert_eq!(
+        format("ole").unwrap().encode(inst).unwrap(),
+        Encoded::Float(43831.0)
+    );
+    // Display: int prints bare, float prints its decimal value.
+    assert_eq!(
+        format("unix").unwrap().encode(inst).unwrap().to_string(),
+        "1577836800"
+    );
+    assert_eq!(
+        format("ole").unwrap().encode(inst).unwrap().to_string(),
+        "43831"
+    );
+}
+
+#[test]
+fn encode_float_rejects_non_float_formats() {
+    assert!(format("unix")
+        .unwrap()
+        .encode_float(instant_2020())
+        .is_err());
+}
 
 #[test]
 fn fat_on_disk_hex_decodes_to_fat() {
