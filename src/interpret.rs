@@ -593,12 +593,105 @@ fn all_ones_sentinel() -> Candidate {
 // A flat sequence of independent string-form parse attempts (ISO/RFC/ASN.1/
 // ULID/UUID/EXIF/ordinal/week); long by nature, not complex.
 #[allow(clippy::too_many_lines)]
+/// A string-format parser with a *fixed* interpretation: given the trimmed input
+/// it yields the instant iff the input matches its grammar, and its
+/// `(id, label, spec, note)` are constant. These live in one data-driven table
+/// (`STRING_FORMATS`) instead of a dozen near-identical blocks. Formats whose
+/// note is *dynamic* — ISO 8601 (jiff) and the two ASN.1 forms (note depends on
+/// whether an explicit offset was present) — get their own push-helpers below.
+struct StringFormat {
+    parse: fn(&str) -> Option<PosixNs>,
+    id: &'static str,
+    label: &'static str,
+    spec: &'static str,
+    note: &'static str,
+}
+
+/// The registry of fixed-interpretation string formats, in report order.
+const STRING_FORMATS: &[StringFormat] = &[
+    StringFormat {
+        parse: parse_ulid,
+        id: "ulid",
+        label: "ULID (first 48 bits = Unix ms)",
+        spec: "ULID spec (Crockford base32; 48-bit ms timestamp)",
+        note: "parsed as a ULID — the leading 48 bits are milliseconds since the Unix epoch",
+    },
+    StringFormat {
+        parse: parse_uuid_v1,
+        id: "uuid_v1",
+        label: "UUID version 1 (100ns since 1582-10-15)",
+        spec: "RFC 9562 §5.1 (UUIDv1 60-bit Gregorian timestamp)",
+        note: "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
+    },
+    StringFormat {
+        parse: parse_uuid_v6,
+        id: "uuid_v6",
+        label: "UUID version 6 (reordered 100ns since 1582-10-15)",
+        spec: "RFC 9562 §5.6 (UUIDv6 60-bit Gregorian timestamp)",
+        note: "parsed as a UUIDv6 — the v1 Gregorian timestamp reordered most-significant-first",
+    },
+    StringFormat {
+        parse: parse_uuid_v7,
+        id: "uuid_v7",
+        label: "UUID version 7 (Unix ms in the high 48 bits)",
+        spec: "RFC 9562 §5.7 (UUIDv7 48-bit Unix-ms timestamp)",
+        note: "parsed as a UUIDv7 — the leading 48 bits are milliseconds since the Unix epoch",
+    },
+    StringFormat {
+        parse: parse_objectid,
+        id: "objectid",
+        label: "MongoDB ObjectId (Unix seconds in the first 4 bytes)",
+        spec: "MongoDB ObjectId spec (4-byte big-endian Unix-seconds prefix)",
+        note: "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
+    },
+    StringFormat {
+        parse: parse_rfc2822,
+        id: "rfc2822",
+        label: "RFC 2822 / email date",
+        spec: "RFC 5322 §3.3 (date-time; via jiff)",
+        note: "parsed as an RFC 2822 date-time (offset normalised to UTC)",
+    },
+    StringFormat {
+        parse: parse_exif,
+        id: "exif",
+        label: "EXIF DateTime (YYYY:MM:DD HH:MM:SS)",
+        spec: "CIPA DC-008 (EXIF) DateTime / DateTimeOriginal",
+        note: "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
+    },
+    StringFormat {
+        parse: parse_iso_ordinal,
+        id: "iso_ordinal",
+        label: "ISO 8601 ordinal date (YYYY-DDD)",
+        spec: "ISO 8601 §5.2.2.1 (ordinal date)",
+        note: "parsed as an ISO 8601 ordinal date (day-of-year), midnight UTC assumed",
+    },
+    StringFormat {
+        parse: parse_iso_week,
+        id: "iso_week",
+        label: "ISO 8601 week date (YYYY-Www-D)",
+        spec: "ISO 8601 §5.2.3 (week date)",
+        note: "parsed as an ISO 8601 week date, midnight UTC assumed",
+    },
+];
+
 #[must_use]
 #[tracing::instrument(level = "debug", skip(text), fields(len = text.len()))]
 pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let s = text.trim();
     let mut out = Vec::new();
-    // RFC 3339 / ISO 8601: jiff parses the offset (or `Z`) and normalises to UTC.
+    // Dynamic-note formats first (ISO 8601 + ASN.1), then the fixed-note registry.
+    push_iso8601(s, &mut out);
+    push_asn1(s, &mut out);
+    for f in STRING_FORMATS {
+        if let Some(instant) = (f.parse)(s) {
+            out.push(string_candidate(f.id, f.label, f.spec, instant, f.note));
+        }
+    }
+    out
+}
+
+/// RFC 3339 / ISO 8601: jiff parses the offset (or `Z`) and normalises to UTC.
+fn push_iso8601(s: &str, out: &mut Vec<Candidate>) {
     if let Ok(ts) = s.parse::<jiff::Timestamp>() {
         out.push(string_candidate(
             "iso8601",
@@ -608,6 +701,11 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             "parsed as an ISO 8601 / RFC 3339 string (offset normalised to UTC)",
         ));
     }
+}
+
+/// The two ASN.1 string forms, whose assumption note depends on whether the input
+/// carried an explicit offset (`had_tz`).
+fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
     if let Some((instant, had_tz)) = parse_asn1_generalizedtime(s) {
         out.push(string_candidate(
             "asn1_generalizedtime",
@@ -629,88 +727,6 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
             ),
         ));
     }
-    if let Some(instant) = parse_ulid(s) {
-        out.push(string_candidate(
-            "ulid",
-            "ULID (first 48 bits = Unix ms)",
-            "ULID spec (Crockford base32; 48-bit ms timestamp)",
-            instant,
-            "parsed as a ULID — the leading 48 bits are milliseconds since the Unix epoch",
-        ));
-    }
-    if let Some(instant) = parse_uuid_v1(s) {
-        out.push(string_candidate(
-            "uuid_v1",
-            "UUID version 1 (100ns since 1582-10-15)",
-            "RFC 9562 §5.1 (UUIDv1 60-bit Gregorian timestamp)",
-            instant,
-            "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
-        ));
-    }
-    if let Some(instant) = parse_uuid_v6(s) {
-        out.push(string_candidate(
-            "uuid_v6",
-            "UUID version 6 (reordered 100ns since 1582-10-15)",
-            "RFC 9562 §5.6 (UUIDv6 60-bit Gregorian timestamp)",
-            instant,
-            "parsed as a UUIDv6 — the v1 Gregorian timestamp reordered most-significant-first",
-        ));
-    }
-    if let Some(instant) = parse_uuid_v7(s) {
-        out.push(string_candidate(
-            "uuid_v7",
-            "UUID version 7 (Unix ms in the high 48 bits)",
-            "RFC 9562 §5.7 (UUIDv7 48-bit Unix-ms timestamp)",
-            instant,
-            "parsed as a UUIDv7 — the leading 48 bits are milliseconds since the Unix epoch",
-        ));
-    }
-    if let Some(instant) = parse_objectid(s) {
-        out.push(string_candidate(
-            "objectid",
-            "MongoDB ObjectId (Unix seconds in the first 4 bytes)",
-            "MongoDB ObjectId spec (4-byte big-endian Unix-seconds prefix)",
-            instant,
-            "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
-        ));
-    }
-    if let Some(instant) = parse_rfc2822(s) {
-        out.push(string_candidate(
-            "rfc2822",
-            "RFC 2822 / email date",
-            "RFC 5322 §3.3 (date-time; via jiff)",
-            instant,
-            "parsed as an RFC 2822 date-time (offset normalised to UTC)",
-        ));
-    }
-    if let Some(instant) = parse_exif(s) {
-        out.push(string_candidate(
-            "exif",
-            "EXIF DateTime (YYYY:MM:DD HH:MM:SS)",
-            "CIPA DC-008 (EXIF) DateTime / DateTimeOriginal",
-            instant,
-            "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
-        ));
-    }
-    if let Some(instant) = parse_iso_ordinal(s) {
-        out.push(string_candidate(
-            "iso_ordinal",
-            "ISO 8601 ordinal date (YYYY-DDD)",
-            "ISO 8601 §5.2.2.1 (ordinal date)",
-            instant,
-            "parsed as an ISO 8601 ordinal date (day-of-year), midnight UTC assumed",
-        ));
-    }
-    if let Some(instant) = parse_iso_week(s) {
-        out.push(string_candidate(
-            "iso_week",
-            "ISO 8601 week date (YYYY-Www-D)",
-            "ISO 8601 §5.2.3 (week date)",
-            instant,
-            "parsed as an ISO 8601 week date, midnight UTC assumed",
-        ));
-    }
-    out
 }
 
 /// Parse an ISO 8601 ordinal date `YYYY-DDD` (day-of-year) to midnight UTC.
