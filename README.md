@@ -117,7 +117,7 @@ UI Automation on Windows. (Linux support is in progress.)
 
 ## Formats
 
-`timeglyph` decodes, encodes, and auto-identifies:
+`timeglyph` decodes and auto-identifies:
 
 - **Epoch integers** — Unix (s/ms/µs/ns), FILETIME (incl. Active Directory / LDAP),
   WebKit/Chrome, Cocoa / CFAbsoluteTime (integer, signed double, iOS-11 ns),
