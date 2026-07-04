@@ -575,18 +575,17 @@ fn header(ui: &mut egui::Ui, source: &str, pal: Palette) {
 /// Grid column 1: the amber format chip. The verbose format name is a hover
 /// tooltip on the chip (not an always-shown line), keeping each reading compact.
 fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
-    ui.vertical(|ui| {
+    ui.horizontal(|ui| {
+        // Match the datetime cell's fixed height on local rows so Align::Center
+        // lands the chip on the same midline as the two-line tag.
         if r.local {
-            ui.add_space(LOCAL_ROW_PAD);
+            ui.set_min_height(LOCAL_ROW_H);
         }
         Frame::none()
             .fill(pal.bg_chip)
             .rounding(Rounding::same(4.0))
             .inner_margin(Margin::symmetric(6.0, 2.0))
             .show(ui, |ui| {
-                // Never wrap: the `vertical` wrapper (added for the local-row top
-                // pad) would otherwise collapse the grid column and break the id
-                // across lines.
                 ui.add(
                     egui::Label::new(
                         RichText::new(&r.format_id)
@@ -605,12 +604,14 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
 /// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
 /// DST (the numeric offset is already in `rendered`; a location alone is
 /// ambiguous, so these disambiguate), an optional local tag, and the confidence.
-/// Top pad applied to every grid cell of a *local* reading row. The datetime
-/// cell carries a two-line "local time / (not time-zone adjusted)" tag; egui's
-/// grid and horizontal layouts top-align, so nudging each cell's single-line
-/// content down by half a line lands the whole row (confidence, format,
-/// datetime, weekday) on the tag's vertical middle.
-const LOCAL_ROW_PAD: f32 = 6.0;
+/// Fixed height for every grid cell of a *local* reading row. The datetime cell
+/// carries a two-line "local time / (not time-zone adjusted)" tag; pinning all
+/// three cells to one height (>= that tag's) makes the grid row exactly this
+/// tall, so each cell's `Align::Center` content — confidence, format, datetime,
+/// weekday — lands on the one shared vertical midline. A top pad can't do this:
+/// it top-aligns, so cells with different font sizes end up on different
+/// midlines.
+const LOCAL_ROW_H: f32 = 34.0;
 
 fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
     let datetime = || {
@@ -620,12 +621,17 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
     };
     ui.horizontal(|ui| {
         if r.local {
-            ui.vertical(|ui| {
-                ui.add_space(LOCAL_ROW_PAD);
-                ui.label(datetime());
-            });
+            // Pin the row to a fixed height so egui's Align::Center centers the
+            // single-line datetime and weekday on the two-line tag's midline —
+            // the same height the confidence and format cells use, so the whole
+            // grid row shares one midline.
+            ui.set_min_height(LOCAL_ROW_H);
+            ui.label(datetime());
             ui.add_space(6.0);
             ui.vertical(|ui| {
+                // Tighten the two tag lines: the vertical inherits the grid's
+                // 8px row spacing, which reads as a gap between them.
+                ui.spacing_mut().item_spacing.y = 0.0;
                 ui.label(
                     RichText::new("local time")
                         .font(FontId::proportional(11.0))
@@ -639,14 +645,11 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
             });
             if let Some(wd) = scan::weekday(&r.rendered) {
                 ui.add_space(6.0);
-                ui.vertical(|ui| {
-                    ui.add_space(LOCAL_ROW_PAD);
-                    ui.label(
-                        RichText::new(wd)
-                            .font(FontId::proportional(11.0))
-                            .color(pal.faint),
-                    );
-                });
+                ui.label(
+                    RichText::new(wd)
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
             }
             return;
         }
@@ -706,34 +709,34 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     } else {
         pal.conf_low
     };
-    ui.vertical(|ui| {
-        if r.local {
-            ui.add_space(LOCAL_ROW_PAD);
-        }
-        let resp = ui
-            .horizontal(|ui| {
-                ui.label(
-                    RichText::new("●")
-                        .font(FontId::proportional(10.0))
-                        .color(dot),
-                );
-                ui.label(
-                    RichText::new(format!("{pct}%"))
-                        .font(FontId::monospace(11.0))
-                        .color(pal.mute),
-                );
-            })
-            .response;
-        if !r.components.is_empty() {
-            let tip = r
-                .components
-                .iter()
-                .map(|(n, v)| format!("{n}  {v:.2}"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            resp.on_hover_text(format!("plausibility score  {pct}%\n{tip}"));
-        }
-    });
+    let resp = ui
+        .horizontal(|ui| {
+            // Match the datetime cell's fixed height on local rows so the dot and
+            // percent center on the same midline as the two-line tag.
+            if r.local {
+                ui.set_min_height(LOCAL_ROW_H);
+            }
+            ui.label(
+                RichText::new("●")
+                    .font(FontId::proportional(10.0))
+                    .color(dot),
+            );
+            ui.label(
+                RichText::new(format!("{pct}%"))
+                    .font(FontId::monospace(11.0))
+                    .color(pal.mute),
+            );
+        })
+        .response;
+    if !r.components.is_empty() {
+        let tip = r
+            .components
+            .iter()
+            .map(|(n, v)| format!("{n}  {v:.2}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        resp.on_hover_text(format!("plausibility score  {pct}%\n{tip}"));
+    }
 }
 
 /// Grid column 2 (row 2): the 干支 line, led by the lunar date so it left-aligns
