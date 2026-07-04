@@ -3,8 +3,8 @@
 //! `timeglyph::interpret::Candidate::score` exposes; `confidence_pct` renders it.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use timeglyph::RenderZone;
 use timeglyph::scan;
+use timeglyph::RenderZone;
 
 #[test]
 fn readings_carry_a_unit_range_confidence_score() {
