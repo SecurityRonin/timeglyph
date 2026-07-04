@@ -10,6 +10,7 @@ pub use timeglyph::scan;
 
 pub mod fonts;
 pub mod ganzhi;
+pub mod settings;
 pub mod text;
 pub mod theme;
 pub mod tzinfo;

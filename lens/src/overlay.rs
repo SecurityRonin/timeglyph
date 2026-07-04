@@ -16,7 +16,8 @@ use std::time::Duration;
 
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
-use timeglyph::{PosixNs, RenderZone};
+use timeglyph::{DateStyle, PosixNs, RenderZone};
+use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
 use timeglyph_lens::{ganzhi, text, tzinfo, tzmap};
@@ -27,8 +28,9 @@ use crate::scan::{self, NumberReadings, Reading};
 /// How many readings to show per number.
 const MAX_READINGS: usize = 4;
 
-/// Session settings (never persisted — like the zone, a prior case's preferences
-/// can't silently apply to the next launch).
+/// The live overlay settings (theme, 干支 line, datetime display style). Loaded
+/// from and saved to disk (see [`timeglyph_lens::settings`]) so a prior
+/// session's display frame carries over.
 #[derive(Clone, Copy, Default)]
 struct Settings {
     /// Dark (default) or light palette.
@@ -36,6 +38,8 @@ struct Settings {
     /// Whether to show the 干支 / lunisolar line (and, with it, the longitude
     /// input, which only refines the 干支 hour pillar). Off by default.
     show_lunar: bool,
+    /// Datetime display style for rendered readings (ISO 8601 by default).
+    date_style: DateStyle,
 }
 
 /// Open the overlay window and run until it is closed.
@@ -315,24 +319,60 @@ impl LensApp {
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
     ) -> Self {
+        // Load persisted preferences; a missing/corrupt file degrades to defaults.
+        let saved = persist::load();
+        let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
+        let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
         Self {
             latest,
             last_text: String::new(),
             source: String::new(),
             hits: Vec::new(),
-            zone: ZoneChoice::default(),
+            zone,
             continents: zone::continents(),
-            longitude: None,
-            longitude_input: String::new(),
+            longitude: saved.longitude,
+            longitude_input,
             show_map: false,
             map_pick: None,
             show_settings: Arc::new(AtomicBool::new(false)),
             show_about: Arc::new(AtomicBool::new(false)),
-            settings: Arc::new(Mutex::new(Settings::default())),
+            settings: Arc::new(Mutex::new(Settings {
+                theme: saved.theme,
+                show_lunar: saved.show_lunar,
+                date_style: saved.date_style,
+            })),
             verbose,
             logo,
             sr_logo_dark,
             sr_logo_light,
+        }
+    }
+
+    /// Snapshot the current live state into a [`persist::PersistedSettings`] and
+    /// write it to disk. Called whenever a setting or the display zone changes.
+    fn save_settings(&self) {
+        let cur = self.settings();
+        persist::save(&persist::PersistedSettings {
+            theme: cur.theme,
+            show_lunar: cur.show_lunar,
+            date_style: cur.date_style,
+            zone_spec: self.zone_spec(),
+            longitude: self.longitude,
+        });
+    }
+
+    /// The current display zone as a `parse_zone` spec string (round-trips
+    /// through [`parse_zone`] on the next launch).
+    fn zone_spec(&self) -> String {
+        match &self.zone.zone {
+            RenderZone::Utc => "UTC".to_string(),
+            // `Local` is a resolved system zone; persist the intent, not the
+            // resolved name, so it re-resolves on a machine in a different zone.
+            _ if self.zone.label == "Local" => "local".to_string(),
+            RenderZone::Named(tz) => tz
+                .iana_name()
+                .map_or_else(|| self.zone.label.clone(), str::to_string),
+            RenderZone::Fixed(_) => self.zone.label.clone(),
         }
     }
 
@@ -380,7 +420,7 @@ impl eframe::App for LensApp {
             dirty = true;
         }
         // The settings dialog (bottom-right), if open.
-        self.settings_window(ctx);
+        self.settings_window(ctx, ref_instant);
         self.about_window(ctx);
 
         // Re-decode when either the hovered text OR the display zone changed.
@@ -399,6 +439,7 @@ impl eframe::App for LensApp {
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
+        let date_style = cur.date_style;
         let logo = self.logo.clone();
         let sr_logo = if pal.base_dark {
             self.sr_logo_dark.clone()
@@ -416,7 +457,7 @@ impl eframe::App for LensApp {
             if hits.is_empty() {
                 render_empty(ui, pal, logo.as_ref());
             } else {
-                render_readings(ui, &hits, &zone, longitude, show_lunar, pal);
+                render_readings(ui, &hits, &zone, longitude, show_lunar, date_style, pal);
             }
         });
 
@@ -494,6 +535,7 @@ fn render_readings(
     zone: &RenderZone,
     longitude: Option<f64>,
     show_lunar: bool,
+    date_style: DateStyle,
     pal: Palette,
 ) {
     egui::ScrollArea::vertical()
@@ -524,7 +566,7 @@ fn render_readings(
                                 for r in &nr.readings {
                                     conf_cell(ui, r, pal);
                                     chip_cell(ui, r, pal);
-                                    datetime_cell(ui, r, zone, pal);
+                                    datetime_cell(ui, r, zone, date_style, pal);
                                     ui.end_row();
                                     if show_lunar {
                                         ui.label(""); // col 1 (confidence)
@@ -554,10 +596,6 @@ impl LensApp {
     /// are purely presentational and need no re-decode).
     fn zone_footer(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
         let pal = self.settings().theme.palette();
-        let mut changed = false;
-        // Hide the preset button for the zone that's already active.
-        let is_utc = matches!(self.zone.zone, RenderZone::Utc);
-        let is_local = self.zone.label == "Local";
         ui.horizontal_wrapped(|ui| {
             // The zone status is always highlighted amber — including UTC — so the
             // active frame is unmistakable at a glance. (No "time zone" caption: the
@@ -577,9 +615,22 @@ impl LensApp {
                     );
                 });
         });
-        // Row 2: the cascading Region → Zone picker, then the 🌐 map toggle to its
-        // right. egui clips popups to this small window, so both menu levels use a
-        // height-bounded ScrollArea (a long zone list scrolls, not truncated).
+        self.zone_controls(ui, at)
+    }
+
+    /// The shared display-timezone controls: the cascading Region → Zone picker,
+    /// the 🌐 world-map toggle, a ⚙ settings opener, the UTC / Local presets, and
+    /// (with 干支 on) the longitude input. Rendered identically in the main-window
+    /// footer and the Settings dialog. Returns `true` when the *zone* changed.
+    ///
+    /// egui clips popups to the small window, so both menu levels use a
+    /// height-bounded ScrollArea (a long zone list scrolls, not truncated).
+    fn zone_controls(&mut self, ui: &mut egui::Ui, at: PosixNs) -> bool {
+        let pal = self.settings().theme.palette();
+        let mut changed = false;
+        // Hide the preset button for the zone that's already active.
+        let is_utc = matches!(self.zone.zone, RenderZone::Utc);
+        let is_local = self.zone.label == "Local";
         ui.horizontal(|ui| {
             let conts = self.continents.clone();
             let max_h = (ui.ctx().screen_rect().height() - 48.0).max(160.0);
@@ -648,6 +699,8 @@ impl LensApp {
                 );
                 if resp.changed() {
                     self.longitude = ganzhi::parse_longitude(&self.longitude_input);
+                    // A manual longitude edit is a persisted preference too.
+                    self.save_settings();
                 }
                 ui.label(
                     RichText::new("°E")
@@ -660,6 +713,7 @@ impl LensApp {
         // meridian (the user can still override it).
         if changed {
             self.adopt_zone_meridian(at);
+            self.save_settings();
         }
         changed
     }
@@ -678,67 +732,103 @@ impl LensApp {
         }
     }
 
-    /// The settings dialog (theme, whether to show 干支), anchored to the window's
-    /// bottom-right. Opened by the footer's ⚙ button; session-scoped, not saved.
-    /// The settings dialog as its own floating OS window — a *deferred* egui
-    /// viewport (an independent window that honors the builder size, unlike an
-    /// immediate viewport), not a panel pinned inside the always-on-top overlay.
-    /// Opened from the native macOS menu's Settings… item; its controls write
-    /// back through the shared `settings`, and closing it clears `show_settings`.
-    fn settings_window(&mut self, ctx: &egui::Context) {
+    /// The settings dialog: theme, the datetime display style, whether to show
+    /// 干支, and the shared display-timezone [`zone_controls`](Self::zone_controls)
+    /// (identical to the main-window footer). Opened by the footer's ⚙ button or
+    /// the native macOS Settings… item. Rendered as an immediate `egui::Window`
+    /// inside the overlay so it shares `&mut self` with the zone controls; a
+    /// change writes back through `settings` and is persisted to disk. `at` is
+    /// the reference instant for the zone controls' offset resolution.
+    fn settings_window(&mut self, ctx: &egui::Context, at: PosixNs) {
         if !self.show_settings.load(Ordering::Relaxed) {
             return;
         }
-        let settings = Arc::clone(&self.settings);
-        let open = Arc::clone(&self.show_settings);
-        ctx.show_viewport_deferred(
-            egui::ViewportId::from_hash_of("settings"),
-            egui::ViewportBuilder::default()
-                .with_title("TimeGlyph Lens — Settings")
-                .with_inner_size([440.0, 172.0])
-                .with_resizable(false),
-            move |ctx, _class| {
-                let pal = settings
-                    .lock()
-                    .map(|g| g.theme.palette())
-                    .unwrap_or_else(|_| Theme::Dark.palette());
-                install_theme(ctx, &pal);
-                egui::CentralPanel::default()
-                    .frame(
-                        Frame::none()
-                            .fill(pal.bg_deep)
-                            .inner_margin(Margin::same(16.0)),
-                    )
-                    .show(ctx, |ui| {
-                        if let Ok(mut s) = settings.lock() {
-                            ui.label(
-                                RichText::new("Theme")
-                                    .font(FontId::proportional(11.0))
-                                    .color(pal.faint),
-                            );
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(&mut s.theme, Theme::Dark, "Dark");
-                                ui.selectable_value(&mut s.theme, Theme::Light, "Light");
-                            });
-                            ui.add_space(10.0);
-                            ui.separator();
-                            ui.add_space(10.0);
-                            ui.label(
-                                RichText::new("Calendar")
-                                    .font(FontId::proportional(11.0))
-                                    .color(pal.faint),
-                            );
-                            ui.checkbox(
-                                &mut s.show_lunar,
-                                "Chinese lunisolar and heavenly stem / earthly branch",
-                            );
-                        }
+        let pal = self.settings().theme.palette();
+        let mut open = true;
+        let mut settings_changed = false;
+        egui::Window::new("TimeGlyph Lens — Settings")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -64.0))
+            .frame(
+                Frame::none()
+                    .fill(pal.bg_deep)
+                    .inner_margin(Margin::same(16.0)),
+            )
+            .show(ctx, |ui| {
+                if let Ok(mut s) = self.settings.lock() {
+                    ui.label(
+                        RichText::new("Theme")
+                            .font(FontId::proportional(11.0))
+                            .color(pal.faint),
+                    );
+                    ui.horizontal(|ui| {
+                        settings_changed |= ui
+                            .selectable_value(&mut s.theme, Theme::Dark, "Dark")
+                            .changed();
+                        settings_changed |= ui
+                            .selectable_value(&mut s.theme, Theme::Light, "Light")
+                            .changed();
                     });
-                if ctx.input(|i| i.viewport().close_requested()) {
-                    open.store(false, Ordering::Relaxed);
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new("Date format")
+                            .font(FontId::proportional(11.0))
+                            .color(pal.faint),
+                    );
+                    let style_label = |st: DateStyle| match st {
+                        DateStyle::Iso8601 => "ISO 8601",
+                        DateStyle::SpaceSeparated => "Space-separated",
+                        DateStyle::Rfc2822 => "RFC 2822",
+                        DateStyle::UsStyle => "US (12-hour)",
+                    };
+                    egui::ComboBox::from_id_salt("date_style")
+                        .selected_text(style_label(s.date_style))
+                        .show_ui(ui, |ui| {
+                            for st in [
+                                DateStyle::Iso8601,
+                                DateStyle::SpaceSeparated,
+                                DateStyle::Rfc2822,
+                                DateStyle::UsStyle,
+                            ] {
+                                settings_changed |= ui
+                                    .selectable_value(&mut s.date_style, st, style_label(st))
+                                    .changed();
+                            }
+                        });
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new("Calendar")
+                            .font(FontId::proportional(11.0))
+                            .color(pal.faint),
+                    );
+                    settings_changed |= ui
+                        .checkbox(
+                            &mut s.show_lunar,
+                            "Chinese lunisolar and heavenly stem / earthly branch",
+                        )
+                        .changed();
                 }
-            },
-        );
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("Display time zone")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                // The SAME control the footer uses — no duplicated widget code.
+                if self.zone_controls(ui, at) {
+                    settings_changed = true;
+                }
+            });
+        if settings_changed {
+            self.save_settings();
+        }
+        if !open {
+            self.show_settings.store(false, Ordering::Relaxed);
+        }
     }
 
     /// The About dialog: a deferred viewport showing the theme-matched Security
@@ -901,9 +991,24 @@ fn row_h(ui: &egui::Ui) -> f32 {
     })
 }
 
-fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
+fn datetime_cell(
+    ui: &mut egui::Ui,
+    r: &Reading,
+    zone: &RenderZone,
+    style: DateStyle,
+    pal: Palette,
+) {
+    // The displayed datetime, in the chosen style. Local-naive readings keep
+    // their own wall-clock rendering (never shifted); the styled form is only for
+    // the zone-shiftable case. The ISO-anchored `r.rendered` still drives the
+    // weekday / holiday / `Z` designator logic below.
+    let shown = if r.local {
+        r.rendered.clone()
+    } else {
+        timeglyph::datefmt::format_instant(r.instant, zone, style)
+    };
     let datetime = || {
-        RichText::new(&r.rendered)
+        RichText::new(&shown)
             .font(FontId::monospace(14.0))
             .color(pal.ink)
     };

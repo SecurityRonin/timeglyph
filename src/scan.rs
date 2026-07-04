@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use crate::{interpret, PosixNs, RenderZone, TzSemantics};
+use crate::{datefmt::format_instant, interpret, DateStyle, PosixNs, RenderZone, TzSemantics};
 
 /// One decoded reading of a value: which format, the rendered instant, and the
 /// human label — kept as separate fields so a caller can style each distinctly.
@@ -158,19 +158,22 @@ pub fn scan_numbers(text: &str) -> Vec<String> {
 /// display zone is not applied either. Returns `(rendered, is_local)`.
 ///
 /// `native` is the format's own (UTC) rendering, used as the fallback and the
-/// source for the wall-clock / offset-embedded cases.
+/// source for the wall-clock / offset-embedded cases. `style` shapes the
+/// displayed text for the shiftable ([`TzSemantics::Utc`]) case only; the
+/// wall-clock and offset-embedded cases keep their own native rendering.
 #[must_use]
 pub fn render_in_zone(
     tz: TzSemantics,
     instant: PosixNs,
     native: &str,
     zone: &RenderZone,
+    style: DateStyle,
 ) -> (String, bool) {
     match tz {
-        TzSemantics::Utc => (
-            instant.render(zone).unwrap_or_else(|| native.to_string()),
-            false,
-        ),
+        // Out of civil range: keep the format's own native rendering rather than
+        // a style-formatted placeholder (same fallback the plain render had).
+        TzSemantics::Utc if instant.render(zone).is_none() => (native.to_string(), false),
+        TzSemantics::Utc => (format_instant(instant, zone, style), false),
         TzSemantics::LocalNaive => (native.trim_end_matches('Z').to_string(), true),
         TzSemantics::OffsetEmbedded => (native.to_string(), false),
     }
@@ -181,17 +184,19 @@ pub fn render_in_zone(
 /// number does not parse or has no confident (in-window, non-sentinel) reading.
 #[must_use]
 pub fn readings_for(number: &str, max: usize, zone: &RenderZone) -> Vec<Reading> {
-    readings_for_opts(number, max, false, zone)
+    readings_for_opts(number, max, false, zone, DateStyle::Iso8601)
 }
 
 /// [`readings_for`] with an `include_all` escape: when true, keeps sentinel and
-/// out-of-window candidates too (for an exhaustive scan).
+/// out-of-window candidates too (for an exhaustive scan). `style` shapes the
+/// displayed datetime text.
 #[must_use]
 pub fn readings_for_opts(
     number: &str,
     max: usize,
     include_all: bool,
     zone: &RenderZone,
+    style: DateStyle,
 ) -> Vec<Reading> {
     let Ok(value) = number.parse::<i64>() else {
         return Vec::new();
@@ -207,15 +212,16 @@ pub fn readings_for_opts(
                             .any(|(n, v)| *n == "in_window" && *v > 0.0)))
         })
         .take(max)
-        .map(|c| reading_from(c, zone))
+        .map(|c| reading_from(c, zone, style))
         .collect()
 }
 
-/// Build one [`Reading`] from a candidate, rendered in `zone` (semantics-aware).
-fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
+/// Build one [`Reading`] from a candidate, rendered in `zone` with `style`
+/// (semantics-aware).
+fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) -> Reading {
     let tz = crate::format(c.format_id).map_or(TzSemantics::Utc, |f| f.tz);
     let native = c.rendered.clone().unwrap_or_default();
-    let (rendered, local) = render_in_zone(tz, c.instant, &native, zone);
+    let (rendered, local) = render_in_zone(tz, c.instant, &native, zone, style);
     Reading {
         format_id: c.format_id.to_string(),
         rendered,
@@ -233,14 +239,19 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
 /// there is no in-window gate: a parsed string form is evidence in itself.
 #[must_use]
 pub fn readings_for_string(text: &str, zone: &RenderZone) -> Vec<Reading> {
-    string_readings_opts(text, false, zone)
+    string_readings_opts(text, false, zone, DateStyle::Iso8601)
 }
 
-fn string_readings_opts(text: &str, include_all: bool, zone: &RenderZone) -> Vec<Reading> {
+fn string_readings_opts(
+    text: &str,
+    include_all: bool,
+    zone: &RenderZone,
+    style: DateStyle,
+) -> Vec<Reading> {
     interpret::interpret_string(text)
         .into_iter()
         .filter(|c| c.rendered.is_some() && (include_all || !c.sentinel))
-        .map(|c| reading_from(c, zone))
+        .map(|c| reading_from(c, zone, style))
         .collect()
 }
 
@@ -272,11 +283,19 @@ pub fn inspect_text_min(
     min_digits: usize,
     zone: &RenderZone,
 ) -> Vec<NumberReadings> {
-    inspect_text_opts(text, max_per_number, min_digits, false, zone)
+    inspect_text_opts(
+        text,
+        max_per_number,
+        min_digits,
+        false,
+        zone,
+        DateStyle::Iso8601,
+    )
 }
 
 /// [`inspect_text_min`] with an `include_all` escape: keep sentinel and
-/// out-of-window readings too (an exhaustive, noisier scan).
+/// out-of-window readings too (an exhaustive, noisier scan). `style` shapes the
+/// displayed datetime text of each reading.
 #[must_use]
 pub fn inspect_text_opts(
     text: &str,
@@ -284,16 +303,17 @@ pub fn inspect_text_opts(
     min_digits: usize,
     include_all: bool,
     zone: &RenderZone,
+    style: DateStyle,
 ) -> Vec<NumberReadings> {
     let mut out: Vec<NumberReadings> = scan_numbers_min(text, min_digits)
         .into_iter()
         .filter_map(|number| {
-            let readings = readings_for_opts(&number, max_per_number, include_all, zone);
+            let readings = readings_for_opts(&number, max_per_number, include_all, zone, style);
             (!readings.is_empty()).then_some(NumberReadings { number, readings })
         })
         .collect();
     for cand in datetime_candidates(text) {
-        let readings: Vec<Reading> = string_readings_opts(&cand, include_all, zone)
+        let readings: Vec<Reading> = string_readings_opts(&cand, include_all, zone, style)
             .into_iter()
             .take(max_per_number)
             .collect();

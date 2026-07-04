@@ -9,14 +9,38 @@
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use timeglyph::csv_enrich::{Conversion, EnrichOptions};
 use timeglyph::interpret::{self, Candidate};
-use timeglyph::RenderZone;
+use timeglyph::{DateStyle, RenderZone};
 
 const EXIT_OK: u8 = 0;
 const EXIT_ERR: u8 = 1;
 const EXIT_AMBIGUOUS: u8 = 2;
+
+/// CLI selector for the engine's [`DateStyle`] display styles.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum FormatArg {
+    /// RFC 3339 / ISO 8601 (the default), e.g. `2020-01-01T00:00:00Z`.
+    Iso8601,
+    /// Space-separated with a zone abbreviation, e.g. `2020-01-01 00:00:00 UTC`.
+    Space,
+    /// RFC 2822, e.g. `Wed, 01 Jan 2020 00:00:00 +0000`.
+    Rfc2822,
+    /// US 12-hour clock, e.g. `01/01/2020 12:00:00 AM UTC`.
+    Us,
+}
+
+impl From<FormatArg> for DateStyle {
+    fn from(f: FormatArg) -> Self {
+        match f {
+            FormatArg::Iso8601 => DateStyle::Iso8601,
+            FormatArg::Space => DateStyle::SpaceSeparated,
+            FormatArg::Rfc2822 => DateStyle::Rfc2822,
+            FormatArg::Us => DateStyle::UsStyle,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "timeglyph", version, about = "Forensic timestamp decipherment")]
@@ -42,6 +66,10 @@ struct Cli {
     /// even when it has no a–f digits (equivalent to the `hex` subcommand).
     #[arg(long, global = true)]
     hex: bool,
+    /// Datetime display style for rendered output (identify/decode/scan). The
+    /// instant and zone are unchanged — only the textual shape differs.
+    #[arg(long = "format", id = "date_format", global = true, value_enum, default_value_t = FormatArg::Iso8601)]
+    format: FormatArg,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -150,19 +178,20 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_ERR);
         }
     };
+    let style: DateStyle = cli.format.into();
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
-            run_identify(&value, json, &zone, cli.artifact.as_deref(), cli.hex)
+            run_identify(&value, json, &zone, style, cli.artifact.as_deref(), cli.hex)
         }
-        Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone),
+        Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone, style),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
-        Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone),
-        Some(Commands::String { text }) => run_string(&text, &zone),
+        Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone, style),
+        Some(Commands::String { text }) => run_string(&text, &zone, style),
         Some(Commands::Scan {
             text,
             min_digits,
             all,
-        }) => run_scan(text.as_deref(), min_digits, all, &zone),
+        }) => run_scan(text.as_deref(), min_digits, all, &zone, style),
         Some(Commands::List) => run_list(),
         Some(Commands::Csv {
             path,
@@ -178,7 +207,7 @@ fn main() -> ExitCode {
         }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
-                run_identify(&v, cli.json, &zone, cli.artifact.as_deref(), cli.hex)
+                run_identify(&v, cli.json, &zone, style, cli.artifact.as_deref(), cli.hex)
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -218,6 +247,7 @@ fn run_identify(
     input: &str,
     json: bool,
     zone: &RenderZone,
+    style: DateStyle,
     artifact: Option<&str>,
     force_hex: bool,
 ) -> u8 {
@@ -226,7 +256,7 @@ fn run_identify(
     // letters are present (a–f ⇒ not a decimal integer). Either way it is an
     // explicit override of the merge below.
     if force_hex || looks_like_hex_bytes(s) {
-        return run_hex(s, zone);
+        return run_hex(s, zone, style);
     }
     let ctx = interpret::InterpretContext {
         artifact,
@@ -248,7 +278,7 @@ fn run_identify(
     // `instant` (nanoseconds) stays the absolute anchor; only the human-facing
     // string changes — serialized directly (serde_json's intermediate Value
     // can't hold the i128 instant; the Serializer can).
-    render_candidates_in_zone(&mut cands, zone);
+    render_candidates_in_zone(&mut cands, zone, style);
     if cands.is_empty() {
         eprintln!("error: could not interpret {s:?} as an integer, hex, or datetime string");
         return EXIT_ERR;
@@ -267,21 +297,22 @@ fn run_identify(
         "# readings consistent with {s} (ranked; a raw value is usually \
          underdetermined — not a single verdict):"
     );
-    print_candidates(&cands, zone);
+    print_candidates(&cands, zone, style);
     ambiguity_code(&cands)
 }
 
 /// Overwrite each candidate's `rendered` string with its instant rendered in
-/// `zone` (leaving it untouched when the instant is out of civil range).
-fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone) {
+/// `zone` using `style` (leaving it untouched when the instant is out of civil
+/// range).
+fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: DateStyle) {
     for c in cands {
-        if let Some(rendered) = c.instant.render(zone) {
-            c.rendered = Some(rendered);
+        if c.instant.render(zone).is_some() {
+            c.rendered = Some(timeglyph::datefmt::format_instant(c.instant, zone, style));
         }
     }
 }
 
-fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
+fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) -> u8 {
     // Leap-aware scales (gps/tai64/ntp) decode separately — never via PosixNs.
     #[cfg(feature = "leap")]
     if let Ok(v) = value.parse::<i64>() {
@@ -317,7 +348,7 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
         let sentinel = interpret::sentinel_reason(v);
         match f.decode_int(v) {
             Ok(instant) => {
-                print_decode(f, value, instant, zone);
+                print_decode(f, value, instant, zone, style);
                 return sentinel_exit(v, sentinel);
             }
             Err(e) => {
@@ -334,7 +365,7 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
     }
     if let Ok(v) = value.parse::<f64>() {
         match f.decode_float(v) {
-            Ok(instant) => return print_decode(f, value, instant, zone),
+            Ok(instant) => return print_decode(f, value, instant, zone, style),
             Err(e) => {
                 eprintln!("error: {e}");
                 return EXIT_ERR;
@@ -355,10 +386,9 @@ fn print_decode(
     value: &str,
     instant: timeglyph::PosixNs,
     zone: &RenderZone,
+    style: DateStyle,
 ) -> u8 {
-    let rendered = instant
-        .render(zone)
-        .unwrap_or_else(|| "<out of civil range>".into());
+    let rendered = timeglyph::datefmt::format_instant(instant, zone, style);
     let caveat = if matches!(f.tz, timeglyph::TzSemantics::LocalNaive) {
         "  (LOCAL naive — not UTC)"
     } else {
@@ -408,14 +438,14 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
     }
 }
 
-fn run_hex(bytes: &str, zone: &RenderZone) -> u8 {
+fn run_hex(bytes: &str, zone: &RenderZone, style: DateStyle) -> u8 {
     match interpret::interpret_hex(bytes) {
         Ok(groups) => {
             let mut any = false;
             let mut has_sentinel = false;
             for (layout, cands) in &groups {
                 println!("# byte layout: {layout}");
-                print_candidates(cands, zone);
+                print_candidates(cands, zone, style);
                 any |= !cands.is_empty();
                 has_sentinel |= cands.iter().any(|c| c.sentinel);
             }
@@ -433,20 +463,26 @@ fn run_hex(bytes: &str, zone: &RenderZone) -> u8 {
     }
 }
 
-fn run_string(text: &str, zone: &RenderZone) -> u8 {
+fn run_string(text: &str, zone: &RenderZone, style: DateStyle) -> u8 {
     let cands = interpret::interpret_string(text);
     if cands.is_empty() {
         eprintln!("error: {text:?} did not parse as any known string timestamp form");
         return EXIT_ERR;
     }
     println!("# readings consistent with {text:?}:");
-    print_candidates(&cands, zone);
+    print_candidates(&cands, zone, style);
     EXIT_OK
 }
 
 /// Scan `text` (or stdin) for timestamp candidates and print each with its
 /// readings. `all` keeps sentinel/out-of-window readings and shows every one.
-fn run_scan(text: Option<&str>, min_digits: usize, all: bool, zone: &RenderZone) -> u8 {
+fn run_scan(
+    text: Option<&str>,
+    min_digits: usize,
+    all: bool,
+    zone: &RenderZone,
+    style: DateStyle,
+) -> u8 {
     let input = if let Some(t) = text {
         t.to_string()
     } else {
@@ -459,7 +495,7 @@ fn run_scan(text: Option<&str>, min_digits: usize, all: bool, zone: &RenderZone)
         s
     };
     let max = if all { usize::MAX } else { 4 };
-    for nr in timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone) {
+    for nr in timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone, style) {
         println!("{}", nr.number);
         for r in &nr.readings {
             println!("    {r}");
@@ -594,14 +630,20 @@ fn run_csv(
     }
 }
 
-fn print_candidates(cands: &[Candidate], zone: &RenderZone) {
+fn print_candidates(cands: &[Candidate], zone: &RenderZone, style: DateStyle) {
     if cands.is_empty() {
         println!("  (no plausible interpretation)");
         return;
     }
     for c in cands {
         let flag = if c.sentinel { " [sentinel]" } else { "" };
-        let rendered = c.instant.render(zone).or_else(|| c.rendered.clone());
+        // Style the display only when the instant is in civil range; otherwise
+        // keep the format's own native rendering (its `rendered` field).
+        let rendered = c
+            .instant
+            .render(zone)
+            .map(|_| timeglyph::datefmt::format_instant(c.instant, zone, style))
+            .or_else(|| c.rendered.clone());
         println!(
             "  [{:.2}] {:<16} {}  ({}){flag}",
             c.score,
