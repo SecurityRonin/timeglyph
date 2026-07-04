@@ -78,9 +78,10 @@ pub fn country_for_zone(iana: &str) -> Option<&'static str> {
 /// zones never annotate (there is no single country to attribute the day to).
 #[must_use]
 pub fn in_zone(zone: &RenderZone, date: Date) -> Option<String> {
-    // GREEN in the next commit.
-    let _ = (zone, date);
-    None
+    let RenderZone::Named(tz) = zone else {
+        return None;
+    };
+    lookup(country_for_zone(tz.iana_name()?)?, date)
 }
 
 /// IANA zone → ISO-3166 alpha-2, from the tz database's `zone.tab` (public
