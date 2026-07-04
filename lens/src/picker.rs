@@ -2,7 +2,8 @@
 //!
 //! - **Windows**: `IUIAutomation::ElementFromPoint`.
 //! - **macOS**: the Accessibility API `AXUIElementCopyElementAtPosition`.
-//! - Other platforms: a stub that reports the live inspector is unsupported.
+//! - **Linux (X11)**: AT-SPI — descend `GetAccessibleAtPoint` to the deepest
+//!   element under the X11 pointer, read its Text interface (or accessible name).
 //!
 //! Each backend exposes the same `Picker::new() -> Result<Self, String>` and
 //! `text_under_cursor(&self) -> Option<String>`, so the overlay is identical.
@@ -218,21 +219,138 @@ mod imp {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 mod imp {
+    use atspi::proxy::accessible::{AccessibleProxy, ObjectRefExt};
+    use atspi::proxy::proxy_ext::ProxyExt;
+    use atspi::zbus::block_on;
+    use atspi::{AccessibilityConnection, CoordType};
+
+    /// The real gate is whether the accessibility bus is reachable (assistive
+    /// technologies enabled) — checked when [`Picker::new`] connects.
     pub fn accessibility_ok() -> bool {
         true
     }
 
+    /// No app-triggered permission prompt on Linux; AT-SPI is enabled via the
+    /// desktop's accessibility settings.
     pub fn prompt_accessibility() {}
 
-    pub struct Picker;
+    pub struct Picker {
+        conn: AccessibilityConnection,
+    }
 
     impl Picker {
         pub fn new() -> Result<Self, String> {
-            Err("the live cursor inspector is only available on Windows and macOS".into())
+            let conn = block_on(AccessibilityConnection::new()).map_err(|e| {
+                format!(
+                    "AT-SPI accessibility bus unavailable ({e}); enable assistive \
+                     technologies and run under X11"
+                )
+            })?;
+            Ok(Self { conn })
         }
 
         pub fn text_under_cursor(&self) -> Option<String> {
-            None
+            let (x, y) = cursor_point()?;
+            block_on(text_at(&self.conn, x, y))
         }
+    }
+
+    /// Walk the AT-SPI tree to the deepest accessible under the screen point and
+    /// return its text (falling back to the accessible name). Screen coordinates
+    /// throughout; some toolkits want window coordinates once inside a frame — a
+    /// known AT-SPI quirk to revisit if a toolkit misreports.
+    async fn text_at(conn: &AccessibilityConnection, x: i32, y: i32) -> Option<String> {
+        let zconn = conn.connection();
+        let root = conn.root_accessible_on_registry().await.ok()?;
+        for app_ref in root.get_children().await.ok()? {
+            if app_ref.is_null() {
+                continue;
+            }
+            let Ok(app) = app_ref.into_accessible_proxy(zconn).await else {
+                continue;
+            };
+            for frame_ref in app.get_children().await.unwrap_or_default() {
+                if frame_ref.is_null() {
+                    continue;
+                }
+                let Ok(frame) = frame_ref.into_accessible_proxy(zconn).await else {
+                    continue;
+                };
+                if let Some(leaf) = deepest_at(zconn, frame, x, y).await {
+                    if let Some(text) = text_of(&leaf).await {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Iteratively descend via `GetAccessibleAtPoint` to the deepest child at the
+    /// point; `None` when the point isn't inside `start`.
+    async fn deepest_at<'c>(
+        zconn: &'c atspi::zbus::Connection,
+        start: AccessibleProxy<'c>,
+        x: i32,
+        y: i32,
+    ) -> Option<AccessibleProxy<'c>> {
+        let mut current = start;
+        let mut descended = false;
+        for _ in 0..32 {
+            let Ok(proxies) = current.proxies().await else {
+                break;
+            };
+            let Ok(component) = proxies.component().await else {
+                break;
+            };
+            let Ok(child) = component
+                .get_accessible_at_point(x, y, CoordType::Screen)
+                .await
+            else {
+                break;
+            };
+            if child.is_null() {
+                break;
+            }
+            let Ok(next) = child.into_accessible_proxy(zconn).await else {
+                break;
+            };
+            current = next;
+            descended = true;
+        }
+        descended.then_some(current)
+    }
+
+    /// The element's text (Text interface), else its accessible name.
+    async fn text_of(node: &AccessibleProxy<'_>) -> Option<String> {
+        if let Ok(proxies) = node.proxies().await {
+            if let Ok(text) = proxies.text().await {
+                if let Ok(count) = text.character_count().await {
+                    if count > 0 {
+                        if let Ok(s) = text.get_text(0, count).await {
+                            let s = s.trim().to_string();
+                            if !s.is_empty() {
+                                return Some(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        node.name()
+            .await
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// The X11 pointer position in screen coordinates.
+    fn cursor_point() -> Option<(i32, i32)> {
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::ConnectionExt;
+        let (conn, screen_num) = x11rb::connect(None).ok()?;
+        let root = conn.setup().roots.get(screen_num)?.root;
+        let pointer = conn.query_pointer(root).ok()?.reply().ok()?;
+        Some((i32::from(pointer.root_x), i32::from(pointer.root_y)))
     }
 }

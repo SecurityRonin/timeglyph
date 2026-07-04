@@ -64,6 +64,13 @@ muda = "0.19.3"
 objc2 = "0.6"
 objc2-foundation = "0.3"
 
+# Linux (X11): AT-SPI reads the element under the cursor. `atspi` is async over
+# zbus — the `zbus` feature re-exports zbus so the sync poll thread bridges with
+# exactly atspi's version (block_on + Connection). x11rb reads the pointer.
+[target.'cfg(not(any(windows, target_os = "macos")))'.dependencies]
+atspi = { version = "0.30", features = ["zbus"] }
+x11rb = "0.13"
+
 # The Win32 / UIA shell is FFI — unsafe is required here (unlike the engine,
 # which forbids it). The scan core stays safe.
 [lints.rust]
