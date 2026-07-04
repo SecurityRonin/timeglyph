@@ -84,6 +84,15 @@ pub fn in_zone(zone: &RenderZone, date: Date) -> Option<String> {
     lookup(country_for_zone(tz.iana_name()?)?, date)
 }
 
+/// Like [`in_zone`] but taking a reading's *rendered* datetime string, using its
+/// leading ISO date (`YYYY-MM-DD`) — so callers that already hold the rendered
+/// value (the CLI, the overlay) need not depend on jiff to parse it.
+#[must_use]
+pub fn in_zone_rendered(zone: &RenderZone, rendered: &str) -> Option<String> {
+    let date = rendered.get(..10)?.parse().ok()?;
+    in_zone(zone, date)
+}
+
 /// IANA zone → ISO-3166 alpha-2, from the tz database's `zone.tab` (public
 /// domain). Small (~10 KB), parsed once. See `data/zone_country.json`.
 fn zones() -> &'static HashMap<String, String> {

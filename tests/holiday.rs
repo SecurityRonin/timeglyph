@@ -72,6 +72,15 @@ fn holiday_in_named_zone() {
 }
 
 #[test]
+fn holiday_from_rendered_string() {
+    let sh = RenderZone::Named(jiff::tz::TimeZone::get("Asia/Shanghai").unwrap());
+    // Takes the leading ISO date from a full rendered datetime.
+    let cny = holiday::in_zone_rendered(&sh, "2020-01-25T08:00:00+08:00").unwrap();
+    assert!(cny.contains('\u{6625}'));
+    assert_eq!(holiday::in_zone_rendered(&sh, "not-a-date"), None);
+}
+
+#[test]
 fn dataset_loaded() {
     // Fail loud in CI if the embedded blob is missing/truncated/unparseable:
     // the generator ships ~248 countries, so a near-zero count is a regression.
