@@ -50,12 +50,18 @@ pub fn run(verbose: u8) -> Result<(), String> {
             "[spy] verbose logging on (level {verbose}); -vv also shows the raw element text"
         );
     }
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([560.0, 400.0])
+        .with_min_inner_size([380.0, 220.0])
+        .with_always_on_top()
+        .with_title("timeglyph-spy");
+    // Window / taskbar / dock icon. Falls through silently if it can't decode —
+    // a missing icon must not stop the tool opening.
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")) {
+        viewport = viewport.with_icon(icon);
+    }
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([560.0, 400.0])
-            .with_min_inner_size([380.0, 220.0])
-            .with_always_on_top()
-            .with_title("timeglyph-spy"),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(
@@ -68,10 +74,25 @@ pub fn run(verbose: u8) -> Result<(), String> {
             crate::macmenu::install();
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
-            Ok(Box::new(SpyApp::new(latest, verbose)))
+            Ok(Box::new(SpyApp::new(
+                latest,
+                verbose,
+                load_logo(&cc.egui_ctx),
+            )))
         }),
     )
     .map_err(|e| e.to_string())
+}
+
+/// Decode the embedded app icon into a texture for the header and empty-state.
+/// `None` if it can't be decoded — the UI then falls back to the ◷ glyph.
+fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).ok()?;
+    let image = egui::ColorImage::from_rgba_unmultiplied(
+        [icon.width as usize, icon.height as usize],
+        &icon.rgba,
+    );
+    Some(ctx.load_texture("timeglyph-logo", image, egui::TextureOptions::LINEAR))
 }
 
 /// Poll the element under the cursor on a background thread so the render thread
@@ -171,10 +192,13 @@ struct SpyApp {
     /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
     /// raw element text under the cursor in the panel (a debug caption).
     verbose: u8,
+    /// The app logo as a texture, for the header and empty-state. `None` if the
+    /// embedded icon can't be decoded — the UI falls back to the ◷ glyph.
+    logo: Option<egui::TextureHandle>,
 }
 
 impl SpyApp {
-    fn new(latest: Arc<Mutex<String>>, verbose: u8) -> Self {
+    fn new(latest: Arc<Mutex<String>>, verbose: u8, logo: Option<egui::TextureHandle>) -> Self {
         Self {
             latest,
             last_text: String::new(),
@@ -189,6 +213,7 @@ impl SpyApp {
             show_settings: Arc::new(AtomicBool::new(false)),
             settings: Arc::new(Mutex::new(Settings::default())),
             verbose,
+            logo,
         }
     }
 
@@ -281,12 +306,13 @@ impl eframe::App for SpyApp {
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
+        let logo = self.logo.clone();
 
         let panel = Frame::none()
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source, pal);
+            header(ui, &source, pal, logo.as_ref());
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -295,6 +321,7 @@ impl eframe::App for SpyApp {
                     "Hover an element with a number",
                     "Point at any on-screen value to decode it",
                     pal,
+                    logo.as_ref(),
                 );
             } else {
                 egui::ScrollArea::vertical()
@@ -546,13 +573,24 @@ impl SpyApp {
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
 /// source element — context, not the subject (and it keeps sensitive surrounding
 /// text from dominating the panel).
-fn header(ui: &mut egui::Ui, source: &str, pal: Palette) {
+fn header(ui: &mut egui::Ui, source: &str, pal: Palette, logo: Option<&egui::TextureHandle>) {
     ui.horizontal(|ui| {
+        if let Some(tex) = logo {
+            ui.add(
+                egui::Image::new(egui::load::SizedTexture::from_handle(tex))
+                    .fit_to_exact_size(egui::vec2(20.0, 20.0)),
+            );
+            ui.add_space(2.0);
+        }
         ui.label(
-            RichText::new("◷ timeglyph")
-                .font(FontId::monospace(15.0))
-                .color(pal.amber)
-                .strong(),
+            RichText::new(if logo.is_some() {
+                "timeglyph"
+            } else {
+                "◷ timeglyph"
+            })
+            .font(FontId::monospace(15.0))
+            .color(pal.amber)
+            .strong(),
         );
         if !source.is_empty() {
             ui.add_space(10.0);
@@ -788,14 +826,27 @@ fn ganzhi_cell(
 }
 
 /// A calm centred placeholder instead of a debug string.
-fn empty_state(ui: &mut egui::Ui, title: &str, sub: &str, pal: Palette) {
+fn empty_state(
+    ui: &mut egui::Ui,
+    title: &str,
+    sub: &str,
+    pal: Palette,
+    logo: Option<&egui::TextureHandle>,
+) {
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
-        ui.label(
-            RichText::new("◷")
-                .font(FontId::monospace(34.0))
-                .color(pal.glyph),
-        );
+        if let Some(tex) = logo {
+            ui.add(
+                egui::Image::new(egui::load::SizedTexture::from_handle(tex))
+                    .fit_to_exact_size(egui::vec2(72.0, 72.0)),
+            );
+        } else {
+            ui.label(
+                RichText::new("◷")
+                    .font(FontId::monospace(34.0))
+                    .color(pal.glyph),
+            );
+        }
         ui.add_space(10.0);
         ui.label(
             RichText::new(title)
