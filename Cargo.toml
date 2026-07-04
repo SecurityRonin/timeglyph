@@ -37,6 +37,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # CSV enrichment (the `csv` subcommand): robust RFC 4180 reader/writer.
 csv = "1"
+# Structured, always-on instrumentation for debuggability — the `tracing` facade
+# compiles to near-nothing without a subscriber. The CLI installs a subscriber
+# gated by `RUST_LOG` (silent by default), so a stuck decode/scan is a
+# `RUST_LOG=timeglyph=debug` away from a step-by-step trace.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Leap-aware time scales (GPS/TAI), behind the `leap` feature. hifitime carries a
 # built-in leap-second table and is the ONE place we do NOT reinvent (leap math
 # is solved; rolling our own would be wrong). MPL-2.0 (allowed in deny.toml).

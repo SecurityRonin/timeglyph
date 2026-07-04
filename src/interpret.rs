@@ -98,6 +98,7 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
 /// empty context reproduces [`interpret_int`] exactly. The ranking is otherwise
 /// identical: ALL civil-renderable readings, scored, never one verdict.
 #[must_use]
+#[tracing::instrument(level = "debug", skip(ctx))]
 pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
     for f in FORMATS {
@@ -593,6 +594,7 @@ fn all_ones_sentinel() -> Candidate {
 // ULID/UUID/EXIF/ordinal/week); long by nature, not complex.
 #[allow(clippy::too_many_lines)]
 #[must_use]
+#[tracing::instrument(level = "debug", skip(text), fields(len = text.len()))]
 pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let s = text.trim();
     let mut out = Vec::new();

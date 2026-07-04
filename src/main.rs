@@ -118,7 +118,23 @@ enum Commands {
     },
 }
 
+/// Install a tracing subscriber gated by `RUST_LOG` (silent by default), writing
+/// to stderr so stdout stays clean for pipelines. `RUST_LOG=timeglyph=debug`
+/// traces a decode/scan step by step.
+fn init_tracing() {
+    use tracing_subscriber::fmt::format::FmtSpan;
+    use tracing_subscriber::EnvFilter;
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        // Log each instrumented span when it closes (its fields + duration), so
+        // the decode/scan call flow is visible even without explicit events.
+        .with_span_events(FmtSpan::CLOSE)
+        .try_init();
+}
+
 fn main() -> ExitCode {
+    init_tracing();
     let cli = Cli::parse();
     // Resolve the output zone once, up front: a bad --tz must fail loudly before
     // any rendering, never silently fall back to UTC.
