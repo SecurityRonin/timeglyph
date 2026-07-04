@@ -81,6 +81,16 @@ fn holiday_from_rendered_string() {
 }
 
 #[test]
+fn alias_zone_resolves_to_country() {
+    // Backward-compat IANA aliases (Link) must resolve like their canonical zone,
+    // not fall through to None — Asia/Chongqing/Harbin are aliases of
+    // Asia/Shanghai (CN); US/Eastern of America/New_York (US).
+    assert_eq!(holiday::country_for_zone("Asia/Chongqing"), Some("CN"));
+    assert_eq!(holiday::country_for_zone("Asia/Harbin"), Some("CN"));
+    assert_eq!(holiday::country_for_zone("US/Eastern"), Some("US"));
+}
+
+#[test]
 fn dataset_loaded() {
     // Fail loud in CI if the embedded blob is missing/truncated/unparseable:
     // the generator ships ~248 countries, so a near-zero count is a regression.
