@@ -52,6 +52,17 @@ fn case_insensitive_country() {
 }
 
 #[test]
+fn zone_maps_to_country() {
+    // IANA zone → ISO country, from the tz database's zone.tab.
+    assert_eq!(holiday::country_for_zone("Asia/Shanghai"), Some("CN"));
+    assert_eq!(holiday::country_for_zone("America/New_York"), Some("US"));
+    assert_eq!(holiday::country_for_zone("Europe/London"), Some("GB"));
+    // No single country → no annotation.
+    assert_eq!(holiday::country_for_zone("Etc/UTC"), None);
+    assert_eq!(holiday::country_for_zone("Nowhere/Nope"), None);
+}
+
+#[test]
 fn dataset_loaded() {
     // Fail loud in CI if the embedded blob is missing/truncated/unparseable:
     // the generator ships ~248 countries, so a near-zero count is a regression.

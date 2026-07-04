@@ -60,3 +60,14 @@ pub fn lookup(country: &str, date: Date) -> Option<String> {
 pub fn supported_country_count() -> usize {
     table().len()
 }
+
+/// The ISO-3166 alpha-2 country an IANA time-zone name belongs to (e.g.
+/// `Asia/Shanghai` → `CN`) — how a caller turns a display zone into the country
+/// whose holidays annotate a reading. `None` for `Etc/*` / `UTC` and unknown
+/// zones (no single country → no holiday annotation).
+#[must_use]
+pub fn country_for_zone(iana: &str) -> Option<&'static str> {
+    // GREEN in the next commit.
+    let _ = iana;
+    None
+}
