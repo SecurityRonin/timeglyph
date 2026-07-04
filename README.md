@@ -36,6 +36,7 @@ $ timeglyph decode filetime 132223104000000000
 $ timeglyph encode unix 2020-01-01T00:00:00Z
 $ timeglyph hex 0060947C58B2D501       # raw bytes (LE/BE + packed on-disk)
 $ timeglyph string 20200101000000Z     # ISO / RFC / ASN.1 string forms
+$ timeglyph scan app.log               # find & decode every timestamp in text (or stdin)
 $ timeglyph csv events.csv             # enrich a CSV: human-readable timestamp columns
 $ timeglyph list                       # the format registry, with spec citations
 ```
@@ -49,7 +50,12 @@ source family.
 
 ## Install
 
-**macOS / Linux**
+**Windows** ([winget](https://learn.microsoft.com/windows/package-manager/winget/))
+```powershell
+winget install SecurityRonin.timeglyph
+```
+
+**macOS / Linux** ([Homebrew](https://brew.sh))
 ```bash
 brew install securityronin/tap/timeglyph
 ```
@@ -69,6 +75,27 @@ tar xzf timeglyph-*-aarch64-apple-darwin.tar.gz
 install timeglyph /usr/local/bin/
 ```
 
+## timeglyph-spy — hover anything, read the time
+
+A companion GUI: an always-on-top overlay that follows your cursor and shows
+timeglyph's ranked readings for any number in the UI element under the pointer —
+no copy-paste. Each row carries its confidence, the weekday, the public holiday
+for that date in the chosen zone, and — opt-in — the Chinese lunisolar date and
+干支 four pillars colored by 五行. Pick any display timezone from the footer.
+
+<p align="center">
+  <img src="assets/spy.png" alt="timeglyph-spy overlay" width="520" />
+</p>
+
+- **Platforms:** macOS and Windows — the picker reads the element under the cursor
+  via the Accessibility API and UI&nbsp;Automation respectively. Linux is not yet
+  supported (no picker backend).
+- **Windows:** `winget install SecurityRonin.timeglyph-spy` (once registered), or
+  grab `timeglyph-spy-*.zip` from the [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest).
+- **macOS:** download the `timeglyph-spy` binary from the release, or build from
+  source — `cargo build --release --manifest-path spy/Cargo.toml`. Grant
+  Accessibility permission on first launch.
+
 ## Status
 
 Working engine. The `PosixNs(i128)` spine, decode/encode/auto-detect/byte-decode,
@@ -83,8 +110,12 @@ FAT/DOS + SYSTEMTIME packed forms, and the ULID / UUIDv1 / RFC 2822 / EXIF / ISO
 ASN.1 string forms. The leap-aware GPS/TAI64/NTP family is behind the `leap`
 feature (`decode gps|tai64|ntp`, leap-correct UTC via `hifitime`); the Chinese
 lunisolar calendar + 干支 four pillars are behind the `lunisolar` feature
-(`lunisolar <datetime> --tz <zone>`, via the `stem-branch` ephemeris). See
-**[the ADRs](docs/decisions/)** for the design decisions.
+(`lunisolar <datetime> --tz <zone>`, via the `stem-branch` ephemeris); a
+whole-world public-holiday lookup (248 countries, 1980–2100, generated from the
+MIT `python-holidays`) is behind the `holiday` feature; and arbitrary text is
+mined for timestamps with `scan`. The `timeglyph-spy` overlay (above) is the
+interactive front-end for all of it. The library carries 100% function-coverage
+tests. See **[the ADRs](docs/decisions/)** for the design decisions.
 
 ## Why another converter?
 
