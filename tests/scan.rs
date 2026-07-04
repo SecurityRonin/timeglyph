@@ -2,8 +2,8 @@
 //! Object; the Win32/UIA shell is verified on Windows at runtime).
 #![allow(clippy::unwrap_used)]
 
-use timeglyph::{PosixNs, RenderZone, TzSemantics};
 use timeglyph::scan;
+use timeglyph::{PosixNs, RenderZone, TzSemantics};
 
 #[test]
 fn extracts_only_long_numeric_runs() {
@@ -66,6 +66,20 @@ fn render_in_zone_respects_tz_semantics() {
         a.contains("2020-06-15T12:00:00") && !a.contains('Z') && !a.contains("-05:00"),
         "{a}"
     );
+}
+
+#[test]
+fn render_in_zone_falls_back_to_native_when_out_of_range() {
+    // A PosixNs beyond jiff's civil range cannot render, so the UTC branch falls
+    // back to the format's own (native) string rather than dropping the value.
+    let (rendered, local) = scan::render_in_zone(
+        TzSemantics::Utc,
+        PosixNs(i128::MAX),
+        "9999-12-31T23:59:59Z",
+        &RenderZone::Utc,
+    );
+    assert_eq!(rendered, "9999-12-31T23:59:59Z");
+    assert!(!local);
 }
 
 #[test]
