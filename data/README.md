@@ -46,7 +46,12 @@ Maps each IANA time-zone name to its ISO-3166 alpha-2 country (e.g.
 `Asia/Shanghai` → `CN`), so a display zone can pick which country's holidays to
 annotate a reading with (`timeglyph::holiday::country_for_zone`).
 
-- **Source:** the IANA time-zone database `zone.tab` (public domain).
-- **Regenerate:** `python3 - <<'PY'` reading `/usr/share/zoneinfo/zone.tab`,
-  keeping fields `(zone → country)` for 2-letter codes, sorted. ~418 zones, ~10 KB.
+- **Source:** the IANA time-zone database (public domain) — `zone.tab` for
+  canonical zones, plus the `backward` file's `Link` lines so legacy aliases
+  (e.g. `Asia/Chongqing` → `Asia/Shanghai`, `US/Eastern` → `America/New_York`)
+  resolve to the same country as their canonical. Without the aliases, jiff
+  still renders the time for them but their holidays would never show.
+- **Regenerate:** [`generate_zone_country.py`](generate_zone_country.py) —
+  `python3 data/generate_zone_country.py` (reads the local `zone.tab`, fetches
+  `backward`). ~553 zones (~135 aliases), sorted.
 - Zones with no single country (`Etc/*`, `UTC`) are absent → no holiday annotation.
