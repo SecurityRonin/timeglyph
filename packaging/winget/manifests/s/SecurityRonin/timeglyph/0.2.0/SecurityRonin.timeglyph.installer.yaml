@@ -6,6 +6,10 @@ NestedInstallerType: portable
 NestedInstallerFiles:
   - RelativeFilePath: timeglyph.exe
     PortableCommandAlias: timeglyph
+  # The v0.3.0+ zip also bundles the GUI overlay, so the one package installs
+  # both the `timeglyph` and `timeglyph-spy` commands.
+  - RelativeFilePath: timeglyph-spy.exe
+    PortableCommandAlias: timeglyph-spy
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/SecurityRonin/timeglyph/releases/download/v0.2.0/timeglyph-0.2.0-x86_64-pc-windows-msvc.zip

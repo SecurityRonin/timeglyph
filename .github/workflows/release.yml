@@ -88,20 +88,16 @@ jobs:
           tar czf ../../../timeglyph-spy-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph-spy
           cd ../../..
 
-      - name: Package (Windows, CLI)
+      # One Windows zip carries BOTH executables; the winget manifest lists them
+      # as two NestedInstallerFiles, so `winget install SecurityRonin.timeglyph`
+      # installs the `timeglyph` and `timeglyph-spy` commands together — no
+      # separate package to register.
+      - name: Package (Windows, CLI + spy)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip timeglyph.exe
-          cd ../../..
-
-      - name: Package (Windows, spy GUI)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../timeglyph-spy-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip timeglyph-spy.exe
+          7z a ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip timeglyph.exe timeglyph-spy.exe
           cd ../../..
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -147,10 +143,10 @@ jobs:
           event-type: update-timeglyph
           client-payload: '{"version": "${{ github.ref_name }}"}'
 
-  # winget: update the portable-zip packages with the new release. The CLI regex
-  # matches timeglyph-<version>-…zip (a digit after the dash) so it does NOT pick
-  # up the timeglyph-spy-… zip. First-time submission of each package is a manual
-  # winget-pkgs PR, so both jobs are continue-on-error until registered.
+  # winget: update the single SecurityRonin.timeglyph package with the new Windows
+  # .zip — which now bundles both timeglyph.exe and timeglyph-spy.exe (two
+  # NestedInstallerFiles in the manifest). `continue-on-error` until the package's
+  # first winget-pkgs submission is merged.
   winget:
     needs: release
     runs-on: windows-latest
@@ -159,20 +155,7 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: SecurityRonin.timeglyph
-          installers-regex: '^timeglyph-\d.*\.zip$'
-          token: ${{ secrets.WINGET_TOKEN }}
-          fork-user: securityronin-bot
-
-  # winget (spy GUI): the SecurityRonin.timeglyph-spy package (Windows only).
-  winget-spy:
-    needs: release
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
-        with:
-          identifier: SecurityRonin.timeglyph-spy
-          installers-regex: '^timeglyph-spy-.*\.zip$'
+          installers-regex: '\.zip$'
           token: ${{ secrets.WINGET_TOKEN }}
           fork-user: securityronin-bot
 

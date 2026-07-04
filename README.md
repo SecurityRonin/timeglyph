@@ -52,7 +52,7 @@ source family.
 
 **Windows** ([winget](https://learn.microsoft.com/windows/package-manager/winget/))
 ```powershell
-winget install SecurityRonin.timeglyph
+winget install SecurityRonin.timeglyph   # installs both the timeglyph CLI and the timeglyph-spy overlay
 ```
 
 **macOS / Linux** ([Homebrew](https://brew.sh))
@@ -84,14 +84,17 @@ for that date in the chosen zone, and — opt-in — the Chinese lunisolar date 
 干支 four pillars colored by 五行. Pick any display timezone from the footer.
 
 <p align="center">
-  <img src="assets/spy.png" alt="timeglyph-spy overlay" width="520" />
+  <img src="assets/spy-in-action.png" alt="timeglyph-spy decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
+  <br/>
+  <img src="assets/spy.png" alt="the timeglyph-spy overlay up close" width="420" />
 </p>
 
 - **Platforms:** macOS and Windows — the picker reads the element under the cursor
   via the Accessibility API and UI&nbsp;Automation respectively. Linux is not yet
   supported (no picker backend).
-- **Windows:** `winget install SecurityRonin.timeglyph-spy` (once registered), or
-  grab `timeglyph-spy-*.zip` from the [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest).
+- **Windows:** `winget install SecurityRonin.timeglyph` installs both the CLI and
+  the spy overlay (`timeglyph-spy`) — or grab the `.zip` from the
+  [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest).
 - **macOS:** download the `timeglyph-spy` binary from the release, or build from
   source — `cargo build --release --manifest-path spy/Cargo.toml`. Grant
   Accessibility permission on first launch.
