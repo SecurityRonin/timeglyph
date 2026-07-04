@@ -39,12 +39,17 @@ struct Settings {
 }
 
 /// Open the overlay window and run until it is closed.
-pub fn run() -> Result<(), String> {
+pub fn run(verbose: u8) -> Result<(), String> {
     // Fail-fast: verify the picker initializes (e.g. Accessibility permission is
     // granted) before opening the window. The poll thread builds its own picker
     // so the AX handle / COM apartment stays on that thread; this probe is
     // dropped immediately.
     let _ = Picker::new()?;
+    if verbose >= 1 {
+        eprintln!(
+            "[spy] verbose logging on (level {verbose}); -vv also shows the raw element text"
+        );
+    }
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([560.0, 400.0])
@@ -56,14 +61,14 @@ pub fn run() -> Result<(), String> {
     eframe::run_native(
         "timeglyph-spy",
         native_options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             install_fonts(&cc.egui_ctx);
             install_theme(&cc.egui_ctx, &Theme::default().palette());
             // Native macOS app menu with a standard Settings… item (⌘,).
             crate::macmenu::install();
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
-            Ok(Box::new(SpyApp::new(latest)))
+            Ok(Box::new(SpyApp::new(latest, verbose)))
         }),
     )
     .map_err(|e| e.to_string())
@@ -163,10 +168,13 @@ struct SpyApp {
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
+    /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
+    /// raw element text under the cursor in the panel (a debug caption).
+    verbose: u8,
 }
 
 impl SpyApp {
-    fn new(latest: Arc<Mutex<String>>) -> Self {
+    fn new(latest: Arc<Mutex<String>>, verbose: u8) -> Self {
         Self {
             latest,
             last_text: String::new(),
@@ -180,6 +188,7 @@ impl SpyApp {
             map_pick: None,
             show_settings: Arc::new(AtomicBool::new(false)),
             settings: Arc::new(Mutex::new(Settings::default())),
+            verbose,
         }
     }
 
@@ -216,6 +225,14 @@ impl eframe::App for SpyApp {
             if !new_hits.is_empty() {
                 self.source = text;
                 self.hits = new_hits;
+                if self.verbose >= 1 {
+                    eprintln!("[spy] {:?}", self.source);
+                    for nr in &self.hits {
+                        for r in &nr.readings {
+                            eprintln!("      {}  {}  ({})", nr.number, r.rendered, r.format_id);
+                        }
+                    }
+                }
             }
         }
 
@@ -254,7 +271,12 @@ impl eframe::App for SpyApp {
         }
 
         // Snapshot into locals so the nested render closures capture no `self`.
-        let source = self.source.clone();
+        // The raw element text is a debug caption — only in -vv.
+        let source = if self.verbose >= 2 {
+            self.source.clone()
+        } else {
+            String::new()
+        };
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
