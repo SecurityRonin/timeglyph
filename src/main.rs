@@ -269,18 +269,25 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
         }
     };
     // Integer value first; fall back to a float for float-encoded formats.
+    let mut int_err: Option<timeglyph::ChronoError> = None;
     if let Ok(v) = value.parse::<i64>() {
         let sentinel = interpret::sentinel_reason(v);
-        if let Ok(instant) = f.decode_int(v) {
-            print_decode(f, value, instant, zone);
-            return sentinel_exit(v, sentinel);
-        } else if let Some(reason) = sentinel {
-            // e.g. 0x7FFFFFFFFFFFFFFF ("never") overflows the decode but is itself
-            // a meaningful sentinel — report it rather than a generic error.
-            eprintln!("warning: {v} is a likely sentinel ({reason}) — 'unset'/'never', not a real instant");
-            return EXIT_AMBIGUOUS;
+        match f.decode_int(v) {
+            Ok(instant) => {
+                print_decode(f, value, instant, zone);
+                return sentinel_exit(v, sentinel);
+            }
+            Err(e) => {
+                if let Some(reason) = sentinel {
+                    // e.g. 0x7FFFFFFFFFFFFFFF ("never") overflows the decode but is
+                    // itself a meaningful sentinel — report it, not a generic error.
+                    eprintln!("warning: {v} is a likely sentinel ({reason}) — 'unset'/'never', not a real instant");
+                    return EXIT_AMBIGUOUS;
+                }
+                // Keep the reason; a non-sentinel integer falls through to float.
+                int_err = Some(e);
+            }
         }
-        // a non-sentinel integer that did not decode falls through to the float path.
     }
     if let Ok(v) = value.parse::<f64>() {
         match f.decode_float(v) {
@@ -291,7 +298,12 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone) -> u8 {
             }
         }
     }
-    eprintln!("error: could not decode {value:?} as {format}");
+    // Neither path produced a value: surface the specific decode failure (e.g.
+    // out-of-range, with the offending value) rather than a generic message.
+    match int_err {
+        Some(e) => eprintln!("error: cannot decode {value:?} as {format}: {e}"),
+        None => eprintln!("error: could not decode {value:?} as {format}"),
+    }
     EXIT_ERR
 }
 
