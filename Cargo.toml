@@ -48,6 +48,11 @@ hifitime = { version = "4.3", optional = true }
 # meridian and the optional true-solar-time longitude correction are applied in
 # timeglyph (the convention-relative layer). Apache-2.0.
 stem-branch = { version = "0.4", optional = true }
+# Whole-world public-holiday lookup (the `holiday` feature): an embedded, gzipped
+# python-holidays export (1980–2100). flate2 inflates it; serde_json (already a
+# core dep) parses it. Off by default — the ~1.5 MB blob and its parse cost are
+# opt-in, so the majority build carries neither.
+flate2 = { version = "1", optional = true }
 
 [features]
 # Off by default: the POSIX-offset majority needs no leap math. Enable for the
@@ -55,6 +60,9 @@ stem-branch = { version = "0.4", optional = true }
 leap = ["dep:hifitime"]
 # Off by default: only the Chinese-calendar rendering needs the ephemeris dep.
 lunisolar = ["dep:stem-branch"]
+# Off by default: embeds the ~1.5 MB gzipped whole-world holiday dataset and
+# pulls flate2 to inflate it.
+holiday = ["dep:flate2"]
 
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and

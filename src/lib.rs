@@ -50,6 +50,11 @@ pub mod leap;
 /// longitude), unlike the instant↔instant rest of the crate.
 #[cfg(feature = "lunisolar")]
 pub mod lunisolar;
+/// Whole-world public-holiday lookup (ISO-3166 country + date → holiday name),
+/// behind the `holiday` feature. An embedded python-holidays export; a hit is
+/// "consistent with a public holiday", an annotation rather than a guarantee.
+#[cfg(feature = "holiday")]
+pub mod holiday;
 pub mod registry;
 /// Scan arbitrary text for timestamp candidates and decode each into ranked
 /// readings (the CLI `scan` command and the timeglyph-spy overlay share this).
