@@ -93,6 +93,14 @@ fn encode_embedded_timestamp_bits_match_time_decode() {
 }
 
 #[test]
+fn encode_embedded_far_future_overflows_rather_than_wraps() {
+    // A snowflake ID is 63-bit with a 22-bit shift, so the ms timestamp caps
+    // near year 2080; a far-future instant must error, not silently wrap.
+    let far = format("unix").unwrap().decode_int(7_258_118_400).unwrap(); // ~year 2200
+    assert!(format("snowflake").unwrap().encode_int(far).is_err());
+}
+
+#[test]
 fn fat_on_disk_hex_decodes_to_fat() {
     // The FAT/DOS on-disk layout stores a date word then a time word, each
     // little-endian. time-decode's example `a45a597a` => 2025-05-04 15:18:50.

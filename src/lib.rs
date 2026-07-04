@@ -449,12 +449,28 @@ impl Format {
                 what: "float-format encoded as integer",
                 value: 0,
             }),
-            Strategy::Embedded { .. } => Err(ChronoError::OutOfRange {
-                // Encoding would have to invent the worker/sequence low bits; a
-                // round-trip is not defined for ID schemes.
-                what: "embedded-id format cannot be re-encoded from an instant",
-                value: 0,
-            }),
+            Strategy::Embedded {
+                epoch_ns,
+                shift_bits,
+                unit,
+            } => {
+                // Canonical ID: the timestamp in the high bits, worker/sequence
+                // low bits zeroed. decode() discards the low bits, so the instant
+                // round-trips; the low bits are not reconstructible from an instant
+                // and are legitimately zero (the earliest ID at this instant).
+                let rel = instant
+                    .0
+                    .checked_sub(epoch_ns)
+                    .ok_or(ChronoError::OutOfRange {
+                        what: "nanoseconds",
+                        value: instant.0,
+                    })?;
+                let shifted = (rel / unit.nanos()) << shift_bits;
+                i64::try_from(shifted).map_err(|_| ChronoError::OutOfRange {
+                    what: "embedded-id ticks",
+                    value: shifted,
+                })
+            }
             Strategy::Packed(_) => Err(ChronoError::OutOfRange {
                 what: "packed format cannot be re-encoded from an instant",
                 value: 0,

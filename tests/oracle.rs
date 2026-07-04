@@ -308,3 +308,45 @@ fn differential_encode_float_family() {
         );
     }
 }
+
+#[test]
+fn differential_encode_embedded_family() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
+        return;
+    }
+    // Tier-1: values pulled LIVE from time-decode. Embedded IDs carry the
+    // timestamp above `shift` low worker/sequence bits, so compare the timestamp
+    // bits (value >> shift) — the encoder's responsibility — not the whole ID.
+    let vectors = oracle_timestamp("2020-01-01 00:00:00");
+    let get = |label: &str| -> i64 {
+        vectors
+            .iter()
+            .find(|(l, _)| l == label)
+            .unwrap_or_else(|| panic!("{label} missing from oracle --timestamp"))
+            .1
+            .parse()
+            .unwrap()
+    };
+    let inst = timeglyph::format("unix")
+        .unwrap()
+        .decode_int(1_577_836_800)
+        .unwrap();
+    for (id, shift, label) in [
+        ("snowflake", 22u32, "Twitter time"),
+        ("discord", 22, "Discord time"),
+        ("mastodon", 16, "Mastodon time"),
+        ("linkedin", 22, "LinkedIn Activity time"),
+        ("tiktok", 32, "TikTok time"),
+    ] {
+        let want = get(label);
+        let tg = timeglyph::format(id).unwrap().encode_int(inst).unwrap();
+        assert_eq!(
+            tg >> shift,
+            want >> shift,
+            "{id}: timeglyph timestamp bits {} vs oracle {}",
+            tg >> shift,
+            want >> shift
+        );
+    }
+}
