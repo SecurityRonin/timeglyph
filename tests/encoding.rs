@@ -100,6 +100,27 @@ fn encode_embedded_far_future_overflows_rather_than_wraps() {
     assert!(format("snowflake").unwrap().encode_int(far).is_err());
 }
 
+/// Parse time-decode's on-disk FAT/exFAT/MS-DOS string (a big-endian hex literal
+/// standing in for the four on-disk little-endian bytes) into timeglyph's packed
+/// integer `date << 16 | time`. Shared by the packed-encode oracle tests.
+fn fat_ondisk_to_packed(be_hex: u32) -> i64 {
+    let b = be_hex.to_be_bytes();
+    let date = u16::from_le_bytes([b[0], b[1]]);
+    let time = u16::from_le_bytes([b[2], b[3]]);
+    (i64::from(date) << 16) | i64::from(time)
+}
+
+#[test]
+fn encode_fat_matches_time_decode_vector() {
+    // Tier-1: `time-decode --timestamp "2020-01-01 00:00:00"` prints
+    // "FAT Date + Time: 21500000" — the on-disk little-endian wFatDate/wFatTime
+    // bytes. timeglyph's fat encoder must produce the packed integer those bytes
+    // represent (date << 16 | time). Value sourced from the third-party oracle.
+    let inst = instant_2020();
+    let want = fat_ondisk_to_packed(0x2150_0000);
+    assert_eq!(format("fat").unwrap().encode_int(inst).unwrap(), want);
+}
+
 #[test]
 fn fat_on_disk_hex_decodes_to_fat() {
     // The FAT/DOS on-disk layout stores a date word then a time word, each
