@@ -606,7 +606,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                 if !s.abbr.is_empty() {
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new(format!("· {}", s.abbr))
+                        RichText::new(&s.abbr)
                             .font(FontId::monospace(11.0))
                             .color(pal.mute),
                     );
@@ -614,7 +614,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                 if s.dst {
                     ui.add_space(4.0);
                     ui.label(
-                        RichText::new("· ☀ DST")
+                        RichText::new("☀ DST")
                             .font(FontId::proportional(10.0))
                             .color(pal.amber)
                             .strong(),
@@ -626,7 +626,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
                 // `Z` already says UTC.
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new("· UTC")
+                    RichText::new("UTC")
                         .font(FontId::monospace(11.0))
                         .color(pal.mute),
                 );
@@ -635,7 +635,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
         if r.local {
             ui.add_space(6.0);
             ui.label(
-                RichText::new("· local (no zone)")
+                RichText::new("local (no zone)")
                     .font(FontId::proportional(11.0))
                     .color(pal.faint),
             );
@@ -645,7 +645,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
         if let Some(wd) = scan::weekday(&r.rendered) {
             ui.add_space(6.0);
             ui.label(
-                RichText::new(format!("· {wd}"))
+                RichText::new(wd)
                     .font(FontId::proportional(11.0))
                     .color(pal.faint),
             );
