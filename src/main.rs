@@ -23,7 +23,7 @@ const EXIT_AMBIGUOUS: u8 = 2;
 #[command(args_conflicts_with_subcommands = true)]
 struct Cli {
     /// A value to IDENTIFY (back-compat shortcut for `identify <value>`).
-    value: Option<i64>,
+    value: Option<String>,
     /// Emit JSON (with the bare-value shortcut).
     #[arg(long)]
     json: bool,
@@ -46,7 +46,7 @@ enum Commands {
     /// Identify a value across all formats (ranked candidates, never one verdict).
     Identify {
         /// The value to identify.
-        value: i64,
+        value: String,
         /// Emit JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -147,7 +147,7 @@ fn main() -> ExitCode {
     };
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
-            run_identify(value, json, &zone, cli.artifact.as_deref())
+            run_identify(&value, json, &zone, cli.artifact.as_deref())
         }
         Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
@@ -173,7 +173,7 @@ fn main() -> ExitCode {
         }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
-                run_identify(v, cli.json, &zone, cli.artifact.as_deref())
+                run_identify(&v, cli.json, &zone, cli.artifact.as_deref())
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -199,17 +199,48 @@ fn ambiguity_code(cands: &[Candidate]) -> u8 {
     EXIT_OK
 }
 
-fn run_identify(value: i64, json: bool, zone: &RenderZone, artifact: Option<&str>) -> u8 {
+/// True when `s` is raw hex bytes: all `[0-9a-fA-F]`, even length, at least one
+/// byte, AND at least one `a-f`/`A-F` letter — the letter requirement keeps a
+/// pure-decimal integer (which is also all hex digits) on the integer path.
+fn looks_like_hex_bytes(s: &str) -> bool {
+    s.len() >= 2
+        && s.len().is_multiple_of(2)
+        && s.bytes().all(|b| b.is_ascii_hexdigit())
+        && s.bytes().any(|b| b.is_ascii_alphabetic())
+}
+
+fn run_identify(input: &str, json: bool, zone: &RenderZone, artifact: Option<&str>) -> u8 {
+    let s = input.trim();
+    // Raw hex bytes (letters present ⇒ not a decimal integer) route to the hex
+    // byte-layout decoder, an explicit override of the merge below.
+    if looks_like_hex_bytes(s) {
+        return run_hex(s, zone);
+    }
     let ctx = interpret::InterpretContext {
         artifact,
         ..Default::default()
     };
-    let mut cands = interpret::interpret_int_with_context(value, &ctx);
+    // Merge every family the input could belong to: numeric readings when it
+    // parses as an integer, plus string readings (ISO 8601 / ASN.1) always.
+    let mut cands = Vec::new();
+    if let Ok(v) = s.parse::<i64>() {
+        cands.extend(interpret::interpret_int_with_context(v, &ctx));
+    }
+    cands.extend(interpret::interpret_string(s));
+    cands.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     // Re-render each `rendered` field in the requested zone. The canonical
     // `instant` (nanoseconds) stays the absolute anchor; only the human-facing
     // string changes — serialized directly (serde_json's intermediate Value
     // can't hold the i128 instant; the Serializer can).
     render_candidates_in_zone(&mut cands, zone);
+    if cands.is_empty() {
+        eprintln!("error: could not interpret {s:?} as an integer, hex, or datetime string");
+        return EXIT_ERR;
+    }
     if json {
         match serde_json::to_string_pretty(&cands) {
             Ok(s) => println!("{s}"),
@@ -221,7 +252,7 @@ fn run_identify(value: i64, json: bool, zone: &RenderZone, artifact: Option<&str
         return ambiguity_code(&cands);
     }
     println!(
-        "# readings consistent with {value} (ranked; a raw value is usually \
+        "# readings consistent with {s} (ranked; a raw value is usually \
          underdetermined — not a single verdict):"
     );
     print_candidates(&cands, zone);
