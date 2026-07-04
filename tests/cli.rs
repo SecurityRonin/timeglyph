@@ -162,3 +162,53 @@ fn scan_finds_timestamps_and_respects_min_digits() {
     let (out2, _) = run(&["scan", "--min-digits", "20", "1577836800"]);
     assert!(!out2.contains("2020-01-01"), "min-digits floor: {out2}");
 }
+
+#[test]
+fn bare_hex_with_letters_decodes_as_hex() {
+    // A bare value that is all hex digits with at least one a-f letter is raw
+    // bytes, not an integer — it must route to the hex byte-layout decoder.
+    let (out, _) = run(&["0060947C58B2D501"]);
+    assert!(out.contains("byte layout"), "{out}");
+}
+
+#[test]
+fn bare_datetime_string_decodes() {
+    // A bare ASN.1 GeneralizedTime string must be parsed as a datetime string.
+    let (out, _) = run(&["20200101000000Z"]);
+    assert!(
+        out.contains("asn1_generalizedtime") && out.contains("2020-01-01T00:00:00Z"),
+        "{out}"
+    );
+}
+
+#[test]
+fn bare_iso_string_decodes() {
+    // A bare ISO 8601 / RFC 3339 string must be parsed as a datetime string.
+    let (out, _) = run(&["2020-01-01T00:00:00Z"]);
+    assert!(out.contains("iso8601"), "{out}");
+}
+
+#[test]
+fn bare_integer_still_identifies() {
+    // A pure integer keeps identifying across numeric formats (back-compat).
+    let (out, _) = run(&["1577836800"]);
+    assert!(
+        out.contains("unix") && out.contains("2020-01-01T00:00:00Z"),
+        "{out}"
+    );
+}
+
+#[test]
+fn bare_all_digit_merges_int_and_string() {
+    // An all-digit value that is a valid integer AND a valid 14-digit ASN.1
+    // GeneralizedTime must merge both families' readings.
+    let (out, _) = run(&["20200101000000"]);
+    assert!(
+        out.contains("iostime"),
+        "expected an integer reading: {out}"
+    );
+    assert!(
+        out.contains("asn1"),
+        "expected an ASN.1 string reading: {out}"
+    );
+}
