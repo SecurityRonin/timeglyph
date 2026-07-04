@@ -106,7 +106,7 @@ fn encode_fat_dos(instant: PosixNs) -> Result<i64, ChronoError> {
         | (u32::from(month as u8) << 5)
         | u32::from(day as u8);
     let time = (u32::from(hour as u8) << 11)
-        | (u32::from(minute as u8) << 6)
+        | (u32::from(minute as u8) << 5)
         | u32::from((second / 2) as u8);
     Ok(i64::from((date << 16) | time))
 }
