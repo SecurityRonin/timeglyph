@@ -634,11 +634,18 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
         }
         if r.local {
             ui.add_space(6.0);
-            ui.label(
-                RichText::new("local time (not time-zone adjusted)")
-                    .font(FontId::proportional(11.0))
-                    .color(pal.faint),
-            );
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new("local time")
+                        .font(FontId::proportional(11.0))
+                        .color(pal.faint),
+                );
+                ui.label(
+                    RichText::new("(not time-zone adjusted)")
+                        .font(FontId::proportional(10.0))
+                        .color(pal.faint),
+                );
+            });
         }
         // Weekday of the displayed date — handy for spotting what day an event
         // fell on.
