@@ -64,6 +64,35 @@ fn encode_float_rejects_non_float_formats() {
 }
 
 #[test]
+fn encode_embedded_timestamp_bits_match_time_decode() {
+    // Tier-1: values are `time-decode --timestamp "2020-01-01 00:00:00"` output.
+    // Embedded IDs carry the timestamp in the high bits and worker/sequence in
+    // the low `shift` bits; time-decode fills some low bits with sample/invented
+    // data (e.g. LinkedIn's value is odd), so we compare the TIMESTAMP bits
+    // (value >> shift) — what an encoder is actually responsible for — between
+    // timeglyph's encoder and the third-party encoder. Not a self round-trip.
+    let inst = instant_2020();
+    // (id, shift_bits — the spec constant carried in registry.rs, oracle value)
+    let vectors: &[(&str, u32, i64)] = &[
+        ("snowflake", 22, 1_212_161_512_043_446_272), // Twitter time
+        ("discord", 22, 661_720_242_585_600_000),     // Discord time
+        ("mastodon", 16, 103_405_112_524_800_000),    // Mastodon time
+        ("linkedin", 22, 6_617_927_201_590_237_494),  // LinkedIn Activity time
+        ("tiktok", 32, 6_776_757_454_425_292_800),    // TikTok time
+    ];
+    for &(id, shift, oracle) in vectors {
+        let tg = format(id).unwrap().encode_int(inst).unwrap();
+        assert_eq!(
+            tg >> shift,
+            oracle >> shift,
+            "{id}: timeglyph timestamp bits {} vs oracle {}",
+            tg >> shift,
+            oracle >> shift
+        );
+    }
+}
+
+#[test]
 fn fat_on_disk_hex_decodes_to_fat() {
     // The FAT/DOS on-disk layout stores a date word then a time word, each
     // little-endian. time-decode's example `a45a597a` => 2025-05-04 15:18:50.
