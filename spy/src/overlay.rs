@@ -635,7 +635,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
         if r.local {
             ui.add_space(6.0);
             ui.label(
-                RichText::new("local (no zone)")
+                RichText::new("local time (no time zone)")
                     .font(FontId::proportional(11.0))
                     .color(pal.faint),
             );
