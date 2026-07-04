@@ -42,3 +42,22 @@ fn lunar_holiday_native_locale() {
 fn unknown_country_is_none() {
     assert_eq!(holiday::lookup("ZZ", date(2020, 1, 1)), None);
 }
+
+#[test]
+fn case_insensitive_country() {
+    assert_eq!(
+        holiday::lookup("us", date(2020, 7, 4)),
+        Some("Independence Day".to_string())
+    );
+}
+
+#[test]
+fn dataset_loaded() {
+    // Fail loud in CI if the embedded blob is missing/truncated/unparseable:
+    // the generator ships ~248 countries, so a near-zero count is a regression.
+    assert!(
+        holiday::supported_country_count() > 200,
+        "holiday dataset looks empty/truncated: {} countries",
+        holiday::supported_country_count()
+    );
+}
