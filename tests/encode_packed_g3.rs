@@ -28,8 +28,7 @@ fn oracle_available() -> bool {
     Command::new("time-decode")
         .arg("--formats")
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 /// Run `time-decode --<flag> <repr>` and return its stdout.
@@ -143,7 +142,7 @@ fn gsm_committed_matches_oracle_value() {
     // big-endian u64 that is 0x02101000000000 = 580_610_858_942_464.
     assert_eq!(
         format("gsm").unwrap().encode_int(inst_2020()).unwrap(),
-        0x0210_1000_0000_00
+        0x0002_1010_0000_0000
     );
 }
 
@@ -208,9 +207,17 @@ fn sqlserver_committed_matches_spec_construction() {
 
 #[test]
 fn sqlserver_rejects_out_of_range() {
-    // An instant outside jiff's timestamp range yields no day arithmetic at all.
+    // i128::MAX: subtracting the 1900 epoch overflows i128 (the ns-since-1900
+    // guard).
     assert!(format("sqlserver")
         .unwrap()
         .encode_int(PosixNs(i128::MAX))
+        .is_err());
+    // A day count that exceeds the int32 days-since-1900 field, but whose ns
+    // still fits i128 (reaches the i32 days guard). (i32::MAX + 1) days of ns.
+    let over_i32_days = (i128::from(i32::MAX) + 1) * 86_400 * 1_000_000_000;
+    assert!(format("sqlserver")
+        .unwrap()
+        .encode_int(PosixNs(over_i32_days))
         .is_err());
 }

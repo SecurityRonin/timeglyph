@@ -314,6 +314,26 @@ fn decode_logtime(value: i64) -> Result<PosixNs, ChronoError> {
     packed_civil(yr, byte(24), byte(32), byte(40), byte(48), byte(56))
 }
 
+/// Inverse of [`decode_logtime`]: pack an instant into the JET LogTime u64. The
+/// year is stored as a single (year − 1900) byte, so 1900–2155 is the range.
+fn encode_logtime(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(1900..=2155).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "JET LogTime year (1900-2155)",
+            value: i128::from(year),
+        });
+    }
+    let yb = u64::from((year - 1900) as u16);
+    let v = (yb << 16)
+        | (u64::from(month as u8) << 24)
+        | (u64::from(day as u8) << 32)
+        | (u64::from(hour as u8) << 40)
+        | (u64::from(minute as u8) << 48)
+        | (u64::from(second as u8) << 56);
+    Ok(v as i64)
+}
+
 /// Decode one nibble-swapped semi-octet byte/pair to its decimal value, or -1
 /// (an invalid field that `packed_civil` will reject) when a nibble exceeds 9.
 fn semi_pair(low: u8, high: u8) -> i8 {
@@ -342,6 +362,33 @@ fn decode_semioctet(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Nibble-swap a 2-digit decimal field (0..=99) into its semi-octet encoding:
+/// `decode` reads it as `ones*10 + tens`, so swapping the digits inverts it.
+fn semi_swap(field: i8) -> u64 {
+    let f = field as u64;
+    (f % 10) * 10 + (f / 10)
+}
+
+/// Inverse of [`decode_semioctet`]: a 12-digit decimal, each 2-digit field
+/// nibble-swapped, YY(+2000) MM DD HH MM SS. Range is 2000–2099.
+fn encode_semioctet(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(2000..=2099).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "Semi-Octet year (2000-2099)",
+            value: i128::from(year),
+        });
+    }
+    let yy = (year - 2000) as i8;
+    let v = semi_swap(yy) * 10_000_000_000
+        + semi_swap(month) * 100_000_000
+        + semi_swap(day) * 1_000_000
+        + semi_swap(hour) * 10_000
+        + semi_swap(minute) * 100
+        + semi_swap(second);
+    Ok(v as i64)
+}
+
 /// GSM 7-byte semi-octet timestamp: per byte nibble-swap → decimal, YY(+2000)
 /// MM DD HH MM SS, then a timezone byte (ignored). UTC.
 fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
@@ -366,6 +413,35 @@ fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
     )
 }
 
+/// Nibble-swap a 2-digit decimal field (0..=99) into a GSM semi-octet byte:
+/// `decode` reads it as `(byte & 0x0F) * 10 + (byte >> 4)`, so the tens digit
+/// goes in the low nibble and the ones digit in the high nibble.
+fn gsm_byte(field: i8) -> u64 {
+    let f = field as u64;
+    ((f % 10) << 4) | (f / 10)
+}
+
+/// Inverse of [`decode_gsm`]: 7 bytes, each field nibble-swapped, YY(+2000) MM
+/// DD HH MM SS then a UTC timezone byte (0x00). Range is 2000–2099.
+fn encode_gsm(instant: PosixNs) -> Result<i64, ChronoError> {
+    let (year, month, day, hour, minute, second) = civil_fields(instant)?;
+    if !(2000..=2099).contains(&year) {
+        return Err(ChronoError::OutOfRange {
+            what: "GSM year (2000-2099)",
+            value: i128::from(year),
+        });
+    }
+    let yy = (year - 2000) as i8;
+    let v = (gsm_byte(yy) << 48)
+        | (gsm_byte(month) << 40)
+        | (gsm_byte(day) << 32)
+        | (gsm_byte(hour) << 24)
+        | (gsm_byte(minute) << 16)
+        | (gsm_byte(second) << 8);
+    // Low byte is the timezone; UTC ⇒ 0x00.
+    Ok(v as i64)
+}
+
 /// Nokia time LE: 4 bytes reversed, then a two's-complement count of seconds
 /// remaining before 2050 (`to_int − 0xFFFF_FFFF + secs(1970→2050)`). UTC.
 fn decode_nokiale(value: i64) -> Result<PosixNs, ChronoError> {
@@ -379,6 +455,19 @@ fn decode_nokiale(value: i64) -> Result<PosixNs, ChronoError> {
     );
     let unix = p - 0xFFFF_FFFF + 2_524_608_000; // secs(1970→2050)
     Ok(PosixNs(i128::from(unix) * 1_000_000_000))
+}
+
+/// Inverse of [`decode_nokiale`]: `p = unix + 0xFFFF_FFFF − secs(1970→2050)`
+/// must fit a u32 (a byte-reversed two's-complement count of seconds remaining
+/// before 2050), then byte-reverse it. Whole-second granularity.
+fn encode_nokiale(instant: PosixNs) -> Result<i64, ChronoError> {
+    let unix = instant.0.div_euclid(1_000_000_000);
+    let p = unix + 0xFFFF_FFFF - 2_524_608_000;
+    let p = u32::try_from(p).map_err(|_| ChronoError::OutOfRange {
+        what: "Nokia LE seconds-before-2050 (out of u32 range)",
+        value: unix,
+    })?;
+    Ok(i64::from(p.swap_bytes()))
 }
 
 /// SQL Server `datetime`: 8 bytes = int32 days since 1900-01-01 + uint32 ticks
@@ -398,6 +487,35 @@ fn decode_sqlserver(value: i64) -> Result<PosixNs, ChronoError> {
         + days * 86_400 * 1_000_000_000
         + (i128::from(ticks) * 1_000_000_000) / 300;
     Ok(PosixNs(ns))
+}
+
+/// Inverse of [`decode_sqlserver`]: pack an instant into `(days << 32) | ticks`,
+/// where `days` is an int32 count since 1900-01-01 and `ticks` is a 1/300-second
+/// count within the day. Sub-tick resolution is quantised to the nearest tick.
+fn encode_sqlserver(instant: PosixNs) -> Result<i64, ChronoError> {
+    const NS_PER_DAY: i128 = 86_400 * 1_000_000_000;
+    let rel = instant
+        .0
+        .checked_sub(SQLSERVER_EPOCH_NS)
+        .ok_or(ChronoError::OutOfRange {
+            what: "SQL Server ns since 1900 (overflow)",
+            value: instant.0,
+        })?; // ns since 1900-01-01
+    let days = rel.div_euclid(NS_PER_DAY);
+    let rem_ns = rel.rem_euclid(NS_PER_DAY);
+    // ticks = round(rem_ns × 300 / 1e9); round-half-up.
+    let mut ticks = (rem_ns * 300 + 500_000_000) / 1_000_000_000;
+    let mut days = days;
+    if ticks >= 25_920_000 {
+        // Rounded up past the last tick of the day → roll into the next day.
+        ticks -= 25_920_000;
+        days += 1;
+    }
+    let days = i32::try_from(days).map_err(|_| ChronoError::OutOfRange {
+        what: "SQL Server days-since-1900 (out of i32 range)",
+        value: days,
+    })?;
+    Ok((i64::from(days) << 32) | ticks as i64)
 }
 
 // Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
@@ -905,7 +1023,7 @@ pub static FORMATS: &[Format] = &[
         family: "Microsoft JET / ESE database logs",
         strategy: Strategy::Packed {
             decode: decode_logtime,
-            encode: None,
+            encode: Some(encode_logtime),
         },
         citation: "JET LogTime (reversed field bytes, year+1900); vs time-decode",
         tz: Utc,
@@ -918,7 +1036,7 @@ pub static FORMATS: &[Format] = &[
         family: "Semi-octet (nibble-swapped) timestamps",
         strategy: Strategy::Packed {
             decode: decode_semioctet,
-            encode: None,
+            encode: Some(encode_semioctet),
         },
         citation: "Semi-Octet decimal (nibble-swapped pairs, YY+2000); vs time-decode",
         tz: LocalNaive,
@@ -931,7 +1049,7 @@ pub static FORMATS: &[Format] = &[
         family: "GSM mobile timestamps",
         strategy: Strategy::Packed {
             decode: decode_gsm,
-            encode: None,
+            encode: Some(encode_gsm),
         },
         citation: "GSM semi-octet (per-byte nibble swap + tz byte); vs time-decode",
         tz: Utc,
@@ -944,7 +1062,7 @@ pub static FORMATS: &[Format] = &[
         family: "Nokia devices",
         strategy: Strategy::Packed {
             decode: decode_nokiale,
-            encode: None,
+            encode: Some(encode_nokiale),
         },
         citation: "Nokia LE (byte-reversed two's-complement seconds before 2050); vs time-decode",
         tz: Utc,
@@ -970,7 +1088,7 @@ pub static FORMATS: &[Format] = &[
         family: "Microsoft SQL Server datetime",
         strategy: Strategy::Packed {
             decode: decode_sqlserver,
-            encode: None,
+            encode: Some(encode_sqlserver),
         },
         citation: "SQL Server datetime (int32 days since 1900-01-01 + uint32 1/300s ticks)",
         tz: Utc,
