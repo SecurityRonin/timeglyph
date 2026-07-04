@@ -275,7 +275,13 @@ pub enum Strategy {
     /// not a linear offset but packed calendar fields, so decoding needs a
     /// dedicated unpacker. The function returns the instant; tz semantics (e.g.
     /// FAT's LOCAL naive time) are carried on the [`Format`] entry.
-    Packed(fn(i64) -> Result<PosixNs, ChronoError>),
+    Packed {
+        /// Unpack the integer into an instant.
+        decode: fn(i64) -> Result<PosixNs, ChronoError>,
+        /// Inverse packer, if the format can re-encode an instant to its packed
+        /// integer. `None` until an oracle-validated encoder exists for it.
+        encode: Option<fn(PosixNs) -> Result<i64, ChronoError>>,
+    },
     // TODO: SYSTEMTIME / exFAT (offset field) packed layouts;
     // ASN.1 / EXIF / RFC-2822 string forms.
 }
@@ -333,7 +339,7 @@ impl Format {
     #[must_use]
     pub fn storage_bytes(&self) -> u8 {
         match self.strategy {
-            Strategy::Packed(_) => 4,
+            Strategy::Packed { .. } => 4,
             Strategy::Embedded { .. } | Strategy::LinearFloat { .. } => 8,
             Strategy::LinearInt { unit, .. } => match unit {
                 Unit::Seconds | Unit::Days => 4,
@@ -381,7 +387,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::Packed(decode) => decode(value),
+            Strategy::Packed { decode, .. } => decode(value),
             Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format decoded as integer",
                 value: i128::from(value),
@@ -418,7 +424,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::LinearInt { .. } | Strategy::Embedded { .. } | Strategy::Packed(_) => {
+            Strategy::LinearInt { .. } | Strategy::Embedded { .. } | Strategy::Packed { .. } => {
                 Err(ChronoError::OutOfRange {
                     what: "integer format decoded as float",
                     value: 0,
@@ -471,10 +477,13 @@ impl Format {
                     value: shifted,
                 })
             }
-            Strategy::Packed(_) => Err(ChronoError::OutOfRange {
-                what: "packed format cannot be re-encoded from an instant",
-                value: 0,
-            }),
+            Strategy::Packed { encode, .. } => match encode {
+                Some(f) => f(instant),
+                None => Err(ChronoError::OutOfRange {
+                    what: "packed format cannot yet be re-encoded from an instant",
+                    value: 0,
+                }),
+            },
         }
     }
 
