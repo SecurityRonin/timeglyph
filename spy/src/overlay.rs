@@ -809,14 +809,16 @@ fn ganzhi_cell(
                 .color(pal.faint),
         );
         ui.add_space(8.0);
-        for (mark, pillar) in [
+        for (unit, pillar) in [
             ("年", &v.year_pillar),
             ("月", &v.month_pillar),
             ("日", &v.day_pillar),
             ("時", &v.hour_pillar),
         ] {
+            // Unit suffixed to the stem-branch (辛巳年), the conventional reading —
+            // matching the CLI's `四柱 pillars` line.
             ui.label(
-                RichText::new(format!("{mark}{pillar}"))
+                RichText::new(format!("{pillar}{unit}"))
                     .font(FontId::monospace(11.0))
                     .color(pal.mute),
             );
