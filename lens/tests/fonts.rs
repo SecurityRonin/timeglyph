@@ -5,7 +5,7 @@
 //! Unicode MS). Host-font-gated: skips cleanly when no system fallback is found.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use timeglyph_spy::fonts;
+use timeglyph_lens::fonts;
 use ttf_parser::Face;
 
 #[test]

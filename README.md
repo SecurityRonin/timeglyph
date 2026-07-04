@@ -66,9 +66,9 @@ curl -1sLf 'https://dl.cloudsmith.io/public/securityronin/timeglyph/setup.deb.sh
 sudo apt install timeglyph
 ```
 
-On Windows and macOS this also installs the [`timeglyph-spy`](#timeglyph-spy--hover-anything-read-the-time) overlay.
+On Windows and macOS this also installs the [`timeglyph-lens`](#timeglyph-lens--hover-anything-read-the-time) overlay.
 
-## timeglyph-spy — hover anything, read the time
+## timeglyph-lens — hover anything, read the time
 
 A companion GUI: an always-on-top overlay that follows your cursor and shows
 timeglyph's ranked readings for any number in the UI element under the pointer —
@@ -77,9 +77,9 @@ for that date in the chosen zone, and — opt-in — the Chinese lunisolar date 
 干支 four pillars colored by 五行. Pick any display timezone from the footer.
 
 <p align="center">
-  <img src="assets/spy-in-action.png" alt="timeglyph-spy decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
+  <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
   <br/>
-  <img src="assets/spy.png" alt="the timeglyph-spy overlay up close" width="420" />
+  <img src="assets/lens.png" alt="the timeglyph-lens overlay up close" width="420" />
 </p>
 
 It installs with the CLI (`winget install SecurityRonin.timeglyph` on Windows,
@@ -91,11 +91,11 @@ macOS, UI Automation on Windows. (Linux support is in progress.)
 API behind an explicit grant, so the overlay shows no readings until you allow it:
 
 1. Open **System Settings → Privacy & Security → Accessibility**.
-2. Turn on **timeglyph-spy** (click **+** and add it if it isn't listed).
-3. Quit and relaunch timeglyph-spy.
+2. Turn on **timeglyph-lens** (click **+** and add it if it isn't listed).
+3. Quit and relaunch timeglyph-lens.
 
 **Windows** needs no special permission. To inspect an *elevated*
-(Run-as-administrator) window, launch timeglyph-spy elevated too — Windows blocks
+(Run-as-administrator) window, launch timeglyph-lens elevated too — Windows blocks
 UI access across privilege levels.
 
 ## Status
@@ -115,7 +115,7 @@ lunisolar calendar + 干支 four pillars are behind the `lunisolar` feature
 (`lunisolar <datetime> --tz <zone>`, via the `stem-branch` ephemeris); a
 whole-world public-holiday lookup (248 countries, 1980–2100, generated from the
 MIT `python-holidays`) is behind the `holiday` feature; and arbitrary text is
-mined for timestamps with `scan`. The `timeglyph-spy` overlay (above) is the
+mined for timestamps with `scan`. The `timeglyph-lens` overlay (above) is the
 interactive front-end for all of it. The library carries 100% function-coverage
 tests. See **[the ADRs](docs/decisions/)** for the design decisions.
 

@@ -5,7 +5,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use eframe::egui::Color32;
-use timeglyph_spy::theme::Theme;
+use timeglyph_lens::theme::Theme;
 
 /// WCAG relative luminance of an sRGB colour.
 fn luminance(c: Color32) -> f64 {

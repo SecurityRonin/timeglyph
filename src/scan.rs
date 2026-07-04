@@ -2,7 +2,7 @@
 //! readings. Two extractors — long digit runs ([`scan_numbers`]) and
 //! self-describing datetime strings ([`datetime_candidates`]) — feed
 //! [`interpret`](crate::interpret); [`inspect_text`] ties them together. Pure and
-//! GUI-free: it powers both the CLI `scan` command and the timeglyph-spy overlay.
+//! GUI-free: it powers both the CLI `scan` command and the timeglyph-lens overlay.
 
 use std::fmt;
 

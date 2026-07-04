@@ -19,7 +19,7 @@ Windows `.zip` bundles *both* executables and the manifest lists them as two
 `NestedInstallerFiles`, so one install brings both commands:
 
 ```powershell
-winget install SecurityRonin.timeglyph   # installs `timeglyph` and `timeglyph-spy`
+winget install SecurityRonin.timeglyph   # installs `timeglyph` and `timeglyph-lens`
 ```
 
 No separate GUI package to register. When submitting the `v0.3.0` update (the

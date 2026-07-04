@@ -1,10 +1,10 @@
-# 0009 — timeglyph-spy zone & time display conventions
+# 0009 — timeglyph-lens zone & time display conventions
 
 Status: Accepted
 
 ## Context
 
-The `timeglyph-spy` overlay renders a decoded instant in a chosen display zone.
+The `timeglyph-lens` overlay renders a decoded instant in a chosen display zone.
 Two recurring hazards shape how the zone frame is presented:
 
 - **Misreading the frame** — the classic forensic error of reading a local-time
@@ -47,7 +47,7 @@ Readings (`overlay::datetime_cell`):
 - DST is marked with a ☀ sun glyph.
 
 All chrome glyphs are monochrome (egui's GL backend cannot rasterize colour emoji)
-and are guarded by `spy/tests/fonts.rs`.
+and are guarded by `lens/tests/fonts.rs`.
 
 ## Consequences
 
@@ -55,5 +55,5 @@ and are guarded by `spy/tests/fonts.rs`.
   zone for consistency, at the cost of a deliberate `Z` / `UTC` duplication.
 - Pure offsets stay reachable (the map, and `Etc`) but never surface a
   sign-inverted or duplicate id.
-- These are presentation conventions in `spy/src/zone.rs` and
-  `spy/src/overlay.rs`; the engine's `PosixNs` spine and rendering are unchanged.
+- These are presentation conventions in `lens/src/zone.rs` and
+  `lens/src/overlay.rs`; the engine's `PosixNs` spine and rendering are unchanged.

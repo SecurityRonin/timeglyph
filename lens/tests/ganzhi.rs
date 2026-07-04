@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::{PosixNs, RenderZone};
-use timeglyph_spy::ganzhi;
+use timeglyph_lens::ganzhi;
 
 // 2000-01-01T00:00:00Z (Y2K), viewed at the China meridian (+08:00).
 fn y2k() -> PosixNs {

@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::{PosixNs, RenderZone};
-use timeglyph_spy::tzinfo;
+use timeglyph_lens::tzinfo;
 
 // A named zone resolves offset/abbreviation/DST *per instant* — the whole point:
 // a location alone is ambiguous across summer/winter.

@@ -1,4 +1,4 @@
-# timeglyph-spy
+# timeglyph-lens
 
 A Spy++-style desktop inspector for [timeglyph](../), on **macOS and Windows**.
 Hover any UI element and, if its text contains a number, see timeglyph's ranked
@@ -18,7 +18,7 @@ element: lastVisitTime  13390845530064940
   text for long numbers, and shows the top readings live.
 
   ```bash
-  timeglyph-spy
+  timeglyph-lens
   ```
 
 - **Live console (`--live`)** — the same, printed to the terminal (no window).
@@ -27,11 +27,11 @@ element: lastVisitTime  13390845530064940
   how the cross-platform scan core is exercised without a desktop:
 
   ```bash
-  timeglyph-spy "cookie value 13390845530064940 and ts 1577836800"
+  timeglyph-lens "cookie value 13390845530064940 and ts 1577836800"
   ```
 
 > **macOS**: the live modes need **Accessibility** permission — grant your
-> terminal (or the `timeglyph-spy` binary) access in *System Settings → Privacy
+> terminal (or the `timeglyph-lens` binary) access in *System Settings → Privacy
 > & Security → Accessibility*. Without it, the element under the cursor reads as
 > empty (no crash).
 

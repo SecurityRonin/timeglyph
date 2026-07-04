@@ -1,21 +1,21 @@
 ---
-title: "timeglyph-spy — the cursor-hover timestamp overlay"
+title: "timeglyph-lens — the cursor-hover timestamp overlay"
 description: >-
-  timeglyph-spy is an always-on-top overlay that follows your cursor and decodes
+  timeglyph-lens is an always-on-top overlay that follows your cursor and decodes
   any number under the pointer into ranked timestamp readings — with weekday,
   public holiday, and Chinese 干支 pillars. macOS and Windows.
 ---
 
-# timeglyph-spy — the cursor overlay
+# timeglyph-lens — the cursor overlay
 
-`timeglyph-spy` is the interactive front-end to the [timeglyph](index.md) engine.
+`timeglyph-lens` is the interactive front-end to the [timeglyph](index.md) engine.
 It is an always-on-top window that follows your cursor and shows timeglyph's
 ranked readings for any number in the UI element under the pointer — no
 copy-paste, no switching windows. Point at a Unix time in a log, a FILETIME in a
 registry viewer, or a column in a database browser, and the decodings appear.
 
 <p align="center">
-  <img src="assets/spy-in-action.png" alt="timeglyph-spy decoding a SQLite timestamp column live over DB Browser for SQLite" width="720" />
+  <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="720" />
 </p>
 
 ## What each reading shows
@@ -37,7 +37,7 @@ Every candidate is a row in a compact instrument panel:
   by its 五行 (Five Element), with the day branch ringed. Enable it in Settings.
 
 <p align="center">
-  <img src="assets/spy.png" alt="the timeglyph-spy overlay up close" width="460" />
+  <img src="assets/lens.png" alt="the timeglyph-lens overlay up close" width="460" />
 </p>
 
 ## Display timezone
@@ -71,33 +71,33 @@ reads the hovered element's name.
 ### First launch on macOS — grant Accessibility
 
 macOS gates the Accessibility API behind an explicit grant. On first launch
-timeglyph-spy triggers the system prompt; until you allow it, the overlay shows a
-**"Grant Accessibility to timeglyph-spy"** reminder and no readings appear. To
+timeglyph-lens triggers the system prompt; until you allow it, the overlay shows a
+**"Grant Accessibility to timeglyph-lens"** reminder and no readings appear. To
 grant it:
 
 1. Open **System Settings → Privacy & Security → Accessibility**.
-2. Turn on **timeglyph-spy** (click **+** and add it if it isn't listed).
-3. Quit and relaunch timeglyph-spy.
+2. Turn on **timeglyph-lens** (click **+** and add it if it isn't listed).
+3. Quit and relaunch timeglyph-lens.
 
 ### Windows
 
 No special permission is needed. To inspect an **elevated** (Run-as-administrator)
-window, run timeglyph-spy elevated too — Windows isolates UI access across
+window, run timeglyph-lens elevated too — Windows isolates UI access across
 privilege levels (UIPI).
 
 ## Install
 
-A single install brings both the `timeglyph` CLI and the `timeglyph-spy` overlay:
+A single install brings both the `timeglyph` CLI and the `timeglyph-lens` overlay:
 
 - **Windows:** `winget install SecurityRonin.timeglyph`.
 - **macOS:** `brew install securityronin/tap/timeglyph`.
 
-Or download the `timeglyph-spy` binary from the
+Or download the `timeglyph-lens` binary from the
 [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest), or
 build from source:
 
 ```bash
-cargo build --release --manifest-path spy/Cargo.toml
+cargo build --release --manifest-path lens/Cargo.toml
 ```
 
 Grant Accessibility permission on first launch.

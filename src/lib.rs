@@ -57,7 +57,7 @@ pub mod lunisolar;
 pub mod holiday;
 pub mod registry;
 /// Scan arbitrary text for timestamp candidates and decode each into ranked
-/// readings (the CLI `scan` command and the timeglyph-spy overlay share this).
+/// readings (the CLI `scan` command and the timeglyph-lens overlay share this).
 pub mod scan;
 
 /// Errors from decoding, encoding, or rendering a timestamp.

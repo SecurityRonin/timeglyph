@@ -9,7 +9,7 @@ description: >-
 # Public holidays
 
 Behind the optional **`holiday`** feature, timeglyph can answer: *is this date a
-public holiday, and where?* The [timeglyph-spy](spy.md) overlay uses it to
+public holiday, and where?* The [timeglyph-lens](lens.md) overlay uses it to
 annotate each reading with the holiday for that date in the chosen display zone.
 
 ```rust
@@ -60,5 +60,5 @@ fixed offset) yields no annotation.
 
 ```bash
 cargo add timeglyph --features holiday       # library
-cargo install timeglyph --features holiday   # binary (the timeglyph-spy overlay bundles it)
+cargo install timeglyph --features holiday   # binary (the timeglyph-lens overlay bundles it)
 ```

@@ -136,7 +136,7 @@ mod imp {
             // otherwise (labels, buttons) keep the whole value. This stops a
             // hovered iTerm tab from dumping its entire buffer's timestamps.
             let result = full.and_then(|text| match char_offset_at_point(element, x, y) {
-                Some(off) => timeglyph_spy::scan::word_at(&text, off),
+                Some(off) => timeglyph_lens::scan::word_at(&text, off),
                 None => Some(text),
             });
             unsafe { CFRelease(element.cast()) };

@@ -67,17 +67,17 @@ jobs:
       - name: Build (CLI)
         run: cargo build --release --target ${{ matrix.target }}
 
-      # The timeglyph-spy GUI ships for macOS and Windows only — its
+      # The timeglyph-lens GUI ships for macOS and Windows only — its
       # cursor-inspection picker is unimplemented on Linux (it would refuse to
       # launch). Separate, non-workspace crate → explicit --manifest-path.
-      - name: Build (spy GUI, macOS/Windows only)
+      - name: Build (lens GUI, macOS/Windows only)
         if: runner.os != 'Linux'
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path spy/Cargo.toml
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
 
-      # One archive per platform carries the CLI plus (on macOS/Windows) the spy
+      # One archive per platform carries the CLI plus (on macOS/Windows) the lens
       # GUI, so a single install brings both commands: the Homebrew formula does
-      # `bin.install "timeglyph", "timeglyph-spy"` on macOS, and the winget
-      # manifest lists both as NestedInstallerFiles. Linux is CLI-only (no spy).
+      # `bin.install "timeglyph", "timeglyph-lens"` on macOS, and the winget
+      # manifest lists both as NestedInstallerFiles. Linux is CLI-only (no lens).
       - name: Package (Linux, CLI)
         if: runner.os == 'Linux'
         run: |
@@ -85,19 +85,19 @@ jobs:
           tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph
           cd ../../..
 
-      - name: Package (macOS, CLI + spy)
+      - name: Package (macOS, CLI + lens)
         if: runner.os == 'macOS'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph timeglyph-spy
+          tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph timeglyph-lens
           cd ../../..
 
-      - name: Package (Windows, CLI + spy)
+      - name: Package (Windows, CLI + lens)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip timeglyph.exe timeglyph-spy.exe
+          7z a ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip timeglyph.exe timeglyph-lens.exe
           cd ../../..
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -141,7 +141,7 @@ jobs:
           client-payload: '{"version": "${{ github.ref_name }}"}'
 
   # winget: update the single SecurityRonin.timeglyph package with the new Windows
-  # .zip — which now bundles both timeglyph.exe and timeglyph-spy.exe (two
+  # .zip — which now bundles both timeglyph.exe and timeglyph-lens.exe (two
   # NestedInstallerFiles in the manifest). `continue-on-error` until the package's
   # first winget-pkgs submission is merged.
   winget:

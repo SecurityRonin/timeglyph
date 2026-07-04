@@ -8,7 +8,7 @@
 //! confidence badge and an optional 干支 expansion; the raw source element a
 //! de-emphasised caption; and a footer that selects the display timezone and
 //! opens settings (dark/light theme, whether to show 干支). Both palettes clear
-//! WCAG AA (see [`timeglyph_spy::theme`]).
+//! WCAG AA (see [`timeglyph_lens::theme`]).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -17,9 +17,9 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{PosixNs, RenderZone};
-use timeglyph_spy::theme::{Palette, Theme};
-use timeglyph_spy::zone::{self, parse_zone, ZoneChoice};
-use timeglyph_spy::{ganzhi, text, tzinfo, tzmap};
+use timeglyph_lens::theme::{Palette, Theme};
+use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
+use timeglyph_lens::{ganzhi, text, tzinfo, tzmap};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -50,14 +50,14 @@ pub fn run(verbose: u8) -> Result<(), String> {
     crate::picker::prompt_accessibility();
     if verbose >= 1 {
         eprintln!(
-            "[spy] verbose logging on (level {verbose}); -vv also shows the raw element text"
+            "[lens] verbose logging on (level {verbose}); -vv also shows the raw element text"
         );
     }
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([560.0, 400.0])
         .with_min_inner_size([380.0, 220.0])
         .with_always_on_top()
-        .with_title("timeglyph-spy");
+        .with_title("timeglyph-lens");
     // Window / taskbar / dock icon. Falls through silently if it can't decode —
     // a missing icon must not stop the tool opening.
     if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")) {
@@ -68,7 +68,7 @@ pub fn run(verbose: u8) -> Result<(), String> {
         ..Default::default()
     };
     eframe::run_native(
-        "timeglyph-spy",
+        "timeglyph-lens",
         native_options,
         Box::new(move |cc| {
             install_fonts(&cc.egui_ctx);
@@ -77,7 +77,7 @@ pub fn run(verbose: u8) -> Result<(), String> {
             crate::macmenu::install();
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
-            Ok(Box::new(SpyApp::new(
+            Ok(Box::new(LensApp::new(
                 latest,
                 verbose,
                 load_logo(&cc.egui_ctx),
@@ -127,7 +127,7 @@ fn spawn_cursor_poll(ctx: egui::Context, latest: Arc<Mutex<String>>) {
 /// Loaded at runtime (not bundled); if the host has neither, the overlay still
 /// runs and only the uncovered glyphs degrade to tofu.
 fn install_fonts(ctx: &egui::Context) {
-    let stack = timeglyph_spy::fonts::fallback_fonts();
+    let stack = timeglyph_lens::fonts::fallback_fonts();
     if stack.is_empty() {
         return;
     }
@@ -164,7 +164,7 @@ fn install_theme(ctx: &egui::Context, pal: &Palette) {
     ctx.style_mut(|s| s.spacing.item_spacing = egui::vec2(8.0, 6.0));
 }
 
-struct SpyApp {
+struct LensApp {
     /// Latest text under the cursor, produced by the background poll thread; the
     /// render thread only reads this snapshot (never the AX/UIA API directly).
     latest: Arc<Mutex<String>>,
@@ -200,7 +200,7 @@ struct SpyApp {
     logo: Option<egui::TextureHandle>,
 }
 
-impl SpyApp {
+impl LensApp {
     fn new(latest: Arc<Mutex<String>>, verbose: u8, logo: Option<egui::TextureHandle>) -> Self {
         Self {
             latest,
@@ -226,7 +226,7 @@ impl SpyApp {
     }
 }
 
-impl eframe::App for SpyApp {
+impl eframe::App for LensApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let cur = self.settings();
         let pal = cur.theme.palette();
@@ -254,7 +254,7 @@ impl eframe::App for SpyApp {
                 self.source = text;
                 self.hits = new_hits;
                 if self.verbose >= 1 {
-                    eprintln!("[spy] {:?}", self.source);
+                    eprintln!("[lens] {:?}", self.source);
                     for nr in &self.hits {
                         for r in &nr.readings {
                             eprintln!("      {}  {}  ({})", nr.number, r.rendered, r.format_id);
@@ -334,8 +334,8 @@ impl eframe::App for SpyApp {
                     // Accessibility pane — the user only has to flip the switch.
                     empty_state(
                         ui,
-                        "Grant Accessibility to timeglyph-spy",
-                        "Flip the timeglyph-spy switch, then relaunch",
+                        "Grant Accessibility to timeglyph-lens",
+                        "Flip the timeglyph-lens switch, then relaunch",
                         pal,
                         logo.as_ref(),
                     );
@@ -411,7 +411,7 @@ fn now_instant() -> PosixNs {
     PosixNs(jiff::Timestamp::now().as_nanosecond())
 }
 
-impl SpyApp {
+impl LensApp {
     /// The footer time-zone control: an active summary (offset · abbr · DST at the
     /// reference instant `at`), UTC/Local presets, a 🌐 map, a Continent → Zone
     /// picker, a ⚙ settings menu (theme, show 干支), and — when 干支 is shown — a
@@ -559,7 +559,7 @@ impl SpyApp {
         ctx.show_viewport_deferred(
             egui::ViewportId::from_hash_of("settings"),
             egui::ViewportBuilder::default()
-                .with_title("timeglyph-spy — Settings")
+                .with_title("timeglyph-lens — Settings")
                 .with_inner_size([440.0, 172.0])
                 .with_resizable(false),
             move |ctx, _class| {
@@ -827,7 +827,7 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
 /// Fire→red, Earth→ochre, Metal→pale gold, Water→blue. Tuned for the dark theme;
 /// a non-干支 char (never expected inside a pillar) falls back to `pal.mute`.
 fn element_color(ch: char, pal: Palette) -> Color32 {
-    use timeglyph_spy::ganzhi::Element;
+    use timeglyph_lens::ganzhi::Element;
     match ganzhi::five_element(ch) {
         Some(Element::Wood) => Color32::from_rgb(0x3f, 0xbf, 0x6a),
         Some(Element::Fire) => Color32::from_rgb(0xec, 0x5b, 0x4d),
@@ -947,7 +947,7 @@ fn empty_state(
     });
 }
 
-impl SpyApp {
+impl LensApp {
     /// The clickable world time-zone map (a floating window). Region *boundaries*
     /// are drawn (Natural Earth, public domain); clicking resolves the point to a
     /// zone via [`tzmap::zone_at`] and sets the display zone — preferring the

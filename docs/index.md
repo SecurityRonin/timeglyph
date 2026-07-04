@@ -104,12 +104,12 @@ Optional, feature-gated layers extend the engine past raw instant↔instant mapp
   `python-holidays` project (names in each country's own locale). Framed as
   *consistent with a public holiday*, an annotation rather than proof.
 
-## timeglyph-spy — the cursor overlay
+## timeglyph-lens — the cursor overlay
 
-`timeglyph-spy` is the interactive front-end: an always-on-top window that follows
+`timeglyph-lens` is the interactive front-end: an always-on-top window that follows
 your cursor and shows timeglyph's ranked readings for any number in the element
 under the pointer — with the weekday, the public holiday for that date in the
 chosen zone, and the opt-in 干支 pillars colored by 五行. macOS and Windows (the
 picker uses the Accessibility API / UI Automation respectively); see the
-[README](https://github.com/SecurityRonin/timeglyph#timeglyph-spy--hover-anything-read-the-time)
+[README](https://github.com/SecurityRonin/timeglyph#timeglyph-lens--hover-anything-read-the-time)
 to install.

@@ -1,7 +1,7 @@
 //! Tests for the bundled time-zone map geometry (point-in-polygon → zone).
 #![allow(clippy::unwrap_used)]
 
-use timeglyph_spy::tzmap;
+use timeglyph_lens::tzmap;
 
 #[test]
 fn zone_at_resolves_known_cities() {

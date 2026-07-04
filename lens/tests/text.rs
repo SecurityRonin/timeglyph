@@ -2,7 +2,7 @@
 //! multi-byte input — egui 0.29 Label::truncate byte-slices and crashes).
 #![allow(clippy::unwrap_used)]
 
-use timeglyph_spy::text::ellipsize;
+use timeglyph_lens::text::ellipsize;
 
 #[test]
 fn ellipsize_never_slices_mid_char() {

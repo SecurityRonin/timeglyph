@@ -1,14 +1,14 @@
-//! `timeglyph-spy` binary.
+//! `timeglyph-lens` binary.
 //!
 //! Two modes:
-//! - **Text mode** (any platform): `timeglyph-spy "<text>"` decodes every number
+//! - **Text mode** (any platform): `timeglyph-lens "<text>"` decodes every number
 //!   in the argument — how the scan core is driven without a desktop.
 //! - **Live mode** (Windows): with no arguments, opens an always-on-top window
 //!   that follows the cursor; whatever UI element you hover, any number in its
 //!   text is shown with timeglyph's ranked datetime readings (Spy++-style).
 
 use timeglyph::RenderZone;
-use timeglyph_spy::scan;
+use timeglyph_lens::scan;
 
 mod macmenu;
 mod overlay;
@@ -46,9 +46,9 @@ fn main() {
     } else if let Err(e) = overlay::run(verbose) {
         // Default: the always-on-top GUI overlay. -v logs activity to stderr; -vv
         // also shows the raw element text under the cursor in the panel.
-        eprintln!("timeglyph-spy: {e}");
+        eprintln!("timeglyph-lens: {e}");
         eprintln!(
-            "(try `timeglyph-spy --live` for the console inspector, text to decode, \
+            "(try `timeglyph-lens --live` for the console inspector, text to decode, \
              or -v / -vv for verbose)"
         );
         std::process::exit(1);
@@ -60,11 +60,11 @@ fn live_console() {
     let picker = match picker::Picker::new() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("timeglyph-spy: {e}");
+            eprintln!("timeglyph-lens: {e}");
             std::process::exit(1);
         }
     };
-    eprintln!("timeglyph-spy: watching the cursor (Ctrl-C to stop)…");
+    eprintln!("timeglyph-lens: watching the cursor (Ctrl-C to stop)…");
     let mut last = String::new();
     loop {
         let text = picker.text_under_cursor().unwrap_or_default();

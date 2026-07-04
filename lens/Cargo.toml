@@ -1,5 +1,5 @@
 [package]
-name = "timeglyph-spy"
+name = "timeglyph-lens"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.96.0"
@@ -11,11 +11,11 @@ repository = "https://github.com/SecurityRonin/timeglyph"
 publish = false
 
 [lib]
-name = "timeglyph_spy"
+name = "timeglyph_lens"
 path = "src/lib.rs"
 
 [[bin]]
-name = "timeglyph-spy"
+name = "timeglyph-lens"
 path = "src/main.rs"
 
 [dependencies]

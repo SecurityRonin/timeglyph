@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::{PosixNs, RenderZone};
-use timeglyph_spy::zone::{self, ZoneChoice};
+use timeglyph_lens::zone::{self, ZoneChoice};
 
 const WINTER: PosixNs = PosixNs(1_609_459_200_000_000_000); // 2021-01-01T00:00Z
 

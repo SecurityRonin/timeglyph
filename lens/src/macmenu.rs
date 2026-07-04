@@ -1,6 +1,6 @@
 //! The native macOS application menu with a standard `Settings…` item (⌘,),
 //! following normal Mac convention. The menu bar is only shown while
-//! timeglyph-spy is the frontmost app, so this complements — does not replace —
+//! timeglyph-lens is the frontmost app, so this complements — does not replace —
 //! the in-window ⚙ button (which stays reachable while the tool is unfocused).
 //!
 //! No-op on other platforms (egui draws its own chrome there).
@@ -21,14 +21,14 @@ mod imp {
     /// app is initialized.
     pub fn install() {
         let menu = Menu::new();
-        let app = Submenu::new("timeglyph-spy", true);
+        let app = Submenu::new("timeglyph-lens", true);
         let settings = MenuItem::new(
             "Settings…",
             true,
             Some(Accelerator::new(Some(Modifiers::SUPER), Code::Comma)),
         );
         let _ = app.append_items(&[
-            &PredefinedMenuItem::about(Some("timeglyph-spy"), None),
+            &PredefinedMenuItem::about(Some("timeglyph-lens"), None),
             &PredefinedMenuItem::separator(),
             &settings,
             &PredefinedMenuItem::separator(),
