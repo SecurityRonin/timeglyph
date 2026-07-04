@@ -13,11 +13,13 @@
 
 **Decode any timestamp. Identify the unknown ones.**
 
-You pulled a raw `133801920000000000` out of an artifact and don't know what it
-means. `timeglyph` reads it every way a system might have written it and reports
-the results **ranked, scored, and cited** — honest about the ambiguity instead of
-guessing one answer. One static Rust binary, plus a live overlay that decodes
-whatever is under your cursor.
+Every examination throws raw timestamps at you — a `133801920000000000` buried in
+an artifact — that you need in human-readable time. `timeglyph` reads that value
+every way a system might have written it and reports the results **ranked, scored,
+and cited** — honest about the ambiguity instead of guessing one answer. Convert
+in bulk from a CSV, or hover the number on screen and read the time live. No more
+copying each one into a converter app. One static Rust binary, plus a live overlay
+that decodes whatever is under your cursor.
 
 **[Full documentation →](https://securityronin.github.io/timeglyph/)**
 
@@ -57,7 +59,7 @@ cargo install timeglyph
 ```
 
 On macOS and Windows this also installs the
-[`timeglyph-lens`](#timeglyph-lens--hover-anything-read-the-time) overlay.
+[`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data) overlay.
 
 ---
 
@@ -92,16 +94,20 @@ timeglyph scan app.log                  # find & decode every timestamp in text 
 timeglyph csv events.csv                # enrich a CSV with human-readable timestamp columns
 ```
 
+Convert in bulk: enrich a whole CSV of timestamps in one pass instead of pasting
+them into a converter one at a time.
+
 [CSV enrichment →](docs/csv.md)
 
 ---
 
-## timeglyph-lens — hover anything, read the time
+## TimeGlyph Lens — hover anything, decode time data
 
-An always-on-top overlay that follows your cursor and shows timeglyph's ranked
-readings for any number in the UI element under the pointer — no copy-paste. Each
-row carries its confidence, the weekday, and the public holiday for that date in
-the chosen zone. Pick any display timezone from the footer.
+Convert live: hover any number on screen and read its time in real time. An
+always-on-top overlay follows your cursor and shows timeglyph's ranked readings
+for the number in the UI element under the pointer, so you never copy a value into
+a converter. Each row carries its confidence, the weekday, and the public holiday
+for that date in the chosen zone. Pick any display timezone from the footer.
 
 <p align="center">
   <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
@@ -134,19 +140,6 @@ granularity, magnitude, byte-width, endianness, artifact context, and neighbour
 monotonicity. Correctness is checked against primary-spec worked examples and the
 MIT [`time_decode`](https://github.com/digitalsleuth/time_decode) oracle — see
 [validation](docs/validation.md).
-
----
-
-## Optional feature flags
-
-Off by default, so the common build stays lean.
-
-- **`leap`** — the leap-aware GPS / TAI64 / NTP family (`decode gps|tai64|ntp`),
-  leap-correct UTC via `hifitime`
-- **`lunisolar`** — the Chinese lunisolar calendar + 干支 four pillars
-  (`lunisolar <datetime> --tz <zone>`), via the `stem-branch` ephemeris
-- **`holiday`** — whole-world public-holiday lookup (248 countries, 1980–2100,
-  from the MIT `python-holidays`)
 
 ---
 
