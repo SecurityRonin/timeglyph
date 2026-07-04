@@ -1,13 +1,15 @@
-//! Pure scan core: pull numeric runs out of arbitrary UI text and turn each
-//! into timeglyph's top ranked datetime readings, rendered in a chosen zone. No
-//! platform or GUI dependency — this is the testable half of the inspector.
+//! Scan arbitrary text for timestamp candidates and decode each into ranked
+//! readings. Two extractors — long digit runs ([`scan_numbers`]) and
+//! self-describing datetime strings ([`datetime_candidates`]) — feed
+//! [`interpret`](crate::interpret); [`inspect_text`] ties them together. Pure and
+//! GUI-free: it powers both the CLI `scan` command and the timeglyph-spy overlay.
 
 use std::fmt;
 
-use timeglyph::{interpret, PosixNs, RenderZone, TzSemantics};
+use crate::{interpret, PosixNs, RenderZone, TzSemantics};
 
-/// One decoded reading of a number: which format, the rendered instant, and the
-/// human label — kept as separate fields so the GUI can style each distinctly.
+/// One decoded reading of a value: which format, the rendered instant, and the
+/// human label — kept as separate fields so a caller can style each distinctly.
 /// `Display` renders the console form `"<format>  <rendered>  (<label>)"`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reading {
@@ -66,18 +68,18 @@ impl fmt::Display for Reading {
     }
 }
 
-/// One number found in the inspected text, with its top datetime readings.
+/// One value found in the scanned text, with its top datetime readings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NumberReadings {
-    /// The numeric run as it appeared in the text.
+    /// The numeric run (or datetime string) as it appeared in the text.
     pub number: String,
     /// The top ranked readings.
     pub readings: Vec<Reading>,
 }
 
-/// Minimum digit count for a run to be treated as a possible timestamp. Shorter
-/// runs (counts, ids, 4-digit years) are dropped so the overlay stays quiet.
-const MIN_DIGITS: usize = 8;
+/// Default minimum digit count for a run to be treated as a possible timestamp.
+/// Shorter runs (counts, ids, 4-digit years) are dropped so scans stay quiet.
+pub const MIN_DIGITS: usize = 8;
 
 /// The whitespace-delimited token of `text` containing the UTF-16 code-unit
 /// offset `utf16_offset` — how macOS Accessibility reports the character under a
@@ -116,14 +118,14 @@ pub fn word_at(text: &str, utf16_offset: usize) -> Option<String> {
     Some(chars[start..=end].iter().collect())
 }
 
-/// Extract candidate numeric runs (>= [`MIN_DIGITS`] consecutive ASCII digits)
-/// from `text`, in order of appearance.
+/// Extract candidate numeric runs (>= `min_digits` consecutive ASCII digits) from
+/// `text`, in order of appearance.
 #[must_use]
-pub fn scan_numbers(text: &str) -> Vec<String> {
+pub fn scan_numbers_min(text: &str, min_digits: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let flush = |cur: &mut String, out: &mut Vec<String>| {
-        if cur.len() >= MIN_DIGITS {
+        if cur.len() >= min_digits {
             out.push(std::mem::take(cur));
         } else {
             cur.clear();
@@ -138,6 +140,12 @@ pub fn scan_numbers(text: &str) -> Vec<String> {
     }
     flush(&mut cur, &mut out);
     out
+}
+
+/// [`scan_numbers_min`] with the default [`MIN_DIGITS`] threshold.
+#[must_use]
+pub fn scan_numbers(text: &str) -> Vec<String> {
+    scan_numbers_min(text, MIN_DIGITS)
 }
 
 /// Render `instant` for display in `zone`, honoring the format's tz semantics.
@@ -192,9 +200,7 @@ pub fn readings_for(number: &str, max: usize, zone: &RenderZone) -> Vec<Reading>
 
 /// Build one [`Reading`] from a candidate, rendered in `zone` (semantics-aware).
 fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
-    let tz = timeglyph::format(c.format_id)
-        .map(|f| f.tz)
-        .unwrap_or(TzSemantics::Utc);
+    let tz = crate::format(c.format_id).map_or(TzSemantics::Utc, |f| f.tz);
     let native = c.rendered.clone().unwrap_or_default();
     let (rendered, local) = render_in_zone(tz, c.instant, &native, zone);
     Reading {
@@ -239,12 +245,17 @@ fn datetime_candidates(text: &str) -> Vec<String> {
     out
 }
 
-/// Inspect a block of UI text: every long number AND every rendered datetime
-/// string paired with its top readings, rendered in `zone`. Items with no
-/// confident reading are dropped, so noise stays off the screen.
+/// Scan a block of text with a custom minimum-digit threshold: every numeric run
+/// AND every datetime string paired with its top readings, rendered in `zone`.
+/// Items with no confident reading are dropped, so noise stays out.
 #[must_use]
-pub fn inspect_text(text: &str, max_per_number: usize, zone: &RenderZone) -> Vec<NumberReadings> {
-    let mut out: Vec<NumberReadings> = scan_numbers(text)
+pub fn inspect_text_min(
+    text: &str,
+    max_per_number: usize,
+    min_digits: usize,
+    zone: &RenderZone,
+) -> Vec<NumberReadings> {
+    let mut out: Vec<NumberReadings> = scan_numbers_min(text, min_digits)
         .into_iter()
         .filter_map(|number| {
             let readings = readings_for(&number, max_per_number, zone);
@@ -264,4 +275,10 @@ pub fn inspect_text(text: &str, max_per_number: usize, zone: &RenderZone) -> Vec
         }
     }
     out
+}
+
+/// [`inspect_text_min`] with the default [`MIN_DIGITS`] threshold.
+#[must_use]
+pub fn inspect_text(text: &str, max_per_number: usize, zone: &RenderZone) -> Vec<NumberReadings> {
+    inspect_text_min(text, max_per_number, MIN_DIGITS, zone)
 }

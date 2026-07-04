@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::{PosixNs, RenderZone, TzSemantics};
-use timeglyph_spy::scan;
+use timeglyph::scan;
 
 #[test]
 fn extracts_only_long_numeric_runs() {

@@ -4,7 +4,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::RenderZone;
-use timeglyph_spy::scan;
+use timeglyph::scan;
 
 #[test]
 fn readings_carry_a_unit_range_confidence_score() {

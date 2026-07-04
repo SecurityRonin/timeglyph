@@ -3,7 +3,7 @@
 //! mapping must account for non-BMP characters before the token.
 #![allow(clippy::unwrap_used)]
 
-use timeglyph_spy::scan;
+use timeglyph::scan;
 
 #[test]
 fn returns_the_whitespace_delimited_token_at_the_offset() {

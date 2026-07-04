@@ -2,7 +2,7 @@
 //! (so it always matches what the row shows, regardless of zone/format).
 #![allow(clippy::unwrap_used)]
 
-use timeglyph_spy::scan;
+use timeglyph::scan;
 
 #[test]
 fn weekday_from_the_displayed_iso_date() {
