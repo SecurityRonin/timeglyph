@@ -72,14 +72,12 @@ On Windows and macOS this also installs the [`timeglyph-lens`](#timeglyph-lens--
 
 A companion GUI: an always-on-top overlay that follows your cursor and shows
 timeglyph's ranked readings for any number in the UI element under the pointer —
-no copy-paste. Each row carries its confidence, the weekday, the public holiday
-for that date in the chosen zone, and — opt-in — the Chinese lunisolar date and
-干支 four pillars colored by 五行. Pick any display timezone from the footer.
+no copy-paste. Each row carries its confidence, the weekday, and the public
+holiday for that date in the chosen zone. Pick any display timezone from the
+footer.
 
 <p align="center">
   <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
-  <br/>
-  <img src="assets/lens.png" alt="the timeglyph-lens overlay up close" width="420" />
 </p>
 
 It installs with the CLI (`winget install SecurityRonin.timeglyph` on Windows,
