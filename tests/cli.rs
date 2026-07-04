@@ -172,6 +172,16 @@ fn bare_hex_with_letters_decodes_as_hex() {
 }
 
 #[test]
+fn hex_flag_forces_hex_on_a_decimal_value() {
+    // A pure-decimal value is ambiguous (also valid hex). `--hex` forces the hex
+    // byte-layout decoder; without it the same value is an integer identify.
+    let (forced, _) = run(&["--hex", "1577836800"]);
+    assert!(forced.contains("byte layout"), "{forced}");
+    let (plain, _) = run(&["1577836800"]);
+    assert!(plain.contains("readings consistent with"), "{plain}");
+}
+
+#[test]
 fn bare_datetime_string_decodes() {
     // A bare ASN.1 GeneralizedTime string must be parsed as a datetime string.
     let (out, _) = run(&["20200101000000Z"]);

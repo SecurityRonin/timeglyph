@@ -37,6 +37,11 @@ struct Cli {
     /// reading — it only adjusts the rank.
     #[arg(long, global = true, value_name = "HINT")]
     artifact: Option<String>,
+    /// Force the value to be read as raw hex bytes. A decimal-looking value is
+    /// ambiguous (it can also be hex); this decodes it under the hex byte layouts
+    /// even when it has no a–f digits (equivalent to the `hex` subcommand).
+    #[arg(long, global = true)]
+    hex: bool,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -147,7 +152,7 @@ fn main() -> ExitCode {
     };
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
-            run_identify(&value, json, &zone, cli.artifact.as_deref())
+            run_identify(&value, json, &zone, cli.artifact.as_deref(), cli.hex)
         }
         Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
@@ -173,7 +178,7 @@ fn main() -> ExitCode {
         }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
-                run_identify(&v, cli.json, &zone, cli.artifact.as_deref())
+                run_identify(&v, cli.json, &zone, cli.artifact.as_deref(), cli.hex)
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -209,11 +214,18 @@ fn looks_like_hex_bytes(s: &str) -> bool {
         && s.bytes().any(|b| b.is_ascii_alphabetic())
 }
 
-fn run_identify(input: &str, json: bool, zone: &RenderZone, artifact: Option<&str>) -> u8 {
+fn run_identify(
+    input: &str,
+    json: bool,
+    zone: &RenderZone,
+    artifact: Option<&str>,
+    force_hex: bool,
+) -> u8 {
     let s = input.trim();
-    // Raw hex bytes (letters present ⇒ not a decimal integer) route to the hex
-    // byte-layout decoder, an explicit override of the merge below.
-    if looks_like_hex_bytes(s) {
+    // `--hex` forces the hex byte-layout decoder; otherwise auto-detect it when
+    // letters are present (a–f ⇒ not a decimal integer). Either way it is an
+    // explicit override of the merge below.
+    if force_hex || looks_like_hex_bytes(s) {
         return run_hex(s, zone);
     }
     let ctx = interpret::InterpretContext {
