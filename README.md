@@ -57,7 +57,7 @@ cargo install timeglyph
 ```
 
 On macOS and Windows this also installs the
-[`timeglyph-lens`](#timeglyph-lens--hover-anything-read-the-time) overlay.
+[`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data) overlay.
 
 ---
 
@@ -96,7 +96,7 @@ timeglyph csv events.csv                # enrich a CSV with human-readable times
 
 ---
 
-## timeglyph-lens — hover anything, read the time
+## TimeGlyph Lens — hover anything, decode time data
 
 An always-on-top overlay that follows your cursor and shows timeglyph's ranked
 readings for any number in the UI element under the pointer — no copy-paste. Each
@@ -134,19 +134,6 @@ granularity, magnitude, byte-width, endianness, artifact context, and neighbour
 monotonicity. Correctness is checked against primary-spec worked examples and the
 MIT [`time_decode`](https://github.com/digitalsleuth/time_decode) oracle — see
 [validation](docs/validation.md).
-
----
-
-## Optional feature flags
-
-Off by default, so the common build stays lean.
-
-- **`leap`** — the leap-aware GPS / TAI64 / NTP family (`decode gps|tai64|ntp`),
-  leap-correct UTC via `hifitime`
-- **`lunisolar`** — the Chinese lunisolar calendar + 干支 four pillars
-  (`lunisolar <datetime> --tz <zone>`), via the `stem-branch` ephemeris
-- **`holiday`** — whole-world public-holiday lookup (248 countries, 1980–2100,
-  from the MIT `python-holidays`)
 
 ---
 
