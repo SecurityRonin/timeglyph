@@ -461,6 +461,50 @@ impl Format {
             }),
         }
     }
+
+    /// Encode an instant to this format's floating-point value — LinearFloat
+    /// formats only (OLE, SQLite Julian, Excel, Cocoa double). Errors for
+    /// integer / embedded / packed strategies (use [`Format::encode_int`]).
+    pub fn encode_float(&self, instant: PosixNs) -> Result<f64, ChronoError> {
+        match self.strategy {
+            Strategy::LinearFloat { epoch_ns, unit } => {
+                let rel = instant.0 - epoch_ns;
+                Ok(rel as f64 / unit.nanos() as f64)
+            }
+            _ => Err(ChronoError::OutOfRange {
+                what: "non-float format encoded as a float",
+                value: 0,
+            }),
+        }
+    }
+
+    /// Encode an instant to this format's natural value: an integer for linear /
+    /// embedded / packed formats, a float for float formats.
+    pub fn encode(&self, instant: PosixNs) -> Result<Encoded, ChronoError> {
+        match self.strategy {
+            Strategy::LinearFloat { .. } => self.encode_float(instant).map(Encoded::Float),
+            _ => self.encode_int(instant).map(Encoded::Int),
+        }
+    }
+}
+
+/// The natural encoded value of a format: an integer (linear / embedded / packed)
+/// or a float (OLE / Julian / Excel / Cocoa double). Displays as the bare value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Encoded {
+    /// An integer-valued encoding.
+    Int(i64),
+    /// A floating-point encoding.
+    Float(f64),
+}
+
+impl std::fmt::Display for Encoded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Encoded::Int(i) => write!(f, "{i}"),
+            Encoded::Float(x) => write!(f, "{x}"),
+        }
+    }
 }
 
 /// Look up a registered format by id.

@@ -353,7 +353,7 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
             return EXIT_ERR;
         }
     };
-    match f.encode_int(instant) {
+    match f.encode(instant) {
         Ok(v) => {
             println!("{v}");
             EXIT_OK

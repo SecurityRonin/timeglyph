@@ -252,3 +252,59 @@ fn differential_battery_leap_family() {
         "1599755800",
     );
 }
+
+/// Run `time-decode --timestamp <date>` and return its `Label: value` lines. The
+/// oracle ENCODES a datetime to every format it knows, so this is the encode-side
+/// counterpart to the decode battery above.
+fn oracle_timestamp(date: &str) -> Vec<(String, String)> {
+    let out = Command::new("time-decode")
+        .arg("--timestamp")
+        .arg(date)
+        .output()
+        .expect("run time-decode --timestamp");
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.lines()
+        .filter_map(|l| {
+            let (label, value) = l.split_once(':')?;
+            let value = value.trim();
+            (!value.is_empty()).then(|| (label.trim().to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+#[test]
+fn differential_encode_float_family() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode oracle not on PATH (see docs/validation.md)");
+        return;
+    }
+    // Tier-1 ENCODE validation: the expected value is pulled LIVE from the
+    // third-party oracle, so nothing is transcribed and nothing is a round-trip.
+    let vectors = oracle_timestamp("2020-01-01 00:00:00");
+    let get = |label: &str| -> f64 {
+        vectors
+            .iter()
+            .find(|(l, _)| l == label)
+            .unwrap_or_else(|| panic!("{label} missing from oracle --timestamp"))
+            .1
+            .parse()
+            .unwrap()
+    };
+    let inst = timeglyph::format("unix")
+        .unwrap()
+        .decode_int(1_577_836_800)
+        .unwrap();
+    for (id, label) in [
+        ("ole", "Windows OLE Automation Date"),
+        ("sqlite_julian", "Julian Date decimal"),
+        ("excel1904", "Microsoft Excel 1904 Date"),
+        ("cocoa_float", "Apple NSDate - Mac Absolute"),
+    ] {
+        let want = get(label);
+        let got = timeglyph::format(id).unwrap().encode_float(inst).unwrap();
+        assert!(
+            (got - want).abs() < 1e-6,
+            "{id}: timeglyph encoded {got}, oracle {want}"
+        );
+    }
+}
