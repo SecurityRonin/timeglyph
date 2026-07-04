@@ -358,7 +358,6 @@ impl eframe::App for LensApp {
                         "Point at any on-screen value to decode it",
                         pal,
                         logo.as_ref(),
-                        sr_logo.as_ref(),
                     );
                 } else {
                     // macOS without the Accessibility grant: readings never
@@ -371,7 +370,6 @@ impl eframe::App for LensApp {
                         "Flip the timeglyph-lens switch, then relaunch",
                         pal,
                         logo.as_ref(),
-                        sr_logo.as_ref(),
                     );
                     ui.add_space(8.0);
                     ui.vertical_centered(|ui| {
@@ -429,6 +427,29 @@ impl eframe::App for LensApp {
                     });
             }
         });
+
+        // Product identity, tucked into the lower-right corner: "timeglyph
+        // <version>" and the theme-matched Security Ronin wordmark. An anchored
+        // overlay so it stays put regardless of the panel's content.
+        egui::Area::new(egui::Id::new("lens-branding"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -8.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(
+                        RichText::new(format!("timeglyph {}", timeglyph::VERSION))
+                            .font(FontId::monospace(10.0))
+                            .color(pal.faint),
+                    );
+                    if let Some(sr) = sr_logo.as_ref() {
+                        ui.add(
+                            egui::Image::new(egui::load::SizedTexture::from_handle(sr))
+                                .fit_to_exact_size(egui::vec2(48.0, 48.0 * 721.0 / 1505.0)),
+                        );
+                    }
+                });
+            });
 
         self.hits = hits;
 
@@ -950,7 +971,6 @@ fn empty_state(
     sub: &str,
     pal: Palette,
     logo: Option<&egui::TextureHandle>,
-    sr_logo: Option<&egui::TextureHandle>,
 ) {
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
@@ -979,21 +999,6 @@ fn empty_state(
                 .font(FontId::proportional(12.0))
                 .color(pal.faint),
         );
-        // Product + version, then the Security Ronin wordmark (theme-matched).
-        ui.add_space(10.0);
-        ui.label(
-            RichText::new(format!("timeglyph {}", timeglyph::VERSION))
-                .font(FontId::monospace(11.0))
-                .color(pal.faint),
-        );
-        if let Some(sr) = sr_logo {
-            ui.add_space(14.0);
-            // Native aspect is ~1505×721; fit to a modest width.
-            ui.add(
-                egui::Image::new(egui::load::SizedTexture::from_handle(sr))
-                    .fit_to_exact_size(egui::vec2(150.0, 150.0 * 721.0 / 1505.0)),
-            );
-        }
     });
 }
 
