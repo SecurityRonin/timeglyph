@@ -786,6 +786,21 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
     }
 }
 
+/// Spot colour for a 干支 character by its 五行 (Five Element): Wood→green,
+/// Fire→red, Earth→ochre, Metal→pale gold, Water→blue. Tuned for the dark theme;
+/// a non-干支 char (never expected inside a pillar) falls back to `pal.mute`.
+fn element_color(ch: char, pal: Palette) -> Color32 {
+    use timeglyph_spy::ganzhi::Element;
+    match ganzhi::five_element(ch) {
+        Some(Element::Wood) => Color32::from_rgb(0x3f, 0xbf, 0x6a),
+        Some(Element::Fire) => Color32::from_rgb(0xec, 0x5b, 0x4d),
+        Some(Element::Earth) => Color32::from_rgb(0xd9, 0x9a, 0x2b),
+        Some(Element::Metal) => Color32::from_rgb(0xd9, 0xd2, 0xb0),
+        Some(Element::Water) => Color32::from_rgb(0x46, 0xa3, 0xe6),
+        None => pal.mute,
+    }
+}
+
 /// Grid column 2 (row 2): the 干支 line, led by the lunar date so it left-aligns
 /// under the datetime above it, then the four pillars. Resolved at the display
 /// zone (the meridian) and refined by the optional global longitude (hour pillar
@@ -815,14 +830,34 @@ fn ganzhi_cell(
             ("日", &v.day_pillar),
             ("時", &v.hour_pillar),
         ] {
-            // Unit suffixed to the stem-branch (辛巳年), the conventional reading —
-            // matching the CLI's `四柱 pillars` line.
-            ui.label(
-                RichText::new(format!("{pillar}{unit}"))
-                    .font(FontId::monospace(11.0))
-                    .color(pal.mute),
-            );
-            ui.add_space(5.0);
+            // Stem (天干) over branch (地支), stacked like the local tag, each
+            // spot-coloured by its 五行; the unit character kept as a faint suffix
+            // beside the stack (辛巳年 reads top-down: 辛 / 巳, unit 年).
+            let mut chars = pillar.chars();
+            let stem = chars.next().unwrap_or(' ');
+            let branch = chars.next().unwrap_or(' ');
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.label(
+                        RichText::new(stem.to_string())
+                            .font(FontId::monospace(13.0))
+                            .color(element_color(stem, pal)),
+                    );
+                    ui.label(
+                        RichText::new(branch.to_string())
+                            .font(FontId::monospace(13.0))
+                            .color(element_color(branch, pal)),
+                    );
+                });
+                ui.label(
+                    RichText::new(unit)
+                        .font(FontId::proportional(9.0))
+                        .color(pal.faint),
+                );
+            });
+            ui.add_space(6.0);
         }
     });
 }
