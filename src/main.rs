@@ -75,6 +75,18 @@ enum Commands {
         /// The timestamp string.
         text: String,
     },
+    /// Scan arbitrary text for timestamp candidates and decode each — the bulk
+    /// counterpart to `identify`/`string`. Reads stdin when no text is given.
+    Scan {
+        /// Text to scan; if omitted, read from stdin.
+        text: Option<String>,
+        /// Minimum consecutive digits for a numeric run to be considered.
+        #[arg(long, default_value_t = 8)]
+        min_digits: usize,
+        /// Include sentinel and out-of-window readings too (noisier).
+        #[arg(long)]
+        all: bool,
+    },
     /// List every registered format with its citation.
     List,
     /// Enrich a CSV: add a human-readable column for each timestamp column.
@@ -125,6 +137,11 @@ fn main() -> ExitCode {
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
         Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone),
         Some(Commands::String { text }) => run_string(&text, &zone),
+        Some(Commands::Scan {
+            text,
+            min_digits,
+            all,
+        }) => run_scan(text.as_deref(), min_digits, all, &zone),
         Some(Commands::List) => run_list(),
         Some(Commands::Csv {
             path,
@@ -353,6 +370,30 @@ fn run_string(text: &str, zone: &RenderZone) -> u8 {
     }
     println!("# readings consistent with {text:?}:");
     print_candidates(&cands, zone);
+    EXIT_OK
+}
+
+/// Scan `text` (or stdin) for timestamp candidates and print each with its
+/// readings. `all` keeps sentinel/out-of-window readings and shows every one.
+fn run_scan(text: Option<&str>, min_digits: usize, all: bool, zone: &RenderZone) -> u8 {
+    let input = if let Some(t) = text {
+        t.to_string()
+    } else {
+        use std::io::Read;
+        let mut s = String::new();
+        if std::io::stdin().read_to_string(&mut s).is_err() {
+            eprintln!("error: could not read stdin");
+            return EXIT_ERR;
+        }
+        s
+    };
+    let max = if all { usize::MAX } else { 4 };
+    for nr in timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone) {
+        println!("{}", nr.number);
+        for r in &nr.readings {
+            println!("    {r}");
+        }
+    }
     EXIT_OK
 }
 

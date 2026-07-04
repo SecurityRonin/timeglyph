@@ -181,17 +181,30 @@ pub fn render_in_zone(
 /// number does not parse or has no confident (in-window, non-sentinel) reading.
 #[must_use]
 pub fn readings_for(number: &str, max: usize, zone: &RenderZone) -> Vec<Reading> {
+    readings_for_opts(number, max, false, zone)
+}
+
+/// [`readings_for`] with an `include_all` escape: when true, keeps sentinel and
+/// out-of-window candidates too (for an exhaustive scan).
+#[must_use]
+pub fn readings_for_opts(
+    number: &str,
+    max: usize,
+    include_all: bool,
+    zone: &RenderZone,
+) -> Vec<Reading> {
     let Ok(value) = number.parse::<i64>() else {
         return Vec::new();
     };
     interpret::interpret_int(value)
         .into_iter()
         .filter(|c| {
-            !c.sentinel
-                && c.rendered.is_some()
-                && c.components
-                    .iter()
-                    .any(|(n, v)| *n == "in_window" && *v > 0.0)
+            c.rendered.is_some()
+                && (include_all
+                    || (!c.sentinel
+                        && c.components
+                            .iter()
+                            .any(|(n, v)| *n == "in_window" && *v > 0.0)))
         })
         .take(max)
         .map(|c| reading_from(c, zone))
@@ -220,9 +233,13 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone) -> Reading {
 /// there is no in-window gate: a parsed string form is evidence in itself.
 #[must_use]
 pub fn readings_for_string(text: &str, zone: &RenderZone) -> Vec<Reading> {
+    string_readings_opts(text, false, zone)
+}
+
+fn string_readings_opts(text: &str, include_all: bool, zone: &RenderZone) -> Vec<Reading> {
     interpret::interpret_string(text)
         .into_iter()
-        .filter(|c| !c.sentinel && c.rendered.is_some())
+        .filter(|c| c.rendered.is_some() && (include_all || !c.sentinel))
         .map(|c| reading_from(c, zone))
         .collect()
 }
@@ -255,15 +272,28 @@ pub fn inspect_text_min(
     min_digits: usize,
     zone: &RenderZone,
 ) -> Vec<NumberReadings> {
+    inspect_text_opts(text, max_per_number, min_digits, false, zone)
+}
+
+/// [`inspect_text_min`] with an `include_all` escape: keep sentinel and
+/// out-of-window readings too (an exhaustive, noisier scan).
+#[must_use]
+pub fn inspect_text_opts(
+    text: &str,
+    max_per_number: usize,
+    min_digits: usize,
+    include_all: bool,
+    zone: &RenderZone,
+) -> Vec<NumberReadings> {
     let mut out: Vec<NumberReadings> = scan_numbers_min(text, min_digits)
         .into_iter()
         .filter_map(|number| {
-            let readings = readings_for(&number, max_per_number, zone);
+            let readings = readings_for_opts(&number, max_per_number, include_all, zone);
             (!readings.is_empty()).then_some(NumberReadings { number, readings })
         })
         .collect();
     for cand in datetime_candidates(text) {
-        let readings: Vec<Reading> = readings_for_string(&cand, zone)
+        let readings: Vec<Reading> = string_readings_opts(&cand, include_all, zone)
             .into_iter()
             .take(max_per_number)
             .collect();
