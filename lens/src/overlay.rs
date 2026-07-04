@@ -57,7 +57,7 @@ pub fn run(verbose: u8) -> Result<(), String> {
         .with_inner_size([560.0, 400.0])
         .with_min_inner_size([380.0, 220.0])
         .with_always_on_top()
-        .with_title("timeglyph-lens");
+        .with_title("TimeGlyph Lens");
     // Window / taskbar / dock icon. Falls through silently if it can't decode —
     // a missing icon must not stop the tool opening.
     if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")) {
@@ -375,8 +375,8 @@ impl eframe::App for LensApp {
                     // Accessibility pane — the user only has to flip the switch.
                     empty_state(
                         ui,
-                        "Grant Accessibility to timeglyph-lens",
-                        "Flip the timeglyph-lens switch, then relaunch",
+                        "Grant Accessibility to TimeGlyph Lens",
+                        "Flip the TimeGlyph Lens switch, then relaunch",
                         pal,
                         logo.as_ref(),
                     );
@@ -452,7 +452,7 @@ impl eframe::App for LensApp {
                         .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
                     if ui
                         .add(egui::ImageButton::new(img).frame(false))
-                        .on_hover_text("About timeglyph-lens")
+                        .on_hover_text("About TimeGlyph Lens")
                         .clicked()
                     {
                         self.show_about.store(true, Ordering::Relaxed);
@@ -623,7 +623,7 @@ impl LensApp {
         ctx.show_viewport_deferred(
             egui::ViewportId::from_hash_of("settings"),
             egui::ViewportBuilder::default()
-                .with_title("timeglyph-lens — Settings")
+                .with_title("TimeGlyph Lens — Settings")
                 .with_inner_size([440.0, 172.0])
                 .with_resizable(false),
             move |ctx, _class| {
@@ -684,7 +684,7 @@ impl LensApp {
         ctx.show_viewport_deferred(
             egui::ViewportId::from_hash_of("about"),
             egui::ViewportBuilder::default()
-                .with_title("About timeglyph-lens")
+                .with_title("About TimeGlyph Lens")
                 .with_inner_size([360.0, 260.0])
                 .with_resizable(false),
             move |ctx, _class| {
@@ -716,14 +716,14 @@ impl LensApp {
                             }
                             ui.add_space(14.0);
                             ui.label(
-                                RichText::new("timeglyph-lens")
+                                RichText::new("TimeGlyph Lens")
                                     .font(FontId::monospace(16.0))
                                     .color(pal.ink)
                                     .strong(),
                             );
                             ui.add_space(4.0);
                             ui.label(
-                                RichText::new(format!("timeglyph {}", timeglyph::VERSION))
+                                RichText::new(format!("TimeGlyph {}", timeglyph::VERSION))
                                     .font(FontId::proportional(12.0))
                                     .color(pal.mute),
                             );
@@ -757,9 +757,9 @@ fn header(ui: &mut egui::Ui, source: &str, pal: Palette, logo: Option<&egui::Tex
         }
         ui.label(
             RichText::new(if logo.is_some() {
-                "timeglyph"
+                "TimeGlyph"
             } else {
-                "◷ timeglyph"
+                "◷ TimeGlyph"
             })
             .font(FontId::monospace(15.0))
             .color(pal.amber)

@@ -31,8 +31,8 @@ mod imp {
     /// system about panel.
     pub fn install() {
         let menu = Menu::new();
-        let app = Submenu::new("timeglyph-lens", true);
-        let about = MenuItem::new("About timeglyph-lens", true, None);
+        let app = Submenu::new("TimeGlyph Lens", true);
+        let about = MenuItem::new("About TimeGlyph Lens", true, None);
         let settings = MenuItem::new(
             "Settings…",
             true,
