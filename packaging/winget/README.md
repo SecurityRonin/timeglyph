@@ -12,6 +12,25 @@ The manifests under
 are the ready-to-submit initial set (zip-portable installer wrapping
 `timeglyph.exe`).
 
+## Two packages
+
+The release workflow ships two winget packages from the same tag:
+
+| Identifier | Installs | Registered |
+|---|---|---|
+| `SecurityRonin.timeglyph` | the CLI (`timeglyph.exe`) | yes |
+| `SecurityRonin.timeglyph-spy` | the GUI overlay (`timeglyph-spy.exe`) | pending first submission |
+
+Each has its own `winget-releaser` job in `release.yml`, matched by a distinct
+installer regex (`^timeglyph-\d…` vs `^timeglyph-spy-…`). `SecurityRonin.timeglyph-spy`
+is **not yet registered**: its first-time manual submission (below) can only be
+prepared once a `v0.3.0`+ release has produced
+`timeglyph-spy-<ver>-x86_64-pc-windows-msvc.zip`, since the manifest needs that
+asset's real `InstallerSha256`. Author its manifests under
+`manifests/s/SecurityRonin/timeglyph-spy/<ver>/` modeled on the CLI set
+(`PackageIdentifier: SecurityRonin.timeglyph-spy`, `PortableCommandAlias: timeglyph-spy`),
+then submit the same way. After that, the `winget-spy` job updates it on every tag.
+
 ## One-time submission
 
 Prerequisites: a `securityronin-bot` fork of `microsoft/winget-pkgs`, and the
