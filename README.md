@@ -85,17 +85,6 @@ It installs with the CLI (`winget install SecurityRonin.timeglyph` on Windows,
 the cursor through the platform accessibility layer — the Accessibility API on
 macOS, UI Automation on Windows. (Linux support is in progress.)
 
-**First launch on macOS — grant Accessibility.** macOS gates the Accessibility
-API behind an explicit grant, so the overlay shows no readings until you allow it:
-
-1. Open **System Settings → Privacy & Security → Accessibility**.
-2. Turn on **timeglyph-lens** (click **+** and add it if it isn't listed).
-3. Quit and relaunch timeglyph-lens.
-
-**Windows** needs no special permission. To inspect an *elevated*
-(Run-as-administrator) window, launch timeglyph-lens elevated too — Windows blocks
-UI access across privilege levels.
-
 ## Status
 
 Working engine. The `PosixNs(i128)` spine, decode/encode/auto-detect/byte-decode,
