@@ -144,7 +144,20 @@ pub enum Element {
 /// non-干支 character.
 #[must_use]
 pub fn five_element(ch: char) -> Option<Element> {
-    // GREEN in the next commit.
-    let _ = ch;
-    None
+    use Element::{Earth, Fire, Metal, Water, Wood};
+    Some(match ch {
+        // 天干 (Heavenly Stems)
+        '甲' | '乙' => Wood,
+        '丙' | '丁' => Fire,
+        '戊' | '己' => Earth,
+        '庚' | '辛' => Metal,
+        '壬' | '癸' => Water,
+        // 地支 (Earthly Branches)
+        '寅' | '卯' => Wood,
+        '巳' | '午' => Fire,
+        '申' | '酉' => Metal,
+        '亥' | '子' => Water,
+        '辰' | '戌' | '丑' | '未' => Earth,
+        _ => return None,
+    })
 }
