@@ -71,11 +71,17 @@ launch** (macOS: System Settings → Privacy & Security → Accessibility).
 
 ## Install
 
-On **Windows**, `winget install SecurityRonin.timeglyph` installs both the CLI
-and the `timeglyph-spy` overlay. On **macOS**, download the `timeglyph-spy`
-binary from the [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest)
-or build from source:
+A single install brings both the `timeglyph` CLI and the `timeglyph-spy` overlay:
+
+- **Windows:** `winget install SecurityRonin.timeglyph`.
+- **macOS:** `brew install securityronin/tap/timeglyph`.
+
+Or download the `timeglyph-spy` binary from the
+[latest release](https://github.com/SecurityRonin/timeglyph/releases/latest), or
+build from source:
 
 ```bash
 cargo build --release --manifest-path spy/Cargo.toml
 ```
+
+Grant Accessibility permission on first launch.

@@ -74,24 +74,24 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo build --release --target ${{ matrix.target }} --manifest-path spy/Cargo.toml
 
-      - name: Package (Unix, CLI)
-        if: runner.os != 'Windows'
+      # One archive per platform carries the CLI plus (on macOS/Windows) the spy
+      # GUI, so a single install brings both commands: the Homebrew formula does
+      # `bin.install "timeglyph", "timeglyph-spy"` on macOS, and the winget
+      # manifest lists both as NestedInstallerFiles. Linux is CLI-only (no spy).
+      - name: Package (Linux, CLI)
+        if: runner.os == 'Linux'
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph
           cd ../../..
 
-      - name: Package (macOS, spy GUI)
+      - name: Package (macOS, CLI + spy)
         if: runner.os == 'macOS'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../timeglyph-spy-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph-spy
+          tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph timeglyph-spy
           cd ../../..
 
-      # One Windows zip carries BOTH executables; the winget manifest lists them
-      # as two NestedInstallerFiles, so `winget install SecurityRonin.timeglyph`
-      # installs the `timeglyph` and `timeglyph-spy` commands together — no
-      # separate package to register.
       - name: Package (Windows, CLI + spy)
         if: runner.os == 'Windows'
         shell: bash
@@ -103,10 +103,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}
-          if-no-files-found: ignore
-          path: |
-            timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
-            timeglyph-spy-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
+          path: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
 
   release:
     needs: build

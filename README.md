@@ -57,7 +57,7 @@ winget install SecurityRonin.timeglyph   # installs both the timeglyph CLI and t
 
 **macOS / Linux** ([Homebrew](https://brew.sh))
 ```bash
-brew install securityronin/tap/timeglyph
+brew install securityronin/tap/timeglyph   # on macOS this also installs the timeglyph-spy overlay
 ```
 
 **Cargo** (any platform with a Rust toolchain)
@@ -95,7 +95,8 @@ for that date in the chosen zone, and — opt-in — the Chinese lunisolar date 
 - **Windows:** `winget install SecurityRonin.timeglyph` installs both the CLI and
   the spy overlay (`timeglyph-spy`) — or grab the `.zip` from the
   [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest).
-- **macOS:** download the `timeglyph-spy` binary from the release, or build from
+- **macOS:** `brew install securityronin/tap/timeglyph` installs it alongside the
+  CLI; or download the `timeglyph-spy` binary from the release, or build from
   source — `cargo build --release --manifest-path spy/Cargo.toml`. Grant
   Accessibility permission on first launch.
 
