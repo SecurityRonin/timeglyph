@@ -817,51 +817,58 @@ fn ganzhi_cell(
         ui.label("");
         return;
     };
-    ui.horizontal(|ui| {
+    // horizontal_top (Align::Min) so the lunar date string and the stem (top)
+    // row share the same top line — and, since every pillar stack top-aligns
+    // too, the four stems land on one row and the four branches on the next.
+    ui.horizontal_top(|ui| {
         ui.label(
             RichText::new(format!("{} · {}", v.lunar_date, v.solar_term_phrase()))
                 .font(FontId::proportional(10.5))
                 .color(pal.faint),
         );
         ui.add_space(8.0);
-        // Four pillars as an aligned chart: the four stems (天干) on one level
-        // row, the four branches (地支) on the next, each spot-coloured by its
-        // 五行, with a faint unit footer (年月日時) labelling the columns. A Grid
-        // keeps the eight characters on level, column-aligned rows (a plain
-        // horizontal of stacks does not).
-        let pillars: [(&str, &str); 4] = [
+        for (unit, pillar) in [
             ("年", v.year_pillar.as_str()),
             ("月", v.month_pillar.as_str()),
             ("日", v.day_pillar.as_str()),
             ("時", v.hour_pillar.as_str()),
-        ];
-        let glyph = |ch: char| {
-            RichText::new(ch.to_string())
-                .font(FontId::monospace(13.0))
-                .color(element_color(ch, pal))
-        };
-        egui::Grid::new(("ganzhi", instant.0))
-            .num_columns(pillars.len())
-            .spacing([8.0, 0.0])
-            .min_col_width(15.0)
-            .show(ui, |ui| {
-                for (_, p) in pillars {
-                    ui.label(glyph(p.chars().next().unwrap_or(' ')));
-                }
-                ui.end_row();
-                for (_, p) in pillars {
-                    ui.label(glyph(p.chars().nth(1).unwrap_or(' ')));
-                }
-                ui.end_row();
-                for (unit, _) in pillars {
+        ] {
+            // Stem (天干) over branch (地支), each spot-coloured by its 五行; the
+            // unit character kept as a faint suffix to the right of the stack.
+            let stem = pillar.chars().next().unwrap_or(' ');
+            let branch = pillar.chars().nth(1).unwrap_or(' ');
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     ui.label(
-                        RichText::new(unit)
-                            .font(FontId::proportional(9.0))
-                            .color(pal.faint),
+                        RichText::new(stem.to_string())
+                            .font(FontId::monospace(13.0))
+                            .color(element_color(stem, pal)),
                     );
-                }
-                ui.end_row();
+                    let branch_resp = ui.label(
+                        RichText::new(branch.to_string())
+                            .font(FontId::monospace(13.0))
+                            .color(element_color(branch, pal)),
+                    );
+                    // Ring the day branch (日支) — the anchor pillar of the chart.
+                    if unit == "日" {
+                        let r = branch_resp.rect;
+                        ui.painter().circle_stroke(
+                            r.center(),
+                            r.width().max(r.height()) * 0.5 + 1.0,
+                            Stroke::new(1.3, pal.ink),
+                        );
+                    }
+                });
+                ui.label(
+                    RichText::new(unit)
+                        .font(FontId::proportional(9.0))
+                        .color(pal.faint),
+                );
             });
+            ui.add_space(6.0);
+        }
     });
 }
 
