@@ -472,10 +472,12 @@ impl SpyApp {
                         .font(FontId::proportional(11.0))
                         .color(pal.faint),
                 );
+                // Width of exactly 8 monospace digits (enough for e.g. -179.999).
+                let box_w = ui.fonts(|f| f.glyph_width(&FontId::monospace(12.0), '0')) * 8.0;
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut self.longitude_input)
                         .hint_text("120")
-                        .desired_width(48.0)
+                        .desired_width(box_w)
                         .font(FontId::monospace(12.0)),
                 );
                 if resp.changed() {
