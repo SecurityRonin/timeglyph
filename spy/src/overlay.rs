@@ -579,7 +579,7 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
         // Match the datetime cell's fixed height on local rows so Align::Center
         // lands the chip on the same midline as the two-line tag.
         if r.local {
-            ui.set_min_height(LOCAL_ROW_H);
+            ui.set_min_height(local_row_h(ui));
         }
         Frame::none()
             .fill(pal.bg_chip)
@@ -604,14 +604,20 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
 /// Grid column 2 (row 1): the rendered instant, the per-instant abbreviation and
 /// DST (the numeric offset is already in `rendered`; a location alone is
 /// ambiguous, so these disambiguate), an optional local tag, and the confidence.
-/// Fixed height for every grid cell of a *local* reading row. The datetime cell
-/// carries a two-line "local time / (not time-zone adjusted)" tag; pinning all
-/// three cells to one height (>= that tag's) makes the grid row exactly this
-/// tall, so each cell's `Align::Center` content — confidence, format, datetime,
-/// weekday — lands on the one shared vertical midline. A top pad can't do this:
-/// it top-aligns, so cells with different font sizes end up on different
-/// midlines.
-const LOCAL_ROW_H: f32 = 34.0;
+/// Exact height of the two-line "local time / (not time-zone adjusted)" tag —
+/// the sum of its two lines' font row heights (they stack with zero inter-line
+/// spacing). Every cell of a *local* reading row is pinned to this height, so:
+/// the datetime cell's tag fills the row exactly (its inter-line gap lands on
+/// the row's vertical center regardless of whether egui centers the block), the
+/// single-line datetime/weekday centre onto that same gap, and the confidence
+/// and format cells share the midline too. Using the exact height (not a padded
+/// constant) also stops the local row adding slack that would inflate the gap to
+/// its neighbours.
+fn local_row_h(ui: &egui::Ui) -> f32 {
+    ui.fonts(|f| {
+        f.row_height(&FontId::proportional(11.0)) + f.row_height(&FontId::proportional(10.0))
+    })
+}
 
 fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette) {
     let datetime = || {
@@ -625,7 +631,7 @@ fn datetime_cell(ui: &mut egui::Ui, r: &Reading, zone: &RenderZone, pal: Palette
             // single-line datetime and weekday on the two-line tag's midline —
             // the same height the confidence and format cells use, so the whole
             // grid row shares one midline.
-            ui.set_min_height(LOCAL_ROW_H);
+            ui.set_min_height(local_row_h(ui));
             ui.label(datetime());
             ui.add_space(6.0);
             ui.vertical(|ui| {
@@ -714,7 +720,7 @@ fn conf_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
             // Match the datetime cell's fixed height on local rows so the dot and
             // percent center on the same midline as the two-line tag.
             if r.local {
-                ui.set_min_height(LOCAL_ROW_H);
+                ui.set_min_height(local_row_h(ui));
             }
             ui.label(
                 RichText::new("●")
