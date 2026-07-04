@@ -21,6 +21,8 @@ use std::sync::OnceLock;
 
 use jiff::civil::Date;
 
+use crate::RenderZone;
+
 /// The embedded dataset: gzip of `{ country: { "YYYY-MM-DD": name } }`.
 static RAW: &[u8] = include_bytes!("../data/holidays.json.gz");
 
@@ -68,6 +70,17 @@ pub fn supported_country_count() -> usize {
 #[must_use]
 pub fn country_for_zone(iana: &str) -> Option<&'static str> {
     zones().get(iana).map(String::as_str)
+}
+
+/// Holiday name for `date` as interpreted in `zone`: resolves the zone's IANA
+/// name → ISO country ([`country_for_zone`]) → [`lookup`]. `None` unless `zone`
+/// is a named IANA zone mapping to a country — so UTC and fixed-offset display
+/// zones never annotate (there is no single country to attribute the day to).
+#[must_use]
+pub fn in_zone(zone: &RenderZone, date: Date) -> Option<String> {
+    // GREEN in the next commit.
+    let _ = (zone, date);
+    None
 }
 
 /// IANA zone → ISO-3166 alpha-2, from the tz database's `zone.tab` (public

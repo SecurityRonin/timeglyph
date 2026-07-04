@@ -7,7 +7,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use jiff::civil::date;
-use timeglyph::holiday;
+use timeglyph::{holiday, RenderZone};
 
 #[test]
 fn known_fixed_holiday() {
@@ -60,6 +60,15 @@ fn zone_maps_to_country() {
     // No single country → no annotation.
     assert_eq!(holiday::country_for_zone("Etc/UTC"), None);
     assert_eq!(holiday::country_for_zone("Nowhere/Nope"), None);
+}
+
+#[test]
+fn holiday_in_named_zone() {
+    let sh = RenderZone::Named(jiff::tz::TimeZone::get("Asia/Shanghai").unwrap());
+    let cny = holiday::in_zone(&sh, date(2020, 1, 25)).expect("CNY in Asia/Shanghai");
+    assert!(cny.contains('\u{6625}'), "expected 春节, got {cny:?}");
+    // UTC / fixed offsets have no single country → no annotation.
+    assert_eq!(holiday::in_zone(&RenderZone::Utc, date(2020, 1, 25)), None);
 }
 
 #[test]
