@@ -1,5 +1,8 @@
 /target
 
+# mkdocs build output (docs/ is the source; the built site is ephemeral)
+/site
+
 # cargo-fuzz build/run artifacts (the targets themselves are committed)
 /fuzz/target
 /fuzz/corpus
