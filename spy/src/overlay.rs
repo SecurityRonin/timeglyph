@@ -330,14 +330,23 @@ impl eframe::App for SpyApp {
                 } else {
                     // macOS without the Accessibility grant: readings never
                     // arrive, so guide the user to enable it rather than sit on a
-                    // silent empty state.
+                    // silent empty state. The button jumps straight to the
+                    // Accessibility pane — the user only has to flip the switch.
                     empty_state(
                         ui,
                         "Grant Accessibility to timeglyph-spy",
-                        "System Settings → Privacy & Security → Accessibility, then relaunch",
+                        "Flip the timeglyph-spy switch, then relaunch",
                         pal,
                         logo.as_ref(),
                     );
+                    ui.add_space(8.0);
+                    ui.vertical_centered(|ui| {
+                        if ui.button("Open Accessibility Settings").clicked() {
+                            let _ = std::process::Command::new("open")
+                                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                                .spawn();
+                        }
+                    });
                 }
             } else {
                 egui::ScrollArea::vertical()
