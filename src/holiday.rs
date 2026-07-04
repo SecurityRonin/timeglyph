@@ -67,7 +67,13 @@ pub fn supported_country_count() -> usize {
 /// zones (no single country → no holiday annotation).
 #[must_use]
 pub fn country_for_zone(iana: &str) -> Option<&'static str> {
-    // GREEN in the next commit.
-    let _ = iana;
-    None
+    zones().get(iana).map(String::as_str)
+}
+
+/// IANA zone → ISO-3166 alpha-2, from the tz database's `zone.tab` (public
+/// domain). Small (~10 KB), parsed once. See `data/zone_country.json`.
+fn zones() -> &'static HashMap<String, String> {
+    static ZONES: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static RAW: &str = include_str!("../data/zone_country.json");
+    ZONES.get_or_init(|| serde_json::from_str(RAW).unwrap_or_default())
 }

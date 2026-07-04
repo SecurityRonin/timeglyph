@@ -39,3 +39,14 @@ exactly as python-holidays emits them — not translated to English.
   and astronomically-derived holidays are python-holidays' best estimates.
 - **Not versioned as ground truth.** Treat it as a helpful annotation layer for
   timestamp interpretation, not an authoritative calendar of record.
+
+## `zone_country.json`
+
+Maps each IANA time-zone name to its ISO-3166 alpha-2 country (e.g.
+`Asia/Shanghai` → `CN`), so a display zone can pick which country's holidays to
+annotate a reading with (`timeglyph::holiday::country_for_zone`).
+
+- **Source:** the IANA time-zone database `zone.tab` (public domain).
+- **Regenerate:** `python3 - <<'PY'` reading `/usr/share/zoneinfo/zone.tab`,
+  keeping fields `(zone → country)` for 2-letter codes, sorted. ~418 zones, ~10 KB.
+- Zones with no single country (`Etc/*`, `UTC`) are absent → no holiday annotation.
