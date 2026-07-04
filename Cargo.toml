@@ -72,6 +72,20 @@ lunisolar = ["dep:stem-branch"]
 # The whole-world public-holiday dataset (~1.5 MB gzipped); pulls flate2.
 holiday = ["dep:flate2"]
 
+# Debian packaging (the `deb` release job). The base package is CLI-only
+# (`$auto` picks up the `timeglyph` binary), which is what the aarch64 .deb
+# ships — the GUI lens can't be cross-compiled for arm64 without an arm64
+# multiarch GUI sysroot, which the release job's simple cross setup doesn't
+# provide. The `gui` variant (x86_64/amd64 only) appends the pre-built
+# `timeglyph-lens` overlay binary; `name = "timeglyph"` keeps the package name
+# unchanged so the apt/Cloudsmith globs still match. The literal `target/release`
+# prefix is cargo-deb's convention — it rewrites it to the real per-target dir.
+[package.metadata.deb]
+
+[package.metadata.deb.variants.gui]
+name = "timeglyph"
+merge-assets.append = [["target/release/timeglyph-lens", "usr/bin/", "755"]]
+
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and
 # the primary specs' worked examples. NEVER decompile DCode.

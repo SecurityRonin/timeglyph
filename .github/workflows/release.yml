@@ -67,9 +67,11 @@ jobs:
       - name: Build (CLI)
         run: cargo build --release --target ${{ matrix.target }}
 
-      # The timeglyph-lens GUI ships for macOS and Windows only — its
-      # cursor-inspection picker is unimplemented on Linux (it would refuse to
-      # launch). Separate, non-workspace crate → explicit --manifest-path.
+      # The lens GUI is built here for macOS/Windows only. It DOES compile on
+      # Linux now (an AT-SPI picker), but the eframe/egui GUI needs system GUI
+      # libs and a gnu libc — impossible on this job's musl targets. Linux ships
+      # the lens through the gnu-target `deb` job instead (amd64). Separate,
+      # non-workspace crate → explicit --manifest-path.
       - name: Build (lens GUI, macOS/Windows only)
         if: runner.os != 'Linux'
         run: cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
@@ -77,7 +79,8 @@ jobs:
       # One archive per platform carries the CLI plus (on macOS/Windows) the lens
       # GUI, so a single install brings both commands: the Homebrew formula does
       # `bin.install "timeglyph", "timeglyph-lens"` on macOS, and the winget
-      # manifest lists both as NestedInstallerFiles. Linux is CLI-only (no lens).
+      # manifest lists both as NestedInstallerFiles. These Linux archives are
+      # CLI-only (musl); the Linux lens ships via the amd64 .deb (see `deb` job).
       - name: Package (Linux, CLI)
         if: runner.os == 'Linux'
         run: |
@@ -157,7 +160,11 @@ jobs:
           fork-user: securityronin-bot
 
   # apt: build .deb packages (cargo-deb) for amd64/arm64, attach to the release,
-  # and push to the Cloudsmith apt repo.
+  # and push to the Cloudsmith apt repo. The amd64 .deb also ships the
+  # timeglyph-lens GUI overlay (built on the gnu target with system GUI libs
+  # available on the native x86_64 runner); the arm64 .deb stays CLI-only
+  # because cross-compiling the eframe/egui GUI for arm64 needs an arm64
+  # multiarch GUI sysroot this job's simple gcc cross-linker setup can't supply.
   deb:
     strategy:
       matrix:
@@ -182,10 +189,34 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
+      # GUI build system libs for the timeglyph-lens overlay (eframe/egui + glow
+      # + wayland/x11). These are HOST libs for the native x86_64 runner — the
+      # arm64 build skips them and ships CLI-only (see the job comment).
+      - name: Install GUI build deps (amd64 only)
+        if: matrix.arch == 'amd64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev libgl1-mesa-dev libwayland-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config
+
       - name: Install cargo-deb
         run: cargo install cargo-deb --version 2.11.2 --locked
 
-      - name: Build .deb package
+      # amd64: build the CLI and the lens GUI ourselves, then let cargo-deb only
+      # package them (`--no-build`) via the `gui` variant, which appends the
+      # pre-built timeglyph-lens as an asset. The lens is a separate, non-workspace
+      # crate → explicit --manifest-path; it shares the same target dir.
+      - name: Build .deb package (amd64, CLI + lens)
+        if: matrix.arch == 'amd64'
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
+          cargo deb --no-build --variant gui --target ${{ matrix.target }}
+
+      # arm64: CLI-only .deb (cargo-deb builds the timeglyph binary itself).
+      - name: Build .deb package (arm64, CLI only)
+        if: matrix.arch == 'arm64'
         run: cargo deb --target ${{ matrix.target }}
 
       - name: Find .deb file
