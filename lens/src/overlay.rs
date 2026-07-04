@@ -300,10 +300,10 @@ impl LensApp {
                     .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
                 if ui
                     .add(egui::ImageButton::new(img).frame(false))
-                    .on_hover_text("About TimeGlyph Lens")
+                    .on_hover_text("Albert Hui on LinkedIn")
                     .clicked()
                 {
-                    self.show_about.store(true, Ordering::Relaxed);
+                    open_url(AUTHOR_URL);
                 }
             });
     }
@@ -428,6 +428,30 @@ impl eframe::App for LensApp {
         // changes; a slow heartbeat keeps the footer's live clock and hover
         // states fresh without busy-spinning the render thread.
         ctx.request_repaint_after(Duration::from_secs(1));
+    }
+}
+
+/// The author's profile — the Security Ronin wordmark links here.
+const AUTHOR_URL: &str = "https://www.linkedin.com/in/alberthui";
+
+/// Open a URL in the user's default browser, cross-platform (the lens ships on
+/// macOS and Windows; the third arm covers the in-progress Linux build).
+fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // `start` is a cmd builtin; the empty "" is the window title, so the URL
+        // isn't misread as one.
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }
 
@@ -756,10 +780,16 @@ impl LensApp {
                             ui.add_space(6.0);
                             if let Some(tex) = sr {
                                 let h = 96.0; // native aspect ~1505×721
-                                ui.add(
+                                let img =
                                     egui::Image::new(egui::load::SizedTexture::from_handle(tex))
-                                        .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h)),
-                                );
+                                        .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
+                                if ui
+                                    .add(egui::ImageButton::new(img).frame(false))
+                                    .on_hover_text("Albert Hui on LinkedIn")
+                                    .clicked()
+                                {
+                                    open_url(AUTHOR_URL);
+                                }
                             }
                             ui.add_space(14.0);
                             ui.label(
