@@ -443,6 +443,9 @@ impl eframe::App for LensApp {
         let show_lunar = cur.show_lunar;
         let date_style = cur.date_style;
         let logo = self.logo.clone();
+        // Cloned Arc so the header's top-right gear can open settings without the
+        // central closure borrowing `self`.
+        let show_settings = self.show_settings.clone();
         let sr_logo = if pal.base_dark {
             self.sr_logo_dark.clone()
         } else {
@@ -453,7 +456,7 @@ impl eframe::App for LensApp {
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source, pal, logo.as_ref());
+            header(ui, &source, pal, logo.as_ref(), &show_settings);
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -661,12 +664,6 @@ impl LensApp {
             });
             if ui.button("🌐").on_hover_text("time-zone map").clicked() {
                 self.show_map = !self.show_map;
-            }
-            // In-window settings opener — the only way in on Windows/Linux (the
-            // ⌘, native menu item is macOS-only), so theme / 干支 / longitude are
-            // reachable on every platform.
-            if ui.button("⚙").on_hover_text("settings").clicked() {
-                self.show_settings.store(true, Ordering::Relaxed);
             }
             // Quick presets to the right of the map button (each hidden when it's
             // the active zone).
@@ -920,7 +917,13 @@ impl LensApp {
 /// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
 /// source element — context, not the subject (and it keeps sensitive surrounding
 /// text from dominating the panel).
-fn header(ui: &mut egui::Ui, source: &str, pal: Palette, logo: Option<&egui::TextureHandle>) {
+fn header(
+    ui: &mut egui::Ui,
+    source: &str,
+    pal: Palette,
+    logo: Option<&egui::TextureHandle>,
+    show_settings: &AtomicBool,
+) {
     ui.horizontal(|ui| {
         if let Some(tex) = logo {
             ui.add(
@@ -954,6 +957,14 @@ fn header(ui: &mut egui::Ui, source: &str, pal: Palette, logo: Option<&egui::Tex
                 .wrap_mode(egui::TextWrapMode::Extend),
             );
         }
+        // Settings opener, pinned to the top-right corner. Last in the row so the
+        // right-to-left layout hugs the corner; reachable on every platform (the
+        // ⌘, native menu item is macOS-only).
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("⚙").on_hover_text("settings").clicked() {
+                show_settings.store(true, Ordering::Relaxed);
+            }
+        });
     });
 }
 
