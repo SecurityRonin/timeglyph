@@ -12,12 +12,13 @@ pub use imp::{accessibility_ok, prompt_accessibility, Picker};
 
 #[cfg(windows)]
 mod imp {
-    use windows::core::Interface;
     use windows::Win32::Foundation::POINT;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
     };
-    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationTextPattern, TextUnit_Line, UIA_TextPatternId,
+    };
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     /// UI Automation needs no special permission grant, so the picker is always
@@ -50,8 +51,28 @@ mod imp {
                 let mut pt = POINT::default();
                 GetCursorPos(&mut pt).ok()?;
                 let element = self.uia.ElementFromPoint(pt).ok()?;
-                let text = element.CurrentName().ok()?.to_string();
-                (!text.is_empty()).then_some(text)
+                // Narrow to the LINE under the cursor via the Text pattern, so a big
+                // text control (a terminal tab, an editor) yields only the line at
+                // the pointer, not its whole buffer; off-screen text isn't under the
+                // point, so it's excluded. Fall back to the element name when the
+                // control exposes no Text pattern (a button, a custom control).
+                if let Ok(pattern) =
+                    element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+                {
+                    if let Ok(range) = pattern.RangeFromPoint(pt) {
+                        let _ = range.ExpandToEnclosingUnit(TextUnit_Line);
+                        if let Ok(text) = range.GetText(-1) {
+                            let s = text.to_string();
+                            let s = s.trim().to_string();
+                            if !s.is_empty() {
+                                return Some(s);
+                            }
+                        }
+                    }
+                }
+                let name = element.CurrentName().ok()?.to_string();
+                let name = name.trim().to_string();
+                (!name.is_empty()).then_some(name)
             }
         }
     }
@@ -222,7 +243,7 @@ mod imp {
     use atspi::proxy::accessible::{AccessibleProxy, ObjectRefExt};
     use atspi::proxy::proxy_ext::ProxyExt;
     use atspi::zbus::block_on;
-    use atspi::{AccessibilityConnection, CoordType};
+    use atspi::{AccessibilityConnection, CoordType, Granularity};
 
     /// The real gate is whether the accessibility bus is reachable (assistive
     /// technologies enabled) — checked when [`Picker::new`] connects.
@@ -277,7 +298,7 @@ mod imp {
                     continue;
                 };
                 if let Some(leaf) = deepest_at(zconn, frame, x, y).await {
-                    if let Some(text) = text_of(&leaf).await {
+                    if let Some(text) = text_of(&leaf, x, y).await {
                         return Some(text);
                     }
                 }
@@ -322,9 +343,27 @@ mod imp {
     }
 
     /// The element's text (Text interface), else its accessible name.
-    async fn text_of(node: &AccessibleProxy<'_>) -> Option<String> {
+    async fn text_of(node: &AccessibleProxy<'_>, x: i32, y: i32) -> Option<String> {
         if let Ok(proxies) = node.proxies().await {
             if let Ok(text) = proxies.text().await {
+                // Narrow to the LINE under the cursor point, not the whole control.
+                // A big text area (a terminal tab, an editor) would otherwise dump
+                // its entire buffer; and off-screen scrollback sits under no screen
+                // point, so `get_offset_at_point` naturally excludes it.
+                if let Ok(offset) = text.get_offset_at_point(x, y, CoordType::Screen).await {
+                    if offset >= 0 {
+                        if let Ok((line, _, _)) =
+                            text.get_string_at_offset(offset, Granularity::Line).await
+                        {
+                            let line = line.trim().to_string();
+                            if !line.is_empty() {
+                                return Some(line);
+                            }
+                        }
+                    }
+                }
+                // Fallback: a toolkit that doesn't implement point→offset — read the
+                // whole (small) control rather than nothing.
                 if let Ok(count) = text.character_count().await {
                     if count > 0 {
                         if let Ok(s) = text.get_text(0, count).await {
