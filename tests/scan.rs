@@ -134,3 +134,50 @@ fn inspect_text_catches_embedded_datetime_strings() {
         "{hits:?}"
     );
 }
+
+#[test]
+fn inspect_text_decodes_0x_prefixed_hex_token() {
+    // A `0x`-prefixed hex token is decoded under the hex byte layouts (a FAT
+    // on-disk 4-byte value here), so `scan` and the lens pick up raw hex.
+    let hits = scan::inspect_text("field = 0xa45a597a here", 5, &RenderZone::Utc);
+    assert!(
+        hits.iter()
+            .any(|h| h.number == "0xa45a597a"
+                && h.readings.iter().any(|r| r.format_id.contains("fat"))),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn inspect_text_decodes_bare_hex_with_letters() {
+    // A bare hex run with a-f letters and >= 8 chars (>= 4 bytes, even length) is
+    // decoded as raw hex bytes.
+    let hits = scan::inspect_text("val 0060947C58B2D501 x", 5, &RenderZone::Utc);
+    assert!(
+        hits.iter().any(|h| h.number == "0060947C58B2D501"),
+        "expected a hex reading: {hits:?}"
+    );
+}
+
+#[test]
+fn inspect_text_decimal_run_still_decodes() {
+    // The decimal integer path is unaffected by hex-token detection.
+    let hits = scan::inspect_text("created=1577836800 done", 5, &RenderZone::Utc);
+    assert!(
+        hits.iter()
+            .any(|h| h.number == "1577836800"
+                && h.readings.iter().any(|r| r.format_id.contains("unix"))),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn inspect_text_short_hex_word_does_not_explode() {
+    // A short hex-looking word (< 8 chars, below the byte floor) is NOT treated as
+    // a hex token — it stays quiet rather than emitting spurious readings.
+    let hits = scan::inspect_text("the cafe is nice", 5, &RenderZone::Utc);
+    assert!(
+        !hits.iter().any(|h| h.number == "cafe"),
+        "short hex word must not decode: {hits:?}"
+    );
+}
