@@ -54,3 +54,36 @@ pub fn format_instant(instant: PosixNs, zone: &RenderZone, style: DateStyle) -> 
     };
     ts.to_zoned(tz).strftime(pattern).to_string()
 }
+
+/// Render a *naive* (offset-less) instant in `style` — the wall-clock as stored,
+/// with NO zone/offset designator. For [`TzSemantics::LocalNaive`](crate::TzSemantics)
+/// values, whose UTC civil rendering *is* the local wall-clock: applying the
+/// style's `%z`/`%Z` token would fabricate an offset the value never carried.
+/// Unlike the old behaviour (which forced ISO on every naive reading), the
+/// `style` still shapes the text — only the trailing offset/zone is dropped.
+#[must_use]
+pub fn format_naive(instant: PosixNs, style: DateStyle) -> String {
+    const OUT_OF_RANGE: &str = "<out of civil range>";
+    let pattern = match style {
+        // ISO: the canonical render minus the UTC 'Z' (a naive value has no
+        // zone), preserving any sub-second precision.
+        DateStyle::Iso8601 => {
+            return instant.render(&RenderZone::Utc).map_or_else(
+                || OUT_OF_RANGE.to_string(),
+                |s| s.trim_end_matches('Z').to_string(),
+            )
+        }
+        // The other styles, minus their trailing offset/zone token (%z / %Z).
+        DateStyle::SpaceSeparated => "%Y-%m-%d %H:%M:%S",
+        DateStyle::Rfc2822 => "%a, %d %b %Y %H:%M:%S",
+        DateStyle::UsStyle => "%m/%d/%Y %I:%M:%S %p",
+    };
+    let Ok(ts) = jiff::Timestamp::from_nanosecond(instant.0) else {
+        return OUT_OF_RANGE.to_string();
+    };
+    // Civil fields exactly as stored (UTC = no shift); the pattern carries no
+    // offset, so nothing is fabricated.
+    ts.to_zoned(jiff::tz::TimeZone::UTC)
+        .strftime(pattern)
+        .to_string()
+}

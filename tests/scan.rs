@@ -172,6 +172,21 @@ fn local_naive_honors_display_style_without_a_fabricated_offset() {
 }
 
 #[test]
+fn local_naive_out_of_range_reports_the_placeholder() {
+    // A naive instant beyond jiff's civil range has no rendering; the naive ISO
+    // path returns the explicit placeholder rather than panicking or fabricating.
+    let (s, is_local) = scan::render_in_zone(
+        TzSemantics::LocalNaive,
+        PosixNs(i128::MAX),
+        "native",
+        &RenderZone::Utc,
+        DateStyle::Iso8601,
+    );
+    assert!(is_local);
+    assert_eq!(s, "<out of civil range>");
+}
+
+#[test]
 fn render_in_zone_falls_back_to_native_when_out_of_range() {
     // A PosixNs beyond jiff's civil range cannot render, so the UTC branch falls
     // back to the format's own (native) string rather than dropping the value.

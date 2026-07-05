@@ -7,7 +7,10 @@
 
 use std::fmt;
 
-use crate::{datefmt::format_instant, interpret, DateStyle, PosixNs, RenderZone, TzSemantics};
+use crate::{
+    datefmt::{format_instant, format_naive},
+    interpret, DateStyle, PosixNs, RenderZone, TzSemantics,
+};
 
 /// One decoded reading of a value: which format, the rendered instant, and the
 /// human label — kept as separate fields so a caller can style each distinctly.
@@ -193,7 +196,7 @@ pub fn render_in_zone(
         // a style-formatted placeholder (same fallback the plain render had).
         TzSemantics::Utc if instant.render(zone).is_none() => (native.to_string(), false),
         TzSemantics::Utc => (format_instant(instant, zone, style), false),
-        TzSemantics::LocalNaive => (native.trim_end_matches('Z').to_string(), true),
+        TzSemantics::LocalNaive => (format_naive(instant, style), true),
         TzSemantics::OffsetEmbedded => (native.to_string(), false),
     }
 }
