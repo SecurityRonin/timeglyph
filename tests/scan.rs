@@ -132,6 +132,46 @@ fn render_in_zone_respects_tz_semantics() {
 }
 
 #[test]
+fn local_naive_honors_display_style_without_a_fabricated_offset() {
+    // A naive wall-clock (FAT/exFAT/DOS) must render in the chosen STYLE — the
+    // style is text formatting, separate from the zone shift — but carry NO
+    // offset/zone designator, since a naive value has none (adding +0000 would
+    // fabricate a UTC claim).
+    let inst = PosixNs(1_592_222_400_000_000_000); // 2020-06-15T12:00:00 wall-clock
+    let native = inst.render(&RenderZone::Utc).unwrap();
+
+    let (rfc, is_local) = scan::render_in_zone(
+        TzSemantics::LocalNaive,
+        inst,
+        &native,
+        &RenderZone::Utc,
+        DateStyle::Rfc2822,
+    );
+    assert!(is_local, "still flagged local");
+    assert_eq!(rfc, "Mon, 15 Jun 2020 12:00:00", "RFC style, no offset");
+    assert!(!rfc.contains("+0000") && !rfc.contains('Z'), "{rfc}");
+
+    let (us, _) = scan::render_in_zone(
+        TzSemantics::LocalNaive,
+        inst,
+        &native,
+        &RenderZone::Utc,
+        DateStyle::UsStyle,
+    );
+    assert_eq!(us, "06/15/2020 12:00:00 PM", "US style, no zone abbrev");
+
+    // Regression: a UTC-anchored value in RFC style DOES keep its explicit offset.
+    let (utc_rfc, _) = scan::render_in_zone(
+        TzSemantics::Utc,
+        inst,
+        &native,
+        &RenderZone::Utc,
+        DateStyle::Rfc2822,
+    );
+    assert!(utc_rfc.contains("+0000"), "UTC RFC keeps offset: {utc_rfc}");
+}
+
+#[test]
 fn render_in_zone_falls_back_to_native_when_out_of_range() {
     // A PosixNs beyond jiff's civil range cannot render, so the UTC branch falls
     // back to the format's own (native) string rather than dropping the value.
