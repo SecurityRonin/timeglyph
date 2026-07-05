@@ -77,6 +77,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Identify a value across all formats (ranked candidates, never one verdict).
+    #[command(visible_alias = "id")]
     Identify {
         /// The value to identify.
         value: String,

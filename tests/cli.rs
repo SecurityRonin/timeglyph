@@ -172,6 +172,17 @@ fn bare_hex_with_letters_decodes_as_hex() {
 }
 
 #[test]
+fn id_is_an_alias_for_identify() {
+    // `id` is a visible alias for the `identify` subcommand.
+    let (out, code) = run(&["id", "1577836800"]);
+    assert!(
+        out.contains("unix") && out.contains("2020-01-01T00:00:00Z"),
+        "{out}"
+    );
+    assert_eq!(code, 0);
+}
+
+#[test]
 fn hex_flag_forces_hex_on_a_decimal_value() {
     // A pure-decimal value is ambiguous (also valid hex). `--hex` forces the hex
     // byte-layout decoder; without it the same value is an integer identify.
