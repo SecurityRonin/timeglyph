@@ -847,7 +847,12 @@ impl LensApp {
             egui::ViewportBuilder::default()
                 .with_title("About TimeGlyph Lens")
                 .with_inner_size([360.0, 260.0])
-                .with_resizable(false),
+                .with_resizable(false)
+                // The main overlay is always-on-top, so the About window must be
+                // too — otherwise it opens hidden behind it — and active, so it
+                // takes focus and comes to the top of the z-order on open.
+                .with_always_on_top()
+                .with_active(true),
             move |ctx, _class| {
                 let pal = settings
                     .lock()
