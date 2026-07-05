@@ -28,6 +28,39 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --check
 
+  # The lens (GUI overlay) is a separate crate, excluded from the root workspace,
+  # so the `test` job never touches it. Build it natively on each shipped
+  # platform to compile + LINK the platform picker CI otherwise never sees — UI
+  # Automation on Windows (x86_64, the exact shipped target), the Accessibility
+  # API on macOS, and AT-SPI on Linux.
+  lens:
+    name: Lens build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install GUI build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
+      - name: Build lens (compiles + links the platform picker)
+        working-directory: lens
+        run: cargo build --all-targets
+      - name: Clippy lens
+        working-directory: lens
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Rustfmt lens
+        working-directory: lens
+        run: cargo fmt --check
+
   coverage:
     runs-on: ubuntu-latest
     steps:
