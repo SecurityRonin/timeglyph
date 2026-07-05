@@ -307,7 +307,9 @@ impl LensApp {
                     .on_hover_text("About TimeGlyph Lens")
                     .clicked()
                 {
-                    self.show_about.store(true, Ordering::Relaxed);
+                    // A second click on the logo closes the About window (toggle).
+                    let open = self.show_about.load(Ordering::Relaxed);
+                    self.show_about.store(!open, Ordering::Relaxed);
                 }
             });
     }
@@ -886,7 +888,7 @@ impl LensApp {
                                     open_url(AUTHOR_URL);
                                 }
                             }
-                            ui.add_space(14.0);
+                            ui.add_space(24.0);
                             ui.label(
                                 RichText::new("TimeGlyph Lens")
                                     .font(FontId::monospace(16.0))
@@ -895,7 +897,7 @@ impl LensApp {
                             );
                             ui.add_space(4.0);
                             ui.label(
-                                RichText::new(format!("TimeGlyph {}", timeglyph::VERSION))
+                                RichText::new(format!("Version {}", timeglyph::VERSION))
                                     .font(FontId::proportional(12.0))
                                     .color(pal.mute),
                             );
