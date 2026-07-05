@@ -15,6 +15,51 @@ fn extracts_only_long_numeric_runs() {
 }
 
 #[test]
+fn captures_fractional_float_as_one_token() {
+    // A CFAbsoluteTime like WhatsApp-iOS ZMESSAGEDATE is a double; the scanner
+    // must keep the fraction as part of the token, not stop at the '.'.
+    let nums = scan::scan_numbers("ZMESSAGEDATE=606940977.71577 row");
+    assert_eq!(nums, vec!["606940977.71577"], "{nums:?}");
+}
+
+#[test]
+fn trailing_dot_and_dotted_shorts_are_not_floats() {
+    // A trailing dot in prose is punctuation, not a fraction.
+    assert_eq!(
+        scan::scan_numbers("the value is 1577836800. done"),
+        vec!["1577836800"]
+    );
+    // Dotted short runs (IPs, version strings) stay below the digit floor and
+    // must not be glued into one long token.
+    assert!(scan::scan_numbers("ip 192.168.11.100 v1.2.3").is_empty());
+}
+
+#[test]
+fn readings_for_fractional_float_yields_cocoa_float() {
+    let r = scan::readings_for("606940977.71577", 5, &RenderZone::Utc);
+    assert!(
+        r.iter().any(
+            |x| x.format_id == "cocoa_float" && x.rendered.starts_with("2020-03-26T18:42:57.7")
+        ),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn inspect_text_surfaces_cocoa_float_for_a_fractional_value() {
+    let hits = scan::inspect_text("msg 606940977.71577 sent", 5, &RenderZone::Utc);
+    let hit = hits
+        .iter()
+        .find(|h| h.number == "606940977.71577")
+        .expect("fractional value scanned as one token");
+    assert!(
+        hit.readings.iter().any(|r| r.format_id == "cocoa_float"),
+        "{:?}",
+        hit.readings
+    );
+}
+
+#[test]
 fn readings_are_ranked_in_window_datetimes_utc() {
     let r = scan::readings_for("1577836800", 5, &RenderZone::Utc);
     assert!(!r.is_empty());
