@@ -25,11 +25,26 @@ fn main() {
     let mut positional: Vec<String> = Vec::new();
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
+            "-h" | "--help" => {
+                print_usage();
+                return;
+            }
+            "-V" | "--version" => {
+                println!("timeglyph-lens {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
             "--live" => live = true,
             "--verbose" => verbose = verbose.saturating_add(1),
             // -v, -vv, -vvv … → verbosity = number of v's.
             s if s.len() >= 2 && s.starts_with('-') && s[1..].bytes().all(|b| b == b'v') => {
                 verbose = verbose.saturating_add((s.len() - 1) as u8);
+            }
+            // Any other dash-prefixed token is an unknown option — reject it loudly
+            // rather than treat it as text (which the lens no longer decodes anyway).
+            s if s.starts_with('-') => {
+                eprintln!("timeglyph-lens: unknown option `{s}`\n");
+                print_usage();
+                std::process::exit(2);
             }
             _ => positional.push(arg),
         }
@@ -58,6 +73,26 @@ fn main() {
         );
         std::process::exit(1);
     }
+}
+
+/// Print the command-line usage (for `-h`/`--help` and unknown-option errors).
+fn print_usage() {
+    println!(
+        "timeglyph-lens {ver} — hover anything, decode time data
+
+USAGE:
+    timeglyph-lens [OPTIONS]
+
+Opens an always-on-top overlay that decodes the number under your cursor.
+For one-shot text decoding, use `timeglyph scan <text>`.
+
+OPTIONS:
+    --live               Console inspector: print the element under the cursor and its readings
+    -v, -vv, --verbose   Verbosity (stderr; -vv also shows the raw element text)
+    -h, --help           Print help
+    -V, --version        Print version",
+        ver = env!("CARGO_PKG_VERSION")
+    );
 }
 
 /// Poll the element under the cursor and print its timeglyph readings.

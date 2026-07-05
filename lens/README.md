@@ -51,7 +51,7 @@ only platform-specific code, and the overlay is one cross-platform egui window.
 ```bash
 cargo run                        # the always-on-top overlay
 cargo run -- --live              # console inspector
-cargo run -- "ts 1577836800"     # text mode, any platform
+cargo run -- --help              # usage; -V/--version for the version
 cargo build --release
 ```
 
