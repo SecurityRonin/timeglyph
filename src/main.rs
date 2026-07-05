@@ -60,7 +60,6 @@ enum AsArg {
 
 #[derive(Parser, Debug)]
 #[command(name = "timeglyph", version, about = "Forensic timestamp decipherment")]
-#[command(args_conflicts_with_subcommands = true)]
 struct Cli {
     /// A value to IDENTIFY (back-compat shortcut for `identify <value>`).
     value: Option<String>,
@@ -117,7 +116,8 @@ enum Commands {
         datetime: String,
     },
     /// Scan arbitrary text for timestamp candidates and decode each — the bulk
-    /// counterpart to `identify`/`string`. Reads stdin when no text is given.
+    /// counterpart to `identify`; always auto-detects integer, string, and
+    /// raw-hex candidates. Reads stdin when no text is given.
     Scan {
         /// Text to scan; if omitted, read from stdin.
         text: Option<String>,
@@ -188,6 +188,18 @@ fn main() -> ExitCode {
     };
     let style: DateStyle = cli.format.into();
     let mode = cli.as_mode;
+    // `--as` and `--artifact` only affect `identify` (the default / bare value);
+    // every other command sets its own interpretation, so a flag passed there is
+    // ignored. Reject it loudly rather than silently doing nothing.
+    let is_identify = matches!(cli.command, None | Some(Commands::Identify { .. }));
+    if !is_identify && mode != AsArg::Auto {
+        eprintln!("error: --as applies only to `identify` / the bare value; other commands set their own interpretation");
+        return ExitCode::from(EXIT_ERR);
+    }
+    if !is_identify && cli.artifact.is_some() {
+        eprintln!("error: --artifact applies only to `identify` / the bare value");
+        return ExitCode::from(EXIT_ERR);
+    }
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
             run_identify(&value, json, &zone, style, cli.artifact.as_deref(), mode)

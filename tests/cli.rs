@@ -268,6 +268,31 @@ fn removed_hex_subcommand_is_unknown() {
 }
 
 #[test]
+fn as_on_a_non_identify_command_errors() {
+    // --as only affects identify; scan is always auto, so passing --as there is a
+    // misuse that must fail loudly rather than be silently ignored.
+    let (out, code) = run(&["--as", "hex", "scan", "hello 1577836800"]);
+    assert_ne!(code, 0, "{out}");
+    assert!(out.contains("--as applies only to"), "{out}");
+}
+
+#[test]
+fn artifact_on_a_non_identify_command_errors() {
+    let (out, code) = run(&["decode", "unix", "1577836800", "--artifact", "ntfs"]);
+    assert_ne!(code, 0, "{out}");
+    assert!(out.contains("--artifact applies only to"), "{out}");
+}
+
+#[test]
+fn global_flag_works_before_a_subcommand() {
+    // The placement trap is gone: a global (--tz) before the subcommand now works,
+    // not just after it.
+    let (out, code) = run(&["--tz", "UTC", "decode", "unix", "1577836800"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("2020-01-01T00:00:00Z"), "{out}");
+}
+
+#[test]
 fn removed_string_subcommand_is_unknown() {
     // The `string` subcommand was removed in favor of `--as string`.
     let (out, code) = run(&["string", "2020-01-01T00:00:00Z"]);
