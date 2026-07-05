@@ -1,6 +1,6 @@
 //! Tests for the cross-platform scan core (the testable half of the Humble
 //! Object; the Win32/UIA shell is verified on Windows at runtime).
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::scan;
 use timeglyph::{DateStyle, PosixNs, RenderZone, TzSemantics};

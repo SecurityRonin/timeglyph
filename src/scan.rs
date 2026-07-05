@@ -125,21 +125,39 @@ pub fn word_at(text: &str, utf16_offset: usize) -> Option<String> {
 pub fn scan_numbers_min(text: &str, min_digits: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
-    let flush = |cur: &mut String, out: &mut Vec<String>| {
-        if cur.len() >= min_digits {
-            out.push(std::mem::take(cur));
-        } else {
-            cur.clear();
-        }
-    };
-    for ch in text.chars() {
+    let mut digits = 0usize;
+    let mut has_dot = false;
+    let flush =
+        |cur: &mut String, digits: &mut usize, has_dot: &mut bool, out: &mut Vec<String>| {
+            // The '.' is only ever pushed between digits, so a token never ends
+            // on one — the digit count (not byte length) is the run gate.
+            if *digits >= min_digits {
+                out.push(std::mem::take(cur));
+            } else {
+                cur.clear();
+            }
+            *digits = 0;
+            *has_dot = false;
+        };
+    let chars: Vec<char> = text.chars().collect();
+    for (i, &ch) in chars.iter().enumerate() {
         if ch.is_ascii_digit() {
             cur.push(ch);
+            digits += 1;
+        } else if ch == '.'
+            && !has_dot
+            && !cur.is_empty()
+            && chars.get(i + 1).is_some_and(char::is_ascii_digit)
+        {
+            // A single decimal point between digits is part of a float literal
+            // (e.g. CFAbsoluteTime 606940977.71577), not a token boundary.
+            cur.push('.');
+            has_dot = true;
         } else {
-            flush(&mut cur, &mut out);
+            flush(&mut cur, &mut digits, &mut has_dot, &mut out);
         }
     }
-    flush(&mut cur, &mut out);
+    flush(&mut cur, &mut digits, &mut has_dot, &mut out);
     out
 }
 
@@ -199,10 +217,16 @@ pub fn readings_for_opts(
     zone: &RenderZone,
     style: DateStyle,
 ) -> Vec<Reading> {
-    let Ok(value) = number.parse::<i64>() else {
+    // Integer epochs first; a fractional literal (CFAbsoluteTime, OLE date, …)
+    // routes to the float-strategy decoders instead, preserving its sub-seconds.
+    let candidates = if let Ok(value) = number.parse::<i64>() {
+        interpret::interpret_int(value)
+    } else if let Ok(value) = number.parse::<f64>() {
+        interpret::interpret_float(value)
+    } else {
         return Vec::new();
     };
-    interpret::interpret_int(value)
+    candidates
         .into_iter()
         .filter(|c| {
             c.rendered.is_some()
