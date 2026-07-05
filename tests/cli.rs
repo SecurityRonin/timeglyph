@@ -32,6 +32,39 @@ fn decode_subcommand() {
 }
 
 #[test]
+fn bare_fractional_float_identifies_cocoa_float() {
+    // WhatsApp-iOS ZMESSAGEDATE is CFAbsoluteTime (a double). The auto path must
+    // ingest the fraction and rank cocoa_float, keeping sub-second precision.
+    let (out, code) = run(&["606940977.71577"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("cocoa_float"), "{out}");
+    assert!(
+        out.contains("2020-03-26T18:42:57.7"),
+        "sub-second lost: {out}"
+    );
+}
+
+#[test]
+fn bare_integer_stays_integer_only() {
+    // Regression: a pure integer keeps the integer decoders (cocoa), never the
+    // float-strategy cocoa_float — the float path triggers only for a fraction.
+    let (out, code) = run(&["606940977"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("cocoa"), "{out}");
+    assert!(
+        !out.contains("cocoa_float"),
+        "float format leaked onto int path: {out}"
+    );
+}
+
+#[test]
+fn fractional_float_rejected_under_as_int() {
+    // `--as int` means integer epochs only; a fractional literal must error.
+    let (out, code) = run(&["--as", "int", "606940977.71577"]);
+    assert_ne!(code, 0, "{out}");
+}
+
+#[test]
 fn as_string_decodes_a_datetime() {
     // `--as string` forces the string-form interpreter and shows the reading.
     let (out, _) = run(&["--as", "string", "2020-01-01T00:00:00Z"]);
