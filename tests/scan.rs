@@ -137,14 +137,16 @@ fn inspect_text_catches_embedded_datetime_strings() {
 
 #[test]
 fn inspect_text_decodes_0x_prefixed_hex_token() {
-    // A `0x`-prefixed hex token is decoded under the hex byte layouts (a FAT
-    // on-disk 4-byte value here), so `scan` and the lens pick up raw hex.
-    let hits = scan::inspect_text("field = 0xa45a597a here", 5, &RenderZone::Utc);
+    // A `0x`-prefixed hex token is decoded under the hex byte layouts, so `scan`
+    // and the lens pick up raw hex — here the LE seconds reading is Unix time.
+    let hits = scan::inspect_text("field = 0xa45a597a here", 8, &RenderZone::Utc);
+    let hit = hits
+        .iter()
+        .find(|h| h.number == "0xa45a597a")
+        .unwrap_or_else(|| panic!("0x token not decoded: {hits:?}"));
     assert!(
-        hits.iter()
-            .any(|h| h.number == "0xa45a597a"
-                && h.readings.iter().any(|r| r.format_id.contains("fat"))),
-        "{hits:?}"
+        hit.readings.iter().any(|r| r.format_id.contains("unix")),
+        "{hit:?}"
     );
 }
 
