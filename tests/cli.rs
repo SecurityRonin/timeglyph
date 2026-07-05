@@ -185,16 +185,6 @@ fn id_is_an_alias_for_identify() {
 }
 
 #[test]
-fn hex_flag_forces_hex_on_a_decimal_value() {
-    // A pure-decimal value is ambiguous (also valid hex). `--hex` forces the hex
-    // byte-layout decoder; without it the same value is an integer identify.
-    let (forced, _) = run(&["--hex", "1577836800"]);
-    assert!(forced.contains("byte layout"), "{forced}");
-    let (plain, _) = run(&["1577836800"]);
-    assert!(plain.contains("readings consistent with"), "{plain}");
-}
-
-#[test]
 fn bare_datetime_string_decodes() {
     // A bare ASN.1 GeneralizedTime string must be parsed as a datetime string.
     let (out, _) = run(&["20200101000000Z"]);
@@ -267,14 +257,6 @@ fn bare_0x_prefixed_value_decodes_as_hex() {
     // A `0x`-prefixed value is unambiguously raw hex bytes → hex byte-layout path.
     let (out, _) = run(&["0x0060947C58B2D501"]);
     assert!(out.contains("byte layout"), "{out}");
-}
-
-#[test]
-fn hex_flag_conflicts_with_as() {
-    // `--hex` is an alias for `--as hex`; combining it with an explicit `--as`
-    // is a usage conflict and must error (clap exits 2 for arg conflicts).
-    let (out, code) = run(&["--hex", "--as", "string", "1577836800"]);
-    assert_ne!(code, 0, "conflicting flags should not succeed: {out}");
 }
 
 #[test]

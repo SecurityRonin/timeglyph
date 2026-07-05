@@ -3,9 +3,9 @@
 //! Subcommands: `identify` (the safe default; ranked candidates — a raw value is
 //! usually underdetermined), `decode <format> <value>`, `encode <format> <dt>`,
 //! `scan <text>`, `list`. A bare value is a back-compat shortcut for `identify`;
-//! `--as auto|int|hex|string` (default `auto`) forces one interpretation family
-//! (`--hex` is an alias for `--as hex`). Exit codes are pipeline-safe: `0` ok,
-//! `2` ambiguous or a sentinel (review needed), `1` error.
+//! `--as auto|int|hex|string` (default `auto`) forces one interpretation family.
+//! Exit codes are pipeline-safe: `0` ok, `2` ambiguous or a sentinel (review
+//! needed), `1` error.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use std::process::ExitCode;
@@ -77,11 +77,6 @@ struct Cli {
     /// reading — it only adjusts the rank.
     #[arg(long, global = true, value_name = "HINT")]
     artifact: Option<String>,
-    /// Force the value to be read as raw hex bytes. A decimal-looking value is
-    /// ambiguous (it can also be hex); this decodes it under the hex byte layouts
-    /// even when it has no a–f digits (an alias for `--as hex`).
-    #[arg(long, global = true, conflicts_with = "as_mode")]
-    hex: bool,
     /// Force one interpretation family (default: auto — detect and merge). int =
     /// integer epoch formats; hex = raw hex byte layouts; string = self-describing
     /// string forms (ISO 8601 / RFC 3339 / RFC 2822 / ASN.1 / ULID / UUID /
@@ -192,9 +187,7 @@ fn main() -> ExitCode {
         }
     };
     let style: DateStyle = cli.format.into();
-    // `--hex` is an alias for `--as hex`; they conflict at parse time, so at most
-    // one is set. Resolve the single interpretation mode once, up front.
-    let mode = if cli.hex { AsArg::Hex } else { cli.as_mode };
+    let mode = cli.as_mode;
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
             run_identify(&value, json, &zone, style, cli.artifact.as_deref(), mode)
