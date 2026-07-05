@@ -1,8 +1,9 @@
 //! Scan arbitrary text for timestamp candidates and decode each into ranked
-//! readings. Two extractors — long digit runs ([`scan_numbers`]) and
-//! self-describing datetime strings ([`datetime_candidates`]) — feed
-//! [`interpret`](crate::interpret); [`inspect_text`] ties them together. Pure and
-//! GUI-free: it powers both the CLI `scan` command and the timeglyph-lens overlay.
+//! readings. Three extractors — long digit runs ([`scan_numbers`]),
+//! self-describing datetime strings ([`datetime_candidates`]), and raw-hex tokens
+//! ([`hex_candidates`]) — feed [`interpret`](crate::interpret); [`inspect_text`]
+//! ties them together. Pure and GUI-free: it powers both the CLI `scan` command
+//! and the timeglyph-lens overlay.
 
 use std::fmt;
 
@@ -273,6 +274,56 @@ fn datetime_candidates(text: &str) -> Vec<String> {
     out
 }
 
+/// Candidate raw-hex tokens in `text`: whitespace-delimited tokens that are
+/// either `0x`/`0X`-prefixed hex (any length) OR a bare hex run that carries at
+/// least one `a-f`/`A-F` letter AND is >= 8 hex chars (>= 4 bytes) and even
+/// length. The letter + length floor is deliberate: without it every short
+/// decimal run or lowercase word (`cafe`, `dead`) would be decoded as bytes and
+/// flood the scan with noise. A `0x` prefix is an explicit intent signal, so it
+/// bypasses the letter/length floor. Deduped, in order of appearance.
+fn hex_candidates(text: &str) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for tok in text.split_whitespace() {
+        let is_hex = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit());
+        let accept = if let Some(rest) = tok.strip_prefix("0x").or_else(|| tok.strip_prefix("0X")) {
+            is_hex(rest)
+        } else {
+            tok.len() >= 8
+                && tok.len().is_multiple_of(2)
+                && is_hex(tok)
+                && tok.bytes().any(|b| b.is_ascii_alphabetic())
+        };
+        if accept && seen.insert(tok.to_string()) {
+            out.push(tok.to_string());
+        }
+    }
+    out
+}
+
+/// The top `max` readings for one raw-hex token, folding every byte-layout
+/// group's candidates from [`interpret::interpret_hex`] into flat [`Reading`]s
+/// (semantics-aware, rendered in `zone`). `include_all` keeps sentinel and
+/// out-of-window readings. Empty when the token is not valid hex or yields none.
+fn hex_readings_opts(
+    token: &str,
+    max: usize,
+    include_all: bool,
+    zone: &RenderZone,
+    style: DateStyle,
+) -> Vec<Reading> {
+    let Ok(groups) = interpret::interpret_hex(token) else {
+        return Vec::new();
+    };
+    groups
+        .into_iter()
+        .flat_map(|(_layout, cands)| cands)
+        .filter(|c| c.rendered.is_some() && (include_all || !c.sentinel))
+        .take(max)
+        .map(|c| reading_from(c, zone, style))
+        .collect()
+}
+
 /// Scan a block of text with a custom minimum-digit threshold: every numeric run
 /// AND every datetime string paired with its top readings, rendered in `zone`.
 /// Items with no confident reading are dropped, so noise stays out.
@@ -324,6 +375,23 @@ pub fn inspect_text_opts(
             });
         }
     }
+    // Raw-hex tokens (0x-prefixed, or hex-with-letters above the byte floor) — so
+    // `scan` and the lens decode on-disk byte layouts too. Skip any token already
+    // emitted by the numeric/datetime passes so a value is not double-counted.
+    let already: std::collections::BTreeSet<&str> =
+        out.iter().map(|nr| nr.number.as_str()).collect();
+    let hex: Vec<NumberReadings> = hex_candidates(text)
+        .into_iter()
+        .filter(|tok| !already.contains(tok.as_str()))
+        .filter_map(|token| {
+            let readings = hex_readings_opts(&token, max_per_number, include_all, zone, style);
+            (!readings.is_empty()).then_some(NumberReadings {
+                number: token,
+                readings,
+            })
+        })
+        .collect();
+    out.extend(hex);
     out
 }
 

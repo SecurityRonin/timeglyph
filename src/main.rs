@@ -2,9 +2,10 @@
 //!
 //! Subcommands: `identify` (the safe default; ranked candidates — a raw value is
 //! usually underdetermined), `decode <format> <value>`, `encode <format> <dt>`,
-//! `hex <bytes>`, `string <text>`, `list`. A bare value is a back-compat shortcut
-//! for `identify`. Exit codes are pipeline-safe: `0` ok, `2` ambiguous or a
-//! sentinel (review needed), `1` error.
+//! `scan <text>`, `list`. A bare value is a back-compat shortcut for `identify`;
+//! `--as auto|int|hex|string` (default `auto`) forces one interpretation family
+//! (`--hex` is an alias for `--as hex`). Exit codes are pipeline-safe: `0` ok,
+//! `2` ambiguous or a sentinel (review needed), `1` error.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use std::process::ExitCode;
@@ -42,6 +43,21 @@ impl From<FormatArg> for DateStyle {
     }
 }
 
+/// Which interpretation family `identify` (and the bare-value shortcut) applies.
+/// `Auto` detects and merges; the others force one family and skip the merge.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum AsArg {
+    /// Detect and merge every family the value could belong to (the default).
+    Auto,
+    /// Integer epoch formats only (the value must parse as an `i64`).
+    Int,
+    /// Raw hex byte layouts only (LE/BE widths + packed on-disk forms).
+    Hex,
+    /// Self-describing string forms only (ISO 8601 / RFC 3339 / RFC 2822 /
+    /// ASN.1 / ULID / UUID / `ObjectId` / EXIF …).
+    String,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "timeglyph", version, about = "Forensic timestamp decipherment")]
 #[command(args_conflicts_with_subcommands = true)]
@@ -63,9 +79,15 @@ struct Cli {
     artifact: Option<String>,
     /// Force the value to be read as raw hex bytes. A decimal-looking value is
     /// ambiguous (it can also be hex); this decodes it under the hex byte layouts
-    /// even when it has no a–f digits (equivalent to the `hex` subcommand).
-    #[arg(long, global = true)]
+    /// even when it has no a–f digits (an alias for `--as hex`).
+    #[arg(long, global = true, conflicts_with = "as_mode")]
     hex: bool,
+    /// Force one interpretation family (default: auto — detect and merge). int =
+    /// integer epoch formats; hex = raw hex byte layouts; string = self-describing
+    /// string forms (ISO 8601 / RFC 3339 / RFC 2822 / ASN.1 / ULID / UUID /
+    /// ObjectId / EXIF).
+    #[arg(long = "as", value_enum, default_value_t = AsArg::Auto, global = true)]
+    as_mode: AsArg,
     /// Datetime display style for rendered output (identify/decode/scan). The
     /// instant and zone are unchanged — only the textual shape differs.
     #[arg(long = "format", id = "date_format", global = true, value_enum, default_value_t = FormatArg::Iso8601)]
@@ -98,16 +120,6 @@ enum Commands {
         format: String,
         /// The datetime string to encode.
         datetime: String,
-    },
-    /// Decode raw hex bytes (LE/BE widths + packed on-disk layouts).
-    Hex {
-        /// Hex bytes (whitespace/`:`/`0x` tolerated).
-        bytes: String,
-    },
-    /// Parse a string timestamp (ISO 8601 / RFC 3339 / ASN.1 UTCTime/GeneralizedTime).
-    String {
-        /// The timestamp string.
-        text: String,
     },
     /// Scan arbitrary text for timestamp candidates and decode each — the bulk
     /// counterpart to `identify`/`string`. Reads stdin when no text is given.
@@ -180,14 +192,15 @@ fn main() -> ExitCode {
         }
     };
     let style: DateStyle = cli.format.into();
+    // `--hex` is an alias for `--as hex`; they conflict at parse time, so at most
+    // one is set. Resolve the single interpretation mode once, up front.
+    let mode = if cli.hex { AsArg::Hex } else { cli.as_mode };
     let code = match cli.command {
         Some(Commands::Identify { value, json }) => {
-            run_identify(&value, json, &zone, style, cli.artifact.as_deref(), cli.hex)
+            run_identify(&value, json, &zone, style, cli.artifact.as_deref(), mode)
         }
         Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone, style),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
-        Some(Commands::Hex { bytes }) => run_hex(&bytes, &zone, style),
-        Some(Commands::String { text }) => run_string(&text, &zone, style),
         Some(Commands::Scan {
             text,
             min_digits,
@@ -208,7 +221,7 @@ fn main() -> ExitCode {
         }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
-                run_identify(&v, cli.json, &zone, style, cli.artifact.as_deref(), cli.hex)
+                run_identify(&v, cli.json, &zone, style, cli.artifact.as_deref(), mode)
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -250,13 +263,21 @@ fn run_identify(
     zone: &RenderZone,
     style: DateStyle,
     artifact: Option<&str>,
-    force_hex: bool,
+    mode: AsArg,
 ) -> u8 {
     let s = input.trim();
-    // `--hex` forces the hex byte-layout decoder; otherwise auto-detect it when
-    // letters are present (a–f ⇒ not a decimal integer). Either way it is an
-    // explicit override of the merge below.
-    if force_hex || looks_like_hex_bytes(s) {
+    // Forced families delegate to their own handlers (hex/string keep their own
+    // print + exit semantics); auto and int share the merge/rank tail below.
+    match mode {
+        AsArg::Hex => return run_hex(s, zone, style),
+        AsArg::String => return run_string(s, zone, style),
+        AsArg::Auto | AsArg::Int => {}
+    }
+    // Auto also auto-detects hex: a `0x`/`0X` prefix or a-f letters mean the value
+    // is raw bytes, not a decimal integer — those win over string-looking digits.
+    if mode == AsArg::Auto
+        && (s.starts_with("0x") || s.starts_with("0X") || looks_like_hex_bytes(s))
+    {
         return run_hex(s, zone, style);
     }
     let ctx = interpret::InterpretContext {
@@ -264,12 +285,16 @@ fn run_identify(
         ..Default::default()
     };
     // Merge every family the input could belong to: numeric readings when it
-    // parses as an integer, plus string readings (ISO 8601 / ASN.1) always.
+    // parses as an integer, plus (auto only) string readings (ISO 8601 / ASN.1 /
+    // …). Forcing `int` builds numeric readings alone; a non-integer then yields
+    // no candidates and the empty-check below fails loudly, which is correct.
     let mut cands = Vec::new();
     if let Ok(v) = s.parse::<i64>() {
         cands.extend(interpret::interpret_int_with_context(v, &ctx));
     }
-    cands.extend(interpret::interpret_string(s));
+    if mode == AsArg::Auto {
+        cands.extend(interpret::interpret_string(s));
+    }
     cands.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -281,7 +306,12 @@ fn run_identify(
     // can't hold the i128 instant; the Serializer can).
     render_candidates_in_zone(&mut cands, zone, style);
     if cands.is_empty() {
-        eprintln!("error: could not interpret {s:?} as an integer, hex, or datetime string");
+        let tried = if mode == AsArg::Int {
+            "an integer (--as int)"
+        } else {
+            "an integer, hex, or datetime string"
+        };
+        eprintln!("error: could not interpret {s:?} as {tried}");
         return EXIT_ERR;
     }
     if json {

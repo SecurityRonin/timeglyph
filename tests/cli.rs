@@ -1,7 +1,8 @@
-//! CLI surface: subcommands (identify/decode/encode/hex/string/list) with a
-//! back-compat bare-value shortcut, and pipeline-safe exit codes (0 ok,
-//! 2 ambiguous/sentinel, 1 error). The binary is the Humble-Object shell; logic
-//! is tested in the library, so these check wiring and exit codes only.
+//! CLI surface: subcommands (identify/decode/encode/scan/list) plus the `--as`
+//! interpretation selector (auto|int|hex|string) with a back-compat bare-value
+//! shortcut, and pipeline-safe exit codes (0 ok, 2 ambiguous/sentinel, 1 error).
+//! The binary is the Humble-Object shell; logic is tested in the library, so
+//! these check wiring and exit codes only.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::process::Command;
@@ -31,14 +32,15 @@ fn decode_subcommand() {
 }
 
 #[test]
-fn string_subcommand() {
-    let (out, _) = run(&["string", "2020-01-01T00:00:00Z"]);
+fn as_string_decodes_a_datetime() {
+    // `--as string` forces the string-form interpreter and shows the reading.
+    let (out, _) = run(&["--as", "string", "2020-01-01T00:00:00Z"]);
     assert!(out.contains("2020-01-01T00:00:00Z"), "{out}");
 }
 
 #[test]
-fn hex_subcommand_decodes_fat_on_disk() {
-    let (out, _) = run(&["hex", "a45a597a"]);
+fn as_hex_decodes_fat_on_disk() {
+    let (out, _) = run(&["--as", "hex", "a45a597a"]);
     assert!(out.contains("fat") && out.contains("2025-05-04"), "{out}");
 }
 
@@ -66,7 +68,7 @@ fn decode_of_a_sentinel_warns_and_exits_ambiguous() {
 #[test]
 fn hex_of_sentinel_bytes_exits_ambiguous() {
     // all-zero bytes decode to epoch sentinels under every width.
-    let (_out, code) = run(&["hex", "00000000"]);
+    let (_out, code) = run(&["--as", "hex", "00000000"]);
     assert_eq!(code, 2, "hex of all-zero bytes should exit 2 (ambiguous)");
 }
 
@@ -232,4 +234,60 @@ fn bare_all_digit_merges_int_and_string() {
         out.contains("asn1"),
         "expected an ASN.1 string reading: {out}"
     );
+}
+
+#[test]
+fn as_string_on_a_bare_integer_fails() {
+    // Forcing the string family on a bare integer (no self-describing form) must
+    // fail loudly (exit 1), not silently fall through to the integer reading.
+    let (_out, code) = run(&["--as", "string", "1577836800"]);
+    assert_eq!(
+        code, 1,
+        "forcing string on a non-string value should exit 1"
+    );
+}
+
+#[test]
+fn as_int_on_a_non_integer_fails() {
+    // Forcing the integer family on a value that is not an i64 (has letters) must
+    // fail (exit 1) — no candidates, nothing to identify.
+    let (_out, code) = run(&["--as", "int", "20200101000000Z"]);
+    assert_eq!(code, 1, "forcing int on a non-integer should exit 1");
+}
+
+#[test]
+fn as_hex_forces_hex_on_a_decimal_value() {
+    // `--as hex` forces the hex byte-layout decoder even for a pure-decimal value.
+    let (out, _) = run(&["--as", "hex", "1577836800"]);
+    assert!(out.contains("byte layout"), "{out}");
+}
+
+#[test]
+fn bare_0x_prefixed_value_decodes_as_hex() {
+    // A `0x`-prefixed value is unambiguously raw hex bytes → hex byte-layout path.
+    let (out, _) = run(&["0x0060947C58B2D501"]);
+    assert!(out.contains("byte layout"), "{out}");
+}
+
+#[test]
+fn hex_flag_conflicts_with_as() {
+    // `--hex` is an alias for `--as hex`; combining it with an explicit `--as`
+    // is a usage conflict and must error (clap exits 2 for arg conflicts).
+    let (out, code) = run(&["--hex", "--as", "string", "1577836800"]);
+    assert_ne!(code, 0, "conflicting flags should not succeed: {out}");
+}
+
+#[test]
+fn removed_hex_subcommand_is_unknown() {
+    // The `hex` subcommand was removed in favor of `--as hex`; invoking it is now
+    // an unrecognized subcommand error.
+    let (out, code) = run(&["hex", "00"]);
+    assert_ne!(code, 0, "removed `hex` subcommand should error: {out}");
+}
+
+#[test]
+fn removed_string_subcommand_is_unknown() {
+    // The `string` subcommand was removed in favor of `--as string`.
+    let (out, code) = run(&["string", "2020-01-01T00:00:00Z"]);
+    assert_ne!(code, 0, "removed `string` subcommand should error: {out}");
 }

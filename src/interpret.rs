@@ -432,7 +432,10 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '_' && *c != ':')
         .collect();
-    let clean = clean.strip_prefix("0x").unwrap_or(&clean);
+    let clean = clean
+        .strip_prefix("0x")
+        .or_else(|| clean.strip_prefix("0X"))
+        .unwrap_or(&clean);
     let bytes = hex::decode(clean).map_err(|_| ChronoError::OutOfRange {
         what: "hex (not valid hex bytes)",
         value: 0,
