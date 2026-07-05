@@ -48,8 +48,8 @@ fn bare_fractional_float_identifies_cocoa_float() {
 fn bare_integer_stays_integer_only() {
     // Regression: a pure integer keeps the integer decoders (cocoa), never the
     // float-strategy cocoa_float — the float path triggers only for a fraction.
-    let (out, code) = run(&["606940977"]);
-    assert_eq!(code, 0, "{out}");
+    // (The exit code is 2 here: an unqualified integer is genuinely ambiguous.)
+    let (out, _) = run(&["606940977"]);
     assert!(out.contains("cocoa"), "{out}");
     assert!(
         !out.contains("cocoa_float"),

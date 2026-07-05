@@ -117,6 +117,72 @@ pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Can
     out
 }
 
+/// Auto-identify a floating-point value: report every `LinearFloat`-strategy
+/// reading — Cocoa / CFAbsoluteTime, OLE automation date, Julian / Modified-Julian
+/// day numbers — scored like [`interpret_int`], ranked, never one verdict. A
+/// fractional literal cannot be an integer epoch, so the integer decoders are
+/// structurally inapplicable and omitted; the fraction the integer path would
+/// truncate is preserved to nanosecond resolution.
+#[must_use]
+pub fn interpret_float(value: f64) -> Vec<Candidate> {
+    let mut out: Vec<Candidate> = Vec::new();
+    for f in FORMATS {
+        // Only float strategies decode a double; `decode_float` rejects the rest,
+        // and an out-of-civil-range instant is dropped inside build_candidate_float.
+        if let Some(c) = build_candidate_float(f, value) {
+            out.push(c);
+        }
+    }
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.format_id.cmp(b.format_id))
+    });
+    out
+}
+
+/// Build a scored candidate for one format + float value, or `None` if the value
+/// is not float-decodable under it (non-`LinearFloat` strategy, non-finite, or
+/// out of range) or renders outside the civil range.
+fn build_candidate_float(f: &Format, value: f64) -> Option<Candidate> {
+    let instant = f.decode_float(value).ok()?;
+    let rendered = instant.to_rfc3339()?;
+    let components = score_components_float(f, instant);
+    let score = overall_score(&components);
+    let assumptions = assumptions(f);
+    Some(Candidate {
+        format_id: f.id,
+        label: f.label,
+        citation: f.citation,
+        instant,
+        rendered: Some(rendered),
+        score,
+        components,
+        // Sentinels (0 / -1 / i64::MAX) are integer markers; a float carrying a
+        // fraction is a real reading, not an 'unset' marker.
+        assumptions,
+        sentinel: false,
+    })
+}
+
+/// The base plausibility components for a float reading, mirroring the
+/// zero-context set of [`score_components`]. A finite fractional value uses the
+/// unit's full sub-second precision, so `granularity_match` is 1.0; the on-disk
+/// width/endian and neighbour components have no analogue for a decimal literal.
+fn score_components_float(f: &Format, instant: PosixNs) -> Vec<(&'static str, f64)> {
+    let in_window = f64::from(u8::from(
+        instant.0 >= f.plausible.0 && instant.0 < f.plausible.1,
+    ));
+    vec![
+        ("representable", 1.0),
+        ("in_window", in_window),
+        ("granularity_match", 1.0),
+        ("magnitude_fit", magnitude_fit(f.strategy, instant)),
+        ("not_sentinel", 1.0),
+    ]
+}
+
 /// Build a scored, assumption-carrying candidate for one format + integer value,
 /// or `None` if the value is not integer-decodable under it or renders outside the
 /// civil range. Shared by [`interpret_int`] and the per-format hex decoders.

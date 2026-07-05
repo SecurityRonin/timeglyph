@@ -65,3 +65,24 @@ fn non_finite_float_yields_no_reading() {
     assert!(interpret::interpret_float(f64::NAN).is_empty());
     assert!(interpret::interpret_float(f64::INFINITY).is_empty());
 }
+
+#[test]
+fn tied_float_readings_sort_deterministically_by_id() {
+    // A small day-count value lands several LinearFloat formats in civil range
+    // at once (ole, excel1904, cocoa_float all score 1.0), exercising the
+    // ranking comparator and its format-id tie-break: equal scores must order
+    // alphabetically by id, deterministically.
+    let cands = interpret::interpret_float(43900.5);
+    let tied: Vec<&str> = cands
+        .iter()
+        .filter(|c| (c.score - 1.0).abs() < 1e-9)
+        .map(|c| c.format_id)
+        .collect();
+    assert!(
+        tied.len() >= 2,
+        "need >=2 tied readings to exercise the tie-break: {tied:?}"
+    );
+    let mut sorted = tied.clone();
+    sorted.sort_unstable();
+    assert_eq!(tied, sorted, "tied readings must be ordered by format_id");
+}

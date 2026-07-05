@@ -296,6 +296,14 @@ fn run_identify(
     let mut cands = Vec::new();
     if let Ok(v) = s.parse::<i64>() {
         cands.extend(interpret::interpret_int_with_context(v, &ctx));
+    } else if mode == AsArg::Auto {
+        // Not an integer: a fractional literal (e.g. Cocoa/CFAbsoluteTime
+        // `606940977.71577`) can only be a float epoch, so run the LinearFloat
+        // decoders and keep the sub-second fraction. `--as int` skips this and
+        // fails loudly below, as an integer selector should.
+        if let Ok(v) = s.parse::<f64>() {
+            cands.extend(interpret::interpret_float(v));
+        }
     }
     if mode == AsArg::Auto {
         cands.extend(interpret::interpret_string(s));
