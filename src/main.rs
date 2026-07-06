@@ -86,8 +86,33 @@ struct Cli {
     /// instant and zone are unchanged — only the textual shape differs.
     #[arg(long = "format", id = "date_format", global = true, value_enum, default_value_t = FormatArg::Iso8601)]
     format: FormatArg,
+    /// Show at most N readings (identify). Default: all.
+    #[arg(long, global = true, value_name = "N")]
+    top: Option<usize>,
+    /// Drop readings scoring below S (0.0–1.0) (identify). Default: keep all.
+    #[arg(long = "min-score", global = true, value_name = "S")]
+    min_score: Option<f64>,
+    /// Treat the top two readings as ambiguous (exit 2) when their scores differ
+    /// by at most GAP. Default: exact tie only.
+    #[arg(
+        long = "ambiguity-gap",
+        global = true,
+        value_name = "GAP",
+        default_value_t = 1e-9
+    )]
+    ambiguity_gap: f64,
     #[command(subcommand)]
     command: Option<Commands>,
+}
+
+/// How the ranked reading list is trimmed and when it counts as ambiguous —
+/// the `--top` / `--min-score` / `--ambiguity-gap` knobs, bundled so they thread
+/// through the identify/hex paths as one value.
+#[derive(Clone, Copy)]
+struct RankOpts {
+    top: Option<usize>,
+    min_score: Option<f64>,
+    gap: f64,
 }
 
 #[derive(Subcommand, Debug)]
@@ -188,6 +213,11 @@ fn main() -> ExitCode {
     };
     let style: DateStyle = cli.format.into();
     let mode = cli.as_mode;
+    let opts = RankOpts {
+        top: cli.top,
+        min_score: cli.min_score,
+        gap: cli.ambiguity_gap,
+    };
     // `--as` and `--artifact` only affect `identify` (the default / bare value);
     // every other command sets its own interpretation, so a flag passed there is
     // ignored. Reject it loudly rather than silently doing nothing.
@@ -201,9 +231,15 @@ fn main() -> ExitCode {
         return ExitCode::from(EXIT_ERR);
     }
     let code = match cli.command {
-        Some(Commands::Identify { value, json }) => {
-            run_identify(&value, json, &zone, style, cli.artifact.as_deref(), mode)
-        }
+        Some(Commands::Identify { value, json }) => run_identify(
+            &value,
+            json,
+            &zone,
+            style,
+            cli.artifact.as_deref(),
+            mode,
+            opts,
+        ),
         Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone, style),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
         Some(Commands::Scan {
@@ -226,7 +262,15 @@ fn main() -> ExitCode {
         }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
-                run_identify(&v, cli.json, &zone, style, cli.artifact.as_deref(), mode)
+                run_identify(
+                    &v,
+                    cli.json,
+                    &zone,
+                    style,
+                    cli.artifact.as_deref(),
+                    mode,
+                    opts,
+                )
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
@@ -239,14 +283,16 @@ fn main() -> ExitCode {
 /// Exit code reflecting interpretation confidence (pipeline safety): a sentinel
 /// top reading or a tie for the top score is "review needed" (`2`); a clear
 /// single winner is `0`; no readings is `2` (nothing confident).
-fn ambiguity_code(cands: &[Candidate]) -> u8 {
+fn ambiguity_code(cands: &[Candidate], gap: f64) -> u8 {
     let Some(top) = cands.first() else {
         return EXIT_AMBIGUOUS;
     };
     if top.sentinel {
         return EXIT_AMBIGUOUS;
     }
-    if cands.len() >= 2 && (top.score - cands[1].score).abs() < 1e-9 {
+    // Top two within `gap` → ambiguous. Default gap is ~0 (exact tie only); a
+    // wider --ambiguity-gap flags near-ties (e.g. 0.671 vs 0.670) too.
+    if cands.len() >= 2 && (top.score - cands[1].score).abs() <= gap {
         return EXIT_AMBIGUOUS;
     }
     EXIT_OK
@@ -269,12 +315,13 @@ fn run_identify(
     style: DateStyle,
     artifact: Option<&str>,
     mode: AsArg,
+    opts: RankOpts,
 ) -> u8 {
     let s = input.trim();
     // Forced families delegate to their own handlers (hex/string keep their own
     // print + exit semantics); auto and int share the merge/rank tail below.
     match mode {
-        AsArg::Hex => return run_hex(s, zone, style),
+        AsArg::Hex => return run_hex(s, zone, style, opts.gap),
         AsArg::String => return run_string(s, zone, style),
         AsArg::Auto | AsArg::Int => {}
     }
@@ -283,7 +330,7 @@ fn run_identify(
     if mode == AsArg::Auto
         && (s.starts_with("0x") || s.starts_with("0X") || looks_like_hex_bytes(s))
     {
-        return run_hex(s, zone, style);
+        return run_hex(s, zone, style, opts.gap);
     }
     let ctx = interpret::InterpretContext {
         artifact,
@@ -327,6 +374,14 @@ fn run_identify(
         eprintln!("error: could not interpret {s:?} as {tried}");
         return EXIT_ERR;
     }
+    // Presentation trim (after the parse-check, so filtering to empty is not
+    // mistaken for "could not interpret"): drop low readings, then cap the list.
+    if let Some(min) = opts.min_score {
+        cands.retain(|c| c.score >= min);
+    }
+    if let Some(n) = opts.top {
+        cands.truncate(n);
+    }
     if json {
         match serde_json::to_string_pretty(&cands) {
             Ok(s) => println!("{s}"),
@@ -335,14 +390,14 @@ fn run_identify(
                 return EXIT_ERR;
             }
         }
-        return ambiguity_code(&cands);
+        return ambiguity_code(&cands, opts.gap);
     }
     println!(
         "# readings consistent with {s} (ranked; a raw value is usually \
          underdetermined — not a single verdict):"
     );
     print_candidates(&cands, zone, style);
-    ambiguity_code(&cands)
+    ambiguity_code(&cands, opts.gap)
 }
 
 /// Overwrite each candidate's `rendered` string with its instant rendered in
@@ -504,7 +559,7 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
     }
 }
 
-fn run_hex(bytes: &str, zone: &RenderZone, style: DateStyle) -> u8 {
+fn run_hex(bytes: &str, zone: &RenderZone, style: DateStyle, gap: f64) -> u8 {
     match interpret::interpret_hex(bytes) {
         Ok(groups) => {
             // Byte layout is inherently ambiguous (LE/BE x widths x word orders x
@@ -522,7 +577,7 @@ fn run_hex(bytes: &str, zone: &RenderZone, style: DateStyle) -> u8 {
                     .partial_cmp(&a.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
-            ambiguity_code(&all)
+            ambiguity_code(&all, gap)
         }
         Err(e) => {
             eprintln!("error: {e}");
