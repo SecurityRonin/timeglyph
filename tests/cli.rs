@@ -104,6 +104,61 @@ fn hex_input_exit_code_reflects_ambiguity() {
     );
 }
 
+fn reading_lines(out: &str) -> Vec<&str> {
+    out.lines()
+        .filter(|l| l.trim_start().starts_with('['))
+        .collect()
+}
+
+fn score_of(line: &str) -> f64 {
+    line.trim()
+        .trim_start_matches('[')
+        .split(']')
+        .next()
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap()
+}
+
+#[test]
+fn top_flag_limits_reading_count() {
+    let (all, _) = run(&["1577836800"]);
+    let (top3, _) = run(&["1577836800", "--top", "3"]);
+    assert!(reading_lines(&all).len() > 3, "baseline: {all}");
+    assert_eq!(reading_lines(&top3).len(), 3, "--top 3: {top3}");
+}
+
+#[test]
+fn min_score_flag_filters_below_threshold() {
+    let (out, _) = run(&["1577836800", "--min-score", "0.9"]);
+    let lines = reading_lines(&out);
+    assert!(!lines.is_empty(), "some readings should survive: {out}");
+    for l in &lines {
+        assert!(score_of(l) >= 0.9, "kept a below-threshold reading: {l}");
+    }
+}
+
+#[test]
+fn ambiguity_gap_flag_widens_the_tie_band() {
+    // 1577836800: top two are 1.00 vs 0.97 (gap 0.03) — OK by default (exact-tie
+    // only)...
+    let (_, code_default) = run(&["1577836800"]);
+    assert_eq!(code_default, 0, "default gap: unique top is unambiguous");
+    // ...but AMBIGUOUS once the gap band is widened past 0.03. Require real
+    // readings in the output so a clap usage error (also exit 2) can't pose as
+    // ambiguity.
+    let (out_wide, code_wide) = run(&["1577836800", "--ambiguity-gap", "0.05"]);
+    assert!(
+        out_wide.contains("unix"),
+        "must print readings, not a clap error: {out_wide}"
+    );
+    assert_eq!(
+        code_wide, 2,
+        "near-tie within the gap band must be ambiguous"
+    );
+}
+
 #[test]
 fn as_string_decodes_a_datetime() {
     // `--as string` forces the string-form interpreter and shows the reading.
