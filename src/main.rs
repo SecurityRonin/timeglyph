@@ -544,6 +544,9 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
         eprintln!("error: could not parse datetime {datetime:?} (try ISO 8601 / RFC 3339)");
         return EXIT_ERR;
     };
+    if format == "all" {
+        return run_encode_all(instant);
+    }
     let f = match timeglyph::format(format) {
         Ok(f) => f,
         Err(e) => {
@@ -560,6 +563,44 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
             eprintln!("error: {e}");
             EXIT_ERR
         }
+    }
+}
+
+/// `(LE, BE)` on-disk hex of an encoded value at `width` bytes (float formats are
+/// 8-byte IEEE-754). BE takes the low `width` bytes of the big-endian layout.
+fn needle_bytes(enc: timeglyph::Encoded, width: u8) -> (String, String) {
+    match enc {
+        timeglyph::Encoded::Int(v) => {
+            let w = width as usize;
+            (
+                hex::encode(&v.to_le_bytes()[..w]),
+                hex::encode(&v.to_be_bytes()[8 - w..]),
+            )
+        }
+        timeglyph::Encoded::Float(x) => {
+            (hex::encode(x.to_le_bytes()), hex::encode(x.to_be_bytes()))
+        }
+    }
+}
+
+/// Encode `instant` into every format that can represent it, with on-disk hex
+/// bytes (LE/BE) at each format's natural width — a disk-search "needle" table.
+/// A format that can't represent the instant is skipped. These are SEARCH
+/// representations of a time, not proof the event occurred.
+fn run_encode_all(instant: timeglyph::PosixNs) -> u8 {
+    println!("# on-disk needles for this time (format  value  LE  BE) — search representations, not proof of occurrence");
+    let mut any = false;
+    for f in timeglyph::registry::FORMATS {
+        let Ok(enc) = f.encode(instant) else { continue };
+        let (le, be) = needle_bytes(enc, f.storage_bytes());
+        println!("{:<16} {:<22} LE {le:<16} BE {be}", f.id, enc);
+        any = true;
+    }
+    if any {
+        EXIT_OK
+    } else {
+        eprintln!("error: no format could represent this instant");
+        EXIT_ERR
     }
 }
 
