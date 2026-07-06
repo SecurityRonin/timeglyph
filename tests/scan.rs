@@ -172,6 +172,41 @@ fn local_naive_honors_display_style_without_a_fabricated_offset() {
 }
 
 #[test]
+fn hex_scan_gates_on_in_window_like_the_numeric_path() {
+    // The hex scan path must apply the same in-window gate as the numeric path:
+    // an out-of-window byte-layout reading (value 1 -> unix=1970 / filetime=1601)
+    // must NOT surface in a normal scan, only under include_all. A high max is
+    // used so the leak isn't merely hidden by top-N truncation.
+    let hits = scan::inspect_text("v 0x0100000000000000 w", 50, &RenderZone::Utc);
+    let leaked: Vec<&str> = hits
+        .iter()
+        .flat_map(|h| &h.readings)
+        .filter(|r| r.rendered.starts_with("1970") || r.rendered.starts_with("1601"))
+        .map(|r| r.format_id.as_str())
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "out-of-window hex readings leaked into a normal scan: {leaked:?}"
+    );
+
+    // include_all is the exhaustive escape — it DOES keep them.
+    let all = scan::inspect_text_opts(
+        "v 0x0100000000000000 w",
+        50,
+        scan::MIN_DIGITS,
+        true,
+        &RenderZone::Utc,
+        DateStyle::Iso8601,
+    );
+    assert!(
+        all.iter()
+            .flat_map(|h| &h.readings)
+            .any(|r| r.rendered.starts_with("1970") || r.rendered.starts_with("1601")),
+        "include_all must keep out-of-window readings"
+    );
+}
+
+#[test]
 fn local_naive_out_of_range_reports_the_placeholder() {
     // A naive instant beyond jiff's civil range has no rendering; the naive ISO
     // path returns the explicit placeholder rather than panicking or fabricating.
