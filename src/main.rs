@@ -348,11 +348,29 @@ fn run_identify(
 /// Overwrite each candidate's `rendered` string with its instant rendered in
 /// `zone` using `style` (leaving it untouched when the instant is out of civil
 /// range).
+/// Render one candidate honoring its format's tz semantics — the single source
+/// of truth for both the JSON (`render_candidates_in_zone`) and text
+/// (`print_candidates`) paths. Mirrors `scan::render_in_zone`: a naive
+/// wall-clock (FAT/exFAT/DOS) is NEVER zone-shifted or offset-stamped, since
+/// shifting it asserts an instant and a zone the data never carried; a
+/// UTC-anchored value shifts into the display zone when representable there.
+fn render_candidate(c: &Candidate, zone: &RenderZone, style: DateStyle) -> Option<String> {
+    let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+    match tz {
+        timeglyph::TzSemantics::LocalNaive => {
+            Some(timeglyph::datefmt::format_naive(c.instant, style))
+        }
+        _ => c
+            .instant
+            .render(zone)
+            .map(|_| timeglyph::datefmt::format_instant(c.instant, zone, style))
+            .or_else(|| c.rendered.clone()),
+    }
+}
+
 fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: DateStyle) {
     for c in cands {
-        if c.instant.render(zone).is_some() {
-            c.rendered = Some(timeglyph::datefmt::format_instant(c.instant, zone, style));
-        }
+        c.rendered = render_candidate(c, zone, style);
     }
 }
 
@@ -432,11 +450,15 @@ fn print_decode(
     zone: &RenderZone,
     style: DateStyle,
 ) -> u8 {
-    let rendered = timeglyph::datefmt::format_instant(instant, zone, style);
-    let caveat = if matches!(f.tz, timeglyph::TzSemantics::LocalNaive) {
-        "  (LOCAL naive — not UTC)"
+    // A LocalNaive format is a zone-less wall-clock: render it naively (no shift,
+    // no offset), same as identify and scan. Only UTC-anchored values shift.
+    let (rendered, caveat) = if matches!(f.tz, timeglyph::TzSemantics::LocalNaive) {
+        (
+            timeglyph::datefmt::format_naive(instant, style),
+            "  (LOCAL naive — not UTC)",
+        )
     } else {
-        ""
+        (timeglyph::datefmt::format_instant(instant, zone, style), "")
     };
     println!("{}  {value}  ->  {rendered}{caveat}", f.id);
     EXIT_OK
@@ -681,13 +703,9 @@ fn print_candidates(cands: &[Candidate], zone: &RenderZone, style: DateStyle) {
     }
     for c in cands {
         let flag = if c.sentinel { " [sentinel]" } else { "" };
-        // Style the display only when the instant is in civil range; otherwise
-        // keep the format's own native rendering (its `rendered` field).
-        let rendered = c
-            .instant
-            .render(zone)
-            .map(|_| timeglyph::datefmt::format_instant(c.instant, zone, style))
-            .or_else(|| c.rendered.clone());
+        // tz-aware (see render_candidate): local-naive stays a naked wall-clock;
+        // UTC-anchored styles into the display zone when representable.
+        let rendered = render_candidate(c, zone, style);
         println!(
             "  [{:.2}] {:<16} {}  ({}){flag}",
             c.score,
