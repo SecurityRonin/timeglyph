@@ -1,16 +1,14 @@
 //! The forensic format registry.
 //!
 //! Covers the linear (LinearInt/LinearFloat), embedded-ID (`Strategy::Embedded`,
-//! any unit), and packed (FAT/DOS) integer strategies; the SYSTEMTIME packed and
-//! ULID/UUIDv1/RFC-2822/EXIF string forms live in `interpret.rs`. Each entry's
-//! epoch and worked example are cross-validated against the MIT `time-decode`
-//! oracle (tests/oracle.rs, tests/catalog.rs).
-//!
-//! Still TODO (obscure / packed-bitfield formats whose layouts `time-decode`'s
-//! own `--formats` flags reverse but which need per-format unpackers): exFAT
-//! (tz-offset byte), bitdate/dttm/logtime/ns40/moto/symantec/dvr, the BCD/GSM
-//! semi-octet family, Sonyflake (10ms unit), and the leap-aware GPS/NTP/TAI
-//! scales (already in `leap.rs`).md §5a.
+//! any unit), and packed integer strategies — FAT/DOS plus the full bit-field
+//! family (exFAT, DTTM, BitDate/BitDec, BCD/GSM semi-octet, Motorola, Symantec,
+//! DVR, NS40/NS40LE, LogTime, Sonyflake). The SYSTEMTIME packed and
+//! ULID/UUIDv1/RFC-2822/EXIF string forms live in `interpret.rs`; the leap-aware
+//! GPS/NTP/TAI scales in `leap.rs`. Each entry's epoch and worked example are
+//! cross-validated against the MIT `time-decode` oracle (tests/oracle.rs,
+//! tests/catalog.rs), and `tests/docs_sync.rs` fails the build if a format here
+//! drifts out of `docs/validation.md`.
 //!
 //! Every epoch_ns constant below is a CLEAN-ROOM fact from a primary spec, to be
 //! cross-validated against the MIT `time-decode` oracle and each spec's worked

@@ -38,6 +38,28 @@ infallible — a shared misreading of a spec could make both agree on a wrong
 answer. The tier-1 **spec worked examples** below anchor the trickiest epochs
 independently of any tool, which is why both kinds of check are used together.
 
+## Format coverage
+
+timeglyph implements **41 numeric/packed formats** (`src/registry.rs`), plus the
+self-describing string forms in `interpret.rs` (ISO-8601/RFC-3339, RFC-2822,
+HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId). `tests/docs_sync.rs` fails the
+build if any registry format drifts out of this list, so coverage cannot fall
+silently behind:
+
+- **Linear epochs** (seconds → nanoseconds since a fixed point): `unix`,
+  `unix_ms`, `unix_us`, `unix_ns`, `filetime`, `webkit`, `cocoa`, `cocoa_float`,
+  `hfsplus`, `dotnet_ticks`, `active`, `prtime`, `iostime`, `postgres`, `ole`,
+  `excel1904`, `mjd`, `sqlite_julian`, `ksuid`, `nokiale`.
+- **Embedded-ID** (epoch + bit-shift within a larger ID): `snowflake`,
+  `discord`, `mastodon`, `linkedin`, `tiktok`, `sony`.
+- **Packed bit-field / civil**: `fat`, `exfat`, `dttm`, `bitdate`, `bitdec`,
+  `bcd`, `moto`, `symantec`, `dvr`, `ns40`, `ns40le`, `logtime`, `semioctet`,
+  `gsm`, `sqlserver`.
+
+The differential battery below validates a subset against `time-decode`;
+formats without a matching oracle flag are tier-2 (spec worked example) — see the
+note after the table.
+
 ## The differential battery
 
 Every input below is **time-decode's own published example value** for that
