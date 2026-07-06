@@ -120,6 +120,21 @@ fn scan_json_emits_jsonl_with_schema_version() {
     assert!(readings.iter().any(|r| r["format_id"] == "unix"), "{line}");
 }
 
+#[test]
+fn encode_all_emits_per_format_hex_needles() {
+    // `encode all <dt>` inverts the tool: for a known time, emit every format's
+    // encoded value + on-disk hex bytes (LE/BE) — disk-search "needles".
+    let (out, code) = run(&["encode", "all", "2020-01-01T00:00:00Z"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("unix"), "must list formats: {out}");
+    // unix seconds 1577836800 = 0x5E0BE100 → LE 00e10b5e / BE 5e0be100 (4-byte).
+    let lo = out.to_lowercase();
+    assert!(
+        lo.contains("00e10b5e") && lo.contains("5e0be100"),
+        "must show LE + BE on-disk bytes: {out}"
+    );
+}
+
 fn reading_lines(out: &str) -> Vec<&str> {
     out.lines()
         .filter(|l| l.trim_start().starts_with('['))
