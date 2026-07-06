@@ -104,6 +104,22 @@ fn hex_input_exit_code_reflects_ambiguity() {
     );
 }
 
+#[test]
+fn scan_json_emits_jsonl_with_schema_version() {
+    // scan --json must emit one JSON object per found value (JSONL, streamable),
+    // each carrying schema_version + the ranked readings — the pipeline path.
+    let (out, _) = run(&["scan", "ts 1577836800 end", "--json"]);
+    let line = out
+        .lines()
+        .find(|l| l.trim_start().starts_with('{'))
+        .expect("a JSON object line");
+    let v: serde_json::Value = serde_json::from_str(line).unwrap();
+    assert_eq!(v["schema_version"], 1, "{line}");
+    assert_eq!(v["number"], "1577836800", "{line}");
+    let readings = v["readings"].as_array().unwrap();
+    assert!(readings.iter().any(|r| r["format_id"] == "unix"), "{line}");
+}
+
 fn reading_lines(out: &str) -> Vec<&str> {
     out.lines()
         .filter(|l| l.trim_start().starts_with('['))
