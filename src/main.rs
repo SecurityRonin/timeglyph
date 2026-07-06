@@ -507,20 +507,22 @@ fn run_encode(format: &str, datetime: &str) -> u8 {
 fn run_hex(bytes: &str, zone: &RenderZone, style: DateStyle) -> u8 {
     match interpret::interpret_hex(bytes) {
         Ok(groups) => {
-            let mut any = false;
-            let mut has_sentinel = false;
+            // Byte layout is inherently ambiguous (LE/BE x widths x word orders x
+            // formats); flatten every layout's candidates, rank globally, and
+            // apply the SAME ambiguity_code as identify — so a hex value with
+            // tied top readings reports EXIT_AMBIGUOUS, not a false OK.
+            let mut all: Vec<Candidate> = Vec::new();
             for (layout, cands) in &groups {
                 println!("# byte layout: {layout}");
                 print_candidates(cands, zone, style);
-                any |= !cands.is_empty();
-                has_sentinel |= cands.iter().any(|c| c.sentinel);
+                all.extend(cands.iter().cloned());
             }
-            // Pipeline safety: no readings, or any sentinel reading → review needed.
-            if any && !has_sentinel {
-                EXIT_OK
-            } else {
-                EXIT_AMBIGUOUS
-            }
+            all.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            ambiguity_code(&all)
         }
         Err(e) => {
             eprintln!("error: {e}");
