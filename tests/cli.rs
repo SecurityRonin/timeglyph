@@ -92,6 +92,19 @@ fn decode_local_naive_is_not_zone_shifted() {
 }
 
 #[test]
+fn hex_input_exit_code_reflects_ambiguity() {
+    // Byte-layout interpretation is inherently ambiguous (multiple layouts x
+    // formats). The exit code must not claim an unambiguous OK when several
+    // readings tie — it must apply the same ambiguity_code as identify.
+    let (out, code) = run(&["--as", "hex", "0060947C58B2D501"]);
+    assert!(!out.is_empty(), "{out}");
+    assert_eq!(
+        code, 2,
+        "hex with tied top readings must be EXIT_AMBIGUOUS, not OK: {out}"
+    );
+}
+
+#[test]
 fn as_string_decodes_a_datetime() {
     // `--as string` forces the string-form interpreter and shows the reading.
     let (out, _) = run(&["--as", "string", "2020-01-01T00:00:00Z"]);
