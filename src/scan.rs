@@ -201,6 +201,19 @@ pub fn render_in_zone(
     }
 }
 
+/// The confidence gate shared by the numeric and hex scan paths, so they cannot
+/// drift: a reading surfaces in a normal scan only if it renders, is not a
+/// sentinel, and is in-window. `include_all` is the exhaustive escape — it keeps
+/// every rendered reading (sentinels + out-of-window included).
+fn confident(c: &interpret::Candidate, include_all: bool) -> bool {
+    c.rendered.is_some()
+        && (include_all
+            || (!c.sentinel
+                && c.components
+                    .iter()
+                    .any(|(n, v)| *n == "in_window" && *v > 0.0)))
+}
+
 /// The top `max` *in-window* datetime readings for one numeric string, each
 /// rendered in `zone` (semantics-aware — see [`render_in_zone`]). Empty when the
 /// number does not parse or has no confident (in-window, non-sentinel) reading.
@@ -231,14 +244,7 @@ pub fn readings_for_opts(
     };
     candidates
         .into_iter()
-        .filter(|c| {
-            c.rendered.is_some()
-                && (include_all
-                    || (!c.sentinel
-                        && c.components
-                            .iter()
-                            .any(|(n, v)| *n == "in_window" && *v > 0.0)))
-        })
+        .filter(|c| confident(c, include_all))
         .take(max)
         .map(|c| reading_from(c, zone, style))
         .collect()
@@ -345,7 +351,7 @@ fn hex_readings_opts(
     groups
         .into_iter()
         .flat_map(|(_layout, cands)| cands)
-        .filter(|c| c.rendered.is_some() && (include_all || !c.sentinel))
+        .filter(|c| confident(c, include_all))
         .take(max)
         .map(|c| reading_from(c, zone, style))
         .collect()
