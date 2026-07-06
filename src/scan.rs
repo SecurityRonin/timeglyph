@@ -85,6 +85,25 @@ pub struct NumberReadings {
 /// Shorter runs (counts, ids, 4-digit years) are dropped so scans stay quiet.
 pub const MIN_DIGITS: usize = 8;
 
+/// Upper bound on the text a single scan will inspect. The scan path ingests
+/// untrusted input (stdin, a lens accessibility buffer that can be a whole
+/// terminal scrollback); beyond this the input is truncated so a pathological
+/// value can't drive unbounded allocation. Timestamps are short, so a 1 MiB
+/// window covers any real artifact line/element.
+pub const MAX_SCAN_BYTES: usize = 1 << 20;
+
+/// `text` truncated to at most [`MAX_SCAN_BYTES`], at a UTF-8 char boundary.
+fn bounded(text: &str) -> &str {
+    if text.len() <= MAX_SCAN_BYTES {
+        return text;
+    }
+    let mut end = MAX_SCAN_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 /// The whitespace-delimited token of `text` containing the UTF-16 code-unit
 /// offset `utf16_offset` — how macOS Accessibility reports the character under a
 /// screen point. Used to narrow a hovered element's *entire* value (e.g. an
@@ -389,6 +408,8 @@ pub fn inspect_text_opts(
     zone: &RenderZone,
     style: DateStyle,
 ) -> Vec<NumberReadings> {
+    // Bound untrusted input up front so every extractor works on capped text.
+    let text = bounded(text);
     let mut out: Vec<NumberReadings> = scan_numbers_min(text, min_digits)
         .into_iter()
         .filter_map(|number| {

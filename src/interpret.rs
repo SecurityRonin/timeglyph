@@ -494,6 +494,8 @@ fn overall_score(components: &[(&'static str, f64)]) -> f64 {
 /// run each through [`interpret_int`]. Returns `(byte-decode assumption,
 /// candidates)` per width/endianness — the byte layout is itself an assumption.
 pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoError> {
+    // Cap on decoded byte length (untrusted-input guard; enforced after decode).
+    const MAX_HEX_BYTES: usize = 64 * 1024;
     let clean: String = hex
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '_' && *c != ':')
@@ -506,6 +508,14 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
         what: "hex (not valid hex bytes)",
         value: 0,
     })?;
+    // Cap untrusted hex so a pathological blob can't drive an unbounded byte vec
+    // + per-window candidate lists. Fail loud, naming the offending size.
+    if bytes.len() > MAX_HEX_BYTES {
+        return Err(ChronoError::OutOfRange {
+            what: "hex input exceeds 64 KiB",
+            value: bytes.len() as i128,
+        });
+    }
     let mut out = Vec::new();
     for (label, value, width, endian) in byte_ints(&bytes) {
         // The hex layer KNOWS the on-disk width and byte order — pass them so the
