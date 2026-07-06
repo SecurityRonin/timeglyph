@@ -152,6 +152,9 @@ enum Commands {
         /// Include sentinel and out-of-window readings too (noisier).
         #[arg(long)]
         all: bool,
+        /// Emit JSONL (one JSON object per value) instead of text.
+        #[arg(long)]
+        json: bool,
     },
     /// List every registered format with its citation.
     List,
@@ -246,7 +249,8 @@ fn main() -> ExitCode {
             text,
             min_digits,
             all,
-        }) => run_scan(text.as_deref(), min_digits, all, &zone, style),
+            json,
+        }) => run_scan(text.as_deref(), min_digits, all, json, &zone, style),
         Some(Commands::List) => run_list(),
         Some(Commands::Csv {
             path,
@@ -599,10 +603,34 @@ fn run_string(text: &str, zone: &RenderZone, style: DateStyle) -> u8 {
 
 /// Scan `text` (or stdin) for timestamp candidates and print each with its
 /// readings. `all` keeps sentinel/out-of-window readings and shows every one.
+/// JSON output schema version for the machine-readable surfaces. Bump on any
+/// breaking shape change so downstream parsers can pin the contract.
+const SCHEMA_VERSION: u32 = 1;
+
+/// One reading in JSON output — a deliberate CLI-owned shape (not a serialized
+/// display type), so the wire contract is stable and versioned.
+#[derive(serde::Serialize)]
+struct ReadingJson<'a> {
+    format_id: &'a str,
+    label: &'a str,
+    rendered: &'a str,
+    score: f64,
+    local: bool,
+}
+
+/// One scanned value with its ranked readings (a JSONL record for `scan --json`).
+#[derive(serde::Serialize)]
+struct ScanRecordJson<'a> {
+    schema_version: u32,
+    number: &'a str,
+    readings: Vec<ReadingJson<'a>>,
+}
+
 fn run_scan(
     text: Option<&str>,
     min_digits: usize,
     all: bool,
+    json: bool,
     zone: &RenderZone,
     style: DateStyle,
 ) -> u8 {
@@ -618,7 +646,37 @@ fn run_scan(
         s
     };
     let max = if all { usize::MAX } else { 4 };
-    for nr in timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone, style) {
+    let hits = timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone, style);
+    if json {
+        // JSONL: one object per value, so the stream is line-consumable (jq -c,
+        // SIEM ingest) without buffering the whole scan.
+        for nr in &hits {
+            let record = ScanRecordJson {
+                schema_version: SCHEMA_VERSION,
+                number: &nr.number,
+                readings: nr
+                    .readings
+                    .iter()
+                    .map(|r| ReadingJson {
+                        format_id: &r.format_id,
+                        label: &r.label,
+                        rendered: &r.rendered,
+                        score: r.score,
+                        local: r.local,
+                    })
+                    .collect(),
+            };
+            match serde_json::to_string(&record) {
+                Ok(line) => println!("{line}"),
+                Err(e) => {
+                    eprintln!("error: serializing scan record: {e}");
+                    return EXIT_ERR;
+                }
+            }
+        }
+        return EXIT_OK;
+    }
+    for nr in &hits {
         println!("{}", nr.number);
         for r in &nr.readings {
             println!("    {r}");
