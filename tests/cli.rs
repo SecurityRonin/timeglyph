@@ -65,6 +65,33 @@ fn fractional_float_rejected_under_as_int() {
 }
 
 #[test]
+fn identify_local_naive_is_not_zone_shifted() {
+    // A LocalNaive reading (exFAT/FAT wall-clock) must NOT be zone-shifted or
+    // offset-stamped under --tz: the stored wall-clock (05:57:34) stands, same
+    // as the scan/lens path. Bug was: the CLI rendered it 00:57:34-05:00.
+    let (out, _) = run(&["606940977", "--tz", "America/New_York"]);
+    assert!(
+        out.contains("1998-01-13T05:57:34"),
+        "local-naive wall-clock must be preserved: {out}"
+    );
+    assert!(
+        !out.contains("1998-01-13T00:57:34"),
+        "local-naive must not be zone-shifted: {out}"
+    );
+}
+
+#[test]
+fn decode_local_naive_is_not_zone_shifted() {
+    // Same rule on the explicit decode path.
+    let (out, _) = run(&["decode", "exfat", "606940977", "--tz", "America/New_York"]);
+    assert!(out.contains("1998-01-13T05:57:34"), "{out}");
+    assert!(
+        !out.contains("00:57:34"),
+        "must not zone-shift local-naive: {out}"
+    );
+}
+
+#[test]
 fn as_string_decodes_a_datetime() {
     // `--as string` forces the string-form interpreter and shows the reading.
     let (out, _) = run(&["--as", "string", "2020-01-01T00:00:00Z"]);
