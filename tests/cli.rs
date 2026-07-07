@@ -172,14 +172,16 @@ fn min_score_flag_filters_below_threshold() {
 
 #[test]
 fn ambiguity_gap_flag_widens_the_tie_band() {
-    // 1577836800: top two are 1.00 vs 0.97 (gap 0.03) — OK by default (exact-tie
-    // only)...
+    // 1577836800: top two are 1.00 (unix) vs 0.86 (iostime), gap 0.14 — OK by
+    // default (exact-tie only). The gap widened from the pre-epoch_distance 0.03:
+    // the runner-up used to hug the iostime 2001 epoch and score ~0.97; the
+    // MAGNITUDE/RECENCY prior now demotes that epoch-hugging reading.
     let (_, code_default) = run(&["1577836800"]);
     assert_eq!(code_default, 0, "default gap: unique top is unambiguous");
-    // ...but AMBIGUOUS once the gap band is widened past 0.03. Require real
+    // ...but AMBIGUOUS once the gap band is widened past 0.14. Require real
     // readings in the output so a clap usage error (also exit 2) can't pose as
     // ambiguity.
-    let (out_wide, code_wide) = run(&["1577836800", "--ambiguity-gap", "0.05"]);
+    let (out_wide, code_wide) = run(&["1577836800", "--ambiguity-gap", "0.20"]);
     assert!(
         out_wide.contains("unix"),
         "must print readings, not a clap error: {out_wide}"

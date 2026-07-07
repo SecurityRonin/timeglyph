@@ -63,7 +63,7 @@ standards body), collected on the [References](references.md) page.
   leap-smear disclaimer for POSIX-labelled readings. See [Methodology](concepts/methodology.md).
 - **Ambiguity is first-class.** The default output is the ranked candidate set;
   scoring combines named components (representable, in-window, granularity match,
-  magnitude fit) so the rank is auditable, never opaque.
+  magnitude fit, epoch distance) so the rank is auditable, never opaque.
 - **POSIX-correct spine.** The internal instant is `PosixNs(i128)` — nanoseconds
   since 1970, proleptic Gregorian, leap-second-ignoring. It is deliberately *not*
   called UTC; the leap-aware scales (GPS/TAI/NTP) are kept separate.

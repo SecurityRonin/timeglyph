@@ -6,8 +6,9 @@
 //! forensic tool must never do (epistemics: "consistent with", not a verdict).
 //!
 //! Scoring is a named component set (ADR 0005): representable validity,
-//! plausibility-window membership, granularity match, magnitude fit, and a
-//! sentinel guard are always emitted; byte-width match, endian match,
+//! plausibility-window membership, granularity match, magnitude fit, an
+//! epoch-distance (magnitude/recency) prior, and a sentinel guard are always
+//! emitted; byte-width match, endian match,
 //! artifact-context hint, and neighbour-monotonicity are emitted when an
 //! [`InterpretContext`] supplies their inputs. Every component is surfaced
 //! verbatim on the [`Candidate`] — a low component lowers the rank, never hides
@@ -179,6 +180,7 @@ fn score_components_float(f: &Format, instant: PosixNs) -> Vec<(&'static str, f6
         ("in_window", in_window),
         ("granularity_match", 1.0),
         ("magnitude_fit", magnitude_fit(f.strategy, instant)),
+        ("epoch_distance", epoch_distance(f.strategy, instant)),
         ("not_sentinel", 1.0),
     ]
 }
@@ -293,12 +295,14 @@ fn score_components(
     ));
     let granularity = granularity_match(f.strategy, value);
     let magnitude = magnitude_fit(f.strategy, instant);
+    let epoch_dist = epoch_distance(f.strategy, instant);
     let not_sentinel = f64::from(u8::from(sentinel_reason(value).is_none()));
     let mut components = vec![
         ("representable", representable),
         ("in_window", in_window),
         ("granularity_match", granularity),
         ("magnitude_fit", magnitude),
+        ("epoch_distance", epoch_dist),
         ("not_sentinel", not_sentinel),
     ];
     // Context-unlocked components (ADR 0005): each appears ONLY when its
@@ -439,6 +443,44 @@ fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
             }
         }
         Strategy::LinearInt { .. } | Strategy::LinearFloat { .. } | Strategy::Packed { .. } => 1.0,
+    }
+}
+
+/// MAGNITUDE/RECENCY prior: how far the decoded instant sits *past the format's
+/// own epoch*, relative to the two-year "well into its era" ramp — `0.0` at the
+/// epoch, `1.0` two years or more past it.
+///
+/// Forensic justification (independent of any corpus): a real timestamp's
+/// magnitude places the decoded instant WELL INTO the format's plausible era,
+/// not hugging the format's epoch. A value that lands microseconds/minutes/hours
+/// after the format's own epoch is orders of magnitude too small for that unit
+/// to have been produced by a modern clock — weak evidence for that format. The
+/// canonical case: a 13-digit Unix-millisecond value is ALSO in-window as
+/// `iostime` (nanoseconds since 2001), where it decodes to 2001-01-01 plus a few
+/// minutes; a genuine ns-since-2001 value for a modern date is ~17-19 digits, so
+/// the tiny reading is implausible for that unit and this prior demotes it.
+///
+/// This subsumes [`magnitude_fit`]'s epoch ramp for `Embedded` IDs and extends
+/// the same idea to the linear (`LinearInt`/`LinearFloat`) formats it previously
+/// left at `1.0`. It is a LOW-WEIGHT prior (weight 1, like `granularity_match`):
+/// it nudges the rank while the double-weighted `in_window`/`magnitude_fit`/
+/// `not_sentinel` guards stay dominant. Tradeoff: it is NOT a filter — a genuine
+/// early-epoch timestamp (e.g. a real instant an hour after a format's epoch)
+/// still appears as a candidate, just ranked lower; the reading is never hidden.
+/// `Packed` civil-field formats carry no linear epoch offset, so they score
+/// `1.0` (the prior does not apply), exactly as [`magnitude_fit`] treats them.
+fn epoch_distance(strategy: Strategy, instant: PosixNs) -> f64 {
+    let epoch_ns = match strategy {
+        Strategy::LinearInt { epoch_ns, .. }
+        | Strategy::LinearFloat { epoch_ns, .. }
+        | Strategy::Embedded { epoch_ns, .. } => epoch_ns,
+        Strategy::Packed { .. } => return 1.0,
+    };
+    let past = instant.0 - epoch_ns;
+    if past <= 0 {
+        0.0
+    } else {
+        (past as f64 / TWO_YEARS_NS as f64).min(1.0)
     }
 }
 

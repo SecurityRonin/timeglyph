@@ -16,8 +16,12 @@ plausible readings as `Candidate`s, each with a `score`, named `components`, and
 
 - Scoring components are emitted verbatim (a named set), never collapsed to a bare
   rank: `representable`, `in_window`, `granularity_match`, `magnitude_fit`,
-  `not_sentinel` always; and, when context is supplied, `byte_width_match`,
-  `endian_match`, `artifact_match`, `neighbour_monotonicity`.
+  `epoch_distance`, `not_sentinel` always; and, when context is supplied,
+  `byte_width_match`, `endian_match`, `artifact_match`, `neighbour_monotonicity`.
+  `epoch_distance` is a low-weight MAGNITUDE/RECENCY prior: a real timestamp sits
+  well past the format's own epoch, so a reading hugging the epoch (a value too
+  small for that unit, e.g. a 13-digit Unix-ms read as ns-since-2001 → 2001 plus
+  minutes) is demoted. It re-orders only; it never hides a reading.
 - **Epistemic stance:** a reading is *evidence*, not a verdict. Output says
   "consistent with", never "is" / "detected". A leap-smear disclaimer is surfaced
   where relevant (a smeared source is indistinguishable from a raw value without
