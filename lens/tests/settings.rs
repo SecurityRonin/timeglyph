@@ -8,9 +8,11 @@ use timeglyph_lens::theme::Theme;
 use timeglyph_lens::zone::parse_zone;
 
 #[test]
-fn default_is_utc_iso_dark_no_lunar() {
+fn default_theme_is_none_meaning_follow_system() {
+    // No saved theme preference → None, which the overlay resolves to the OS
+    // light/dark setting. Only an explicit user choice persists a concrete theme.
     let s = PersistedSettings::default();
-    assert_eq!(s.theme, Theme::Dark);
+    assert_eq!(s.theme, None);
     assert!(!s.show_lunar);
     assert_eq!(s.date_style, DateStyle::Iso8601);
     assert_eq!(s.zone_spec, "UTC");
@@ -20,7 +22,7 @@ fn default_is_utc_iso_dark_no_lunar() {
 #[test]
 fn round_trips_through_json() {
     let s = PersistedSettings {
-        theme: Theme::Light,
+        theme: Some(Theme::Light),
         show_lunar: true,
         date_style: DateStyle::UsStyle,
         zone_spec: "Asia/Shanghai".to_string(),
@@ -29,6 +31,15 @@ fn round_trips_through_json() {
     let json = serde_json::to_string(&s).unwrap();
     let back: PersistedSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(back, s);
+}
+
+#[test]
+fn missing_theme_field_deserializes_to_follow_system() {
+    // Forward/backward compatible: a settings file that predates the theme
+    // preference (no `theme` key) loads as None → follow the system, not a crash.
+    let json = r#"{"show_lunar":false,"date_style":"Iso8601","zone_spec":"UTC","longitude":null}"#;
+    let s: PersistedSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(s.theme, None);
 }
 
 #[test]
