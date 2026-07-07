@@ -1,9 +1,15 @@
 //! Timestomp annotation contract.
 //!
-//! A Windows FILETIME (or AD `active`) value whose sub-second 100 ns field is
-//! exactly zero is a soft forensic signal of `SetFileTime`-style manipulation:
-//! the Windows API typically sets whole-second precision when called directly.
-//! Naturally-recorded timestamps almost never land on a clean second boundary.
+//! A Windows **FILETIME** value whose sub-second 100 ns field is exactly zero is
+//! a soft forensic signal of `SetFileTime`-style manipulation: the Windows file
+//! API typically sets whole-second precision when called directly, whereas a
+//! naturally-recorded file time almost never lands on a clean second boundary.
+//!
+//! Deliberately scoped to `filetime` ONLY. AD `active` (Integer8) shares the
+//! 100 ns-since-1601 encoding, but many AD attributes (`accountExpires`,
+//! `pwdLastSet`, `lockoutTime`) are *legitimately* whole-second or coarser and
+//! are not set via `SetFileTime` — annotating them would be a false positive and
+//! an overstatement, which a forensic tool must not do.
 //!
 //! The engine annotates this as an **assumption**, framed "consistent with" —
 //! never a verdict. A non-zero sub-second field must NOT trigger the note.
@@ -20,10 +26,6 @@ const FILETIME_WHOLE_SECOND: i64 = 132_225_120_000_000_000;
 // A filetime value that decodes to 2020-01-01T00:00:00.0000001Z (one 100 ns
 // tick of sub-second — NOT a whole second). = FILETIME_WHOLE_SECOND + 1
 const FILETIME_SUBSEC_NONZERO: i64 = 132_225_120_000_000_001;
-
-// An `active` (AD Integer8) value with zero sub-second field — same format family.
-// Use the same epoch offset: active uses FILETIME_EPOCH_NS + HundredNanos.
-const ACTIVE_WHOLE_SECOND: i64 = FILETIME_WHOLE_SECOND;
 
 #[test]
 fn filetime_zero_subsecond_carries_timestomp_annotation() {
@@ -62,27 +64,25 @@ fn filetime_nonzero_subsecond_no_timestomp_annotation() {
 }
 
 #[test]
-fn active_zero_subsecond_carries_timestomp_annotation() {
-    let cands = interpret::interpret_int(ACTIVE_WHOLE_SECOND);
-    let active = cands
-        .iter()
-        .find(|c| c.format_id == "active")
-        .expect("active candidate must be present");
-    let joined = active.assumptions.join(" ").to_lowercase();
-    assert!(
-        joined.contains("consistent with") && joined.contains("manipulation"),
-        "an active (AD) value with zero sub-second field must carry the manipulation note; got: {:?}",
-        active.assumptions
-    );
+fn active_zero_subsecond_gets_no_filetime_manipulation_note() {
+    // AD `active` shares the 100 ns-since-1601 encoding, but whole-second AD
+    // values are common and legitimate — the SetFileTime signal must NOT leak
+    // onto it (that would be a false positive / overstatement).
+    let cands = interpret::interpret_int(FILETIME_WHOLE_SECOND);
+    if let Some(active) = cands.iter().find(|c| c.format_id == "active") {
+        let joined = active.assumptions.join(" ").to_lowercase();
+        assert!(
+            !joined.contains("setfiletime") && !joined.contains("manipulation"),
+            "active (AD) must NOT carry the SetFileTime manipulation note; got: {:?}",
+            active.assumptions
+        );
+    }
 }
 
 #[test]
 fn dotnet_ticks_zero_subsecond_no_annotation() {
     // dotnet_ticks uses a different epoch (0001-01-01) and API context (.NET);
-    // the SetFileTime-style signal does not apply to it. Verify no annotation leaks.
-    // Find a dotnet_ticks value that decodes to a whole second.
-    // .NET epoch is 0001-01-01; 2020-01-01T00:00:00Z in 100ns ticks from 0001-01-01:
-    //   (2020 - 1) years in seconds ≈ 63_745_545_600 s → × 10_000_000 = 637_455_456_000_000_000
+    // the SetFileTime-style signal does not apply. Verify no annotation leaks.
     const DOTNET_WHOLE_SECOND: i64 = 637_455_456_000_000_000;
     let cands = interpret::interpret_int(DOTNET_WHOLE_SECOND);
     if let Some(dn) = cands.iter().find(|c| c.format_id == "dotnet_ticks") {
@@ -93,6 +93,4 @@ fn dotnet_ticks_zero_subsecond_no_annotation() {
             dn.assumptions
         );
     }
-    // If dotnet_ticks doesn't appear in candidates for this value, the assertion
-    // passes trivially — that's acceptable (out-of-window values are skipped).
 }

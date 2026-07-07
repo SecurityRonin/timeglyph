@@ -133,9 +133,8 @@ jobs:
     # csv, or tracing-subscriber.  Those are CLI-only deps; a library consumer
     # doing `default-features = false` should get a lean build with only the
     # core engine deps (jiff, thiserror, hex, serde, serde_json, tracing facade).
-    # This job currently FAILS (RED) because clap/csv/tracing-subscriber are
-    # unconditional dependencies.  It will go GREEN once they are made optional
-    # behind a `cli` feature (Item B).
+    # Enforced now that clap/csv/tracing-subscriber sit behind the `cli`/`csv`
+    # features (a lean library build carries none of them).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
