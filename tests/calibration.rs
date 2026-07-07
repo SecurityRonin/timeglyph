@@ -115,21 +115,23 @@ fn calibration_accuracy_meets_floor() {
         p1 * 100.0,
         p3 * 100.0
     );
-    // Regression floors. Baseline before the epoch_distance (MAGNITUDE/RECENCY)
-    // prior was top-1 27.1%, top-3 92.9% (n=336) — the ms/µs/ns families all
-    // cross-tied because a value hugging a format's own epoch (e.g. a 13-digit
-    // Unix-ms read as iostime = 2001 + minutes) sat in-window and won on
-    // alphabetical order. The epoch_distance prior demotes epoch-huggers; top-1
-    // must clear a materially higher floor, and top-3 must NOT regress (the true
-    // format is only re-ordered, never dropped from contention).
+    // Regression floors. Baseline was top-1 27.1% before any prior; the
+    // epoch_distance (MAGNITUDE/RECENCY) prior lifted it to 57.7% by demoting
+    // epoch-huggers (a 13-digit Unix-ms read as iostime = 2001 + minutes), and
+    // the prevalence TIE-BREAK (score-neutral; demotes only the rare long tail so
+    // e.g. filetime beats AD `active`) lifted it to 60.1% — all by RE-ORDERING,
+    // never hiding: every reading is still shown, likelihood is information not a
+    // filter. Current measured: top-1 60.1%, top-3 93.8% (n=336). Floors sit just
+    // under, so a regression trips them; top-3 must stay high (the true format is
+    // only re-ordered, never dropped from contention).
     assert!(
         p3 >= 0.90,
         "top-3 accuracy {:.1}% below floor 90% (the prior must not drop true formats)",
         p3 * 100.0
     );
     assert!(
-        p1 >= 0.40,
-        "top-1 accuracy {:.1}% below floor 40%",
+        p1 >= 0.55,
+        "top-1 accuracy {:.1}% below floor 55%",
         p1 * 100.0
     );
 }

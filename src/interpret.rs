@@ -113,6 +113,13 @@ pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Can
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
+            // Break exact score-ties by prevalence (the likelier format first),
+            // then by id for determinism.
+            .then_with(|| {
+                prevalence(b.format_id)
+                    .partial_cmp(&prevalence(a.format_id))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then_with(|| a.format_id.cmp(b.format_id))
     });
     out
@@ -138,6 +145,11 @@ pub fn interpret_float(value: f64) -> Vec<Candidate> {
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                prevalence(b.format_id)
+                    .partial_cmp(&prevalence(a.format_id))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then_with(|| a.format_id.cmp(b.format_id))
     });
     out
@@ -181,8 +193,31 @@ fn score_components_float(f: &Format, instant: PosixNs) -> Vec<(&'static str, f6
         ("granularity_match", 1.0),
         ("magnitude_fit", magnitude_fit(f.strategy, instant)),
         ("epoch_distance", epoch_distance(f.strategy, instant)),
+        ("prevalence", prevalence(f.id)),
         ("not_sentinel", 1.0),
     ]
+}
+
+/// Editorial PREVALENCE prior (ADR-0005 successor), used ONLY as a score-neutral
+/// tie-break: how commonly this format is the TRUE source of a timestamp in real
+/// evidence — a *documented prior, NOT a measurement*. It demotes ONLY the
+/// genuinely-rare long tail (AD `active`, legacy Mac `excel1904`, obscure packed
+/// hardware-clock/regional formats) so that when such a value ALSO reads as a
+/// far more common format sharing its window, the common reading wins the tie
+/// (e.g. filetime over `active`, OLE over `excel1904`). Everything mainstream —
+/// Unix/FILETIME/WebKit/Cocoa, DBs, .NET, browsers, social IDs — stays at 1.0,
+/// so the prior NEVER pushes a mainstream true reading out of the top-3, and
+/// genuinely-ambiguous ties among common formats (Twitter vs Discord, SQL Server
+/// vs PostgreSQL) stay tied — the tool reports underdetermination honestly. As a
+/// weight-0, always-emitted component it is visible and auditable but does not
+/// distort the score; it only orders exact score-ties, and never hides a reading.
+fn prevalence(id: &str) -> f64 {
+    match id {
+        "active" | "excel1904" | "sony" | "dttm" | "bitdate" | "bitdec" | "bcd" | "moto"
+        | "symantec" | "dvr" | "ns40" | "ns40le" | "logtime" | "semioctet" | "gsm" | "nokiale"
+        | "mjd" => 0.5,
+        _ => 1.0,
+    }
 }
 
 /// Build a scored, assumption-carrying candidate for one format + integer value,
@@ -303,6 +338,7 @@ fn score_components(
         ("granularity_match", granularity),
         ("magnitude_fit", magnitude),
         ("epoch_distance", epoch_dist),
+        ("prevalence", prevalence(f.id)),
         ("not_sentinel", not_sentinel),
     ];
     // Context-unlocked components (ADR 0005): each appears ONLY when its
@@ -528,6 +564,12 @@ fn overall_score(components: &[(&'static str, f64)]) -> f64 {
     // the structural disk-layout/column signals (when present). Everything else
     // (granularity, representable, the softer artifact hint) weighs one.
     let weight = |name: &str| match name {
+        // Prevalence is a VISIBLE, auditable prior but score-NEUTRAL (weight 0):
+        // it breaks exact score-ties in the sort, never distorts the score. As a
+        // weighted component it demoted niche formats out of the top-3 (a net
+        // loss); as a pure tie-break it lifts the likelier format to #1 with no
+        // top-3 cost.
+        "prevalence" => 0.0,
         "in_window"
         | "magnitude_fit"
         | "not_sentinel"

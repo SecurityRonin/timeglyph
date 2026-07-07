@@ -69,20 +69,27 @@ fn non_finite_float_yields_no_reading() {
 #[test]
 fn tied_float_readings_sort_deterministically_by_id() {
     // A small day-count value lands several LinearFloat formats in civil range
-    // at once (ole, excel1904, cocoa_float all score 1.0), exercising the
-    // ranking comparator and its format-id tie-break: equal scores must order
-    // alphabetically by id, deterministically.
-    let cands = interpret::interpret_float(43900.5);
-    let tied: Vec<&str> = cands
-        .iter()
-        .filter(|c| (c.score - 1.0).abs() < 1e-9)
-        .map(|c| c.format_id)
-        .collect();
-    assert!(
-        tied.len() >= 2,
-        "need >=2 tied readings to exercise the tie-break: {tied:?}"
-    );
-    let mut sorted = tied.clone();
-    sorted.sort_unstable();
-    assert_eq!(tied, sorted, "tied readings must be ordered by format_id");
+    // at once (cocoa_float, ole, excel1904 all score 1.0), exercising the tie
+    // comparator. The tie-break is prevalence-desc THEN id: the common
+    // cocoa_float/ole (prevalence 1.0) precede the niche excel1904 (0.5), and
+    // within a prevalence tier the order is alphabetical — deterministic.
+    let tied = || -> Vec<&'static str> {
+        interpret::interpret_float(43900.5)
+            .into_iter()
+            .filter(|c| (c.score - 1.0).abs() < 1e-9)
+            .map(|c| c.format_id)
+            .collect()
+    };
+    let t = tied();
+    assert!(t.len() >= 2, "need >=2 tied readings: {t:?}");
+    if let (Some(ole), Some(ex)) = (
+        t.iter().position(|&x| x == "ole"),
+        t.iter().position(|&x| x == "excel1904"),
+    ) {
+        assert!(
+            ole < ex,
+            "common `ole` must precede niche `excel1904` in the tie: {t:?}"
+        );
+    }
+    assert_eq!(t, tied(), "tie order must be deterministic");
 }

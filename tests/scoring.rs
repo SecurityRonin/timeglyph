@@ -217,11 +217,9 @@ fn prevalence_ranks_ubiquitous_filetime_above_niche_active() {
 fn prevalence_ranks_ubiquitous_ole_above_niche_excel1904() {
     // OLE automation date (ubiquitous in Windows/Office) vs Excel-1904 (rare
     // legacy Mac Excel) — a value valid as both must rank ole first.
-    let ole = interpret::interpret_float(42073.333_333_333_336)
-        .iter()
-        .position(|c| c.format_id == "ole")
-        .unwrap();
-    let excel = interpret::interpret_float(42073.333_333_333_336)
+    let cands = interpret::interpret_float(42_073.333_333_333_336);
+    let ole = cands.iter().position(|c| c.format_id == "ole").unwrap();
+    let excel = cands
         .iter()
         .position(|c| c.format_id == "excel1904")
         .unwrap();
