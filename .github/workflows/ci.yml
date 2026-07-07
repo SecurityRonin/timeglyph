@@ -99,8 +99,11 @@ jobs:
       # The gitleaks GitHub Action requires a paid license for org repos; the
       # gitleaks CLI is free. Install + run it directly (fleet pattern).
       - name: Install gitleaks
+        # Pin the version rather than query the GitHub API for "latest": the
+        # unauthenticated api.github.com call rate-limits on shared CI IPs, which
+        # left VERSION empty and 404'd the download. Bump deliberately.
         run: |
-          VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | jq -r '.tag_name[1:]')
+          VERSION=8.30.1
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
             | tar xz -C /tmp gitleaks
       - name: Run gitleaks
