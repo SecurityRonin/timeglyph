@@ -52,11 +52,19 @@ fn corpus_covers_diverse_epoch_families() {
     let distinct: std::collections::BTreeSet<&str> =
         rows.iter().map(|r| r.format.as_str()).collect();
     assert!(
-        distinct.len() >= 15,
-        "corpus should span >=15 formats (has {}: {:?})",
+        distinct.len() >= 19,
+        "corpus should span >=19 formats (has {}: {:?})",
         distinct.len(),
         distinct
     );
+    // Include float-strategy formats (OLE / Excel / Julian / Cocoa-double), which
+    // only decode via interpret_float — so the harness must handle them too.
+    for fmt in ["ole", "excel1904", "sqlite_julian", "cocoa_float"] {
+        assert!(
+            distinct.contains(fmt),
+            "corpus should include the float-strategy format {fmt}"
+        );
+    }
 }
 
 #[test]
