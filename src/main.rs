@@ -150,9 +150,10 @@ enum Commands {
         /// Minimum consecutive digits for a numeric run to be considered.
         #[arg(long, default_value_t = 8)]
         min_digits: usize,
-        /// Include sentinel and out-of-window readings too (noisier).
-        #[arg(long)]
-        all: bool,
+        /// Show at most N readings per value (opt-in brevity). Default: show ALL
+        /// readings, ranked — likelihood orders them, it never filters.
+        #[arg(long, value_name = "N")]
+        top: Option<usize>,
         /// Emit JSONL (one JSON object per value) instead of text.
         #[arg(long)]
         json: bool,
@@ -250,9 +251,9 @@ fn main() -> ExitCode {
         Some(Commands::Scan {
             text,
             min_digits,
-            all,
+            top,
             json,
-        }) => run_scan(text.as_deref(), min_digits, all, json, &zone, style),
+        }) => run_scan(text.as_deref(), min_digits, top, json, &zone, style),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
         Some(Commands::Csv {
@@ -673,7 +674,7 @@ struct ScanRecordJson<'a> {
 fn run_scan(
     text: Option<&str>,
     min_digits: usize,
-    all: bool,
+    top: Option<usize>,
     json: bool,
     zone: &RenderZone,
     style: DateStyle,
@@ -689,8 +690,11 @@ fn run_scan(
         }
         s
     };
-    let max = if all { usize::MAX } else { 4 };
-    let hits = timeglyph::scan::inspect_text_opts(&input, max, min_digits, all, zone, style);
+    // Show-all: no likelihood filter (include_all = true → out-of-window and
+    // sentinel readings are shown too, ranked). --top only caps the count for
+    // brevity; likelihood orders the readings, it never gates them.
+    let max = top.unwrap_or(usize::MAX);
+    let hits = timeglyph::scan::inspect_text_opts(&input, max, min_digits, true, zone, style);
     if json {
         // JSONL: one object per value, so the stream is line-consumable (jq -c,
         // SIEM ingest) without buffering the whole scan.
