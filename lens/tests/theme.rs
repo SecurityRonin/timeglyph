@@ -64,20 +64,28 @@ fn confidence_dots_are_visible_on_panel() {
 }
 
 #[test]
-fn effective_theme_follows_system_when_no_explicit_preference() {
-    use timeglyph_lens::theme::effective_theme;
-    // No saved preference (None) → follow the OS setting.
-    assert_eq!(effective_theme(None, Some(Theme::Light)), Theme::Light);
-    assert_eq!(effective_theme(None, Some(Theme::Dark)), Theme::Dark);
-    // An explicit choice always wins over the system.
+fn theme_preference_resolves_against_the_system() {
+    use timeglyph_lens::theme::ThemePreference;
+    // System follows the OS light/dark setting...
     assert_eq!(
-        effective_theme(Some(Theme::Light), Some(Theme::Dark)),
+        ThemePreference::System.resolve(Some(Theme::Light)),
         Theme::Light
     );
     assert_eq!(
-        effective_theme(Some(Theme::Dark), Some(Theme::Light)),
+        ThemePreference::System.resolve(Some(Theme::Dark)),
         Theme::Dark
     );
-    // Neither known → safe fallback to Dark.
-    assert_eq!(effective_theme(None, None), Theme::Dark);
+    // ...falling back to Dark when the OS preference is unknown.
+    assert_eq!(ThemePreference::System.resolve(None), Theme::Dark);
+    // A fixed choice ignores the system.
+    assert_eq!(
+        ThemePreference::Light.resolve(Some(Theme::Dark)),
+        Theme::Light
+    );
+    assert_eq!(
+        ThemePreference::Dark.resolve(Some(Theme::Light)),
+        Theme::Dark
+    );
+    // The default preference is System.
+    assert_eq!(ThemePreference::default(), ThemePreference::System);
 }
