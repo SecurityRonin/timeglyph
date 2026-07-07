@@ -45,6 +45,18 @@ fn corpus_covers_diverse_epoch_families() {
         let n = rows.iter().filter(|r| r.format == fmt).count();
         assert!(n >= 5, "corpus needs >=5 {fmt} values (has {n})");
     }
+    // Breadth: the ranking must be measured across many epoch families, not a
+    // handful, so a scoring prior can't be tuned to a narrow set. Generated
+    // tier-1 values (time-decode --timestamp) broaden coverage beyond the
+    // artifact-carved formats.
+    let distinct: std::collections::BTreeSet<&str> =
+        rows.iter().map(|r| r.format.as_str()).collect();
+    assert!(
+        distinct.len() >= 15,
+        "corpus should span >=15 formats (has {}: {:?})",
+        distinct.len(),
+        distinct
+    );
 }
 
 #[test]
