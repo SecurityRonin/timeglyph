@@ -415,3 +415,68 @@ fn differential_encode_g2_packed() {
         );
     }
 }
+
+// --- dhcp6 (DHCPv6 DUID-LLT time) + classic HFS (local) ---------------------
+// Two new LinearInt formats. dhcp6: seconds since 2000-01-01 UTC (RFC 3315 §9.2
+// DUID-LLT time field). hfs: classic Mac HFS, seconds since 1904-01-01 as LOCAL
+// wall-clock (the LocalNaive complement to the UTC `hfsplus`, which shares the
+// epoch + value). Values and answers authored by the time-decode oracle.
+
+/// Committed (CI backstop — survives without the oracle on PATH): the exact
+/// civil strings time-decode produces, plus the tz-semantics distinction that
+/// makes classic HFS a distinct format from `hfsplus` despite the shared epoch.
+#[test]
+fn dhcp6_and_classic_hfs_decode_to_committed_oracle_values() {
+    use timeglyph::TzSemantics;
+    // dhcp6 = seconds since 2000-01-01 UTC.
+    assert_eq!(civil(&render_int("dhcp6", 700_000_000)), "2022-03-07 20:26:40");
+    assert_eq!(civil(&render_int("dhcp6", 946_684_800)), "2029-12-31 00:00:00");
+    // classic HFS shares HFS+'s 1904 epoch AND value; only the tz meaning differs.
+    assert_eq!(civil(&render_int("hfs", 3_574_260_000)), "2017-04-05 18:00:00");
+    assert_eq!(
+        timeglyph::format("hfs").unwrap().tz,
+        TzSemantics::LocalNaive,
+        "classic HFS stores LOCAL wall-clock"
+    );
+    assert_eq!(
+        timeglyph::format("hfsplus").unwrap().tz,
+        TzSemantics::Utc,
+        "HFS+ stores UTC"
+    );
+}
+
+/// Live differential: the oracle needs the FULL DUID-LLT (type+hwtype+time+MAC);
+/// timeglyph decodes the standalone seconds field, so we construct the DUID here.
+#[test]
+fn dhcp6_agrees_with_time_decode_live() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode not on PATH");
+        return;
+    }
+    for secs in [700_000_000u32, 946_684_800] {
+        // 0001 = DUID-LLT, 0001 = Ethernet, <8 hex> = time (BE), then a MAC.
+        let duid = format!("00010001{secs:08x}001122334455");
+        let got = oracle("--dhcp6", &duid).expect("dhcp6: no oracle output");
+        assert_eq!(
+            got,
+            civil(&render_int("dhcp6", i64::from(secs))),
+            "dhcp6 secs={secs}"
+        );
+    }
+}
+
+/// Live differential for classic HFS (same wall-clock as `--hfsdec`; the local
+/// vs UTC distinction is Format metadata, not the civil rendering).
+#[test]
+fn classic_hfs_agrees_with_time_decode_live() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode not on PATH");
+        return;
+    }
+    agree(
+        "hfs",
+        &render_int("hfs", 3_574_260_000),
+        "--hfsdec",
+        "3574260000",
+    );
+}
