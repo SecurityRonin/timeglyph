@@ -25,9 +25,6 @@ use timeglyph_lens::{ganzhi, text, tzinfo, tzmap};
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
 
-/// How many readings to show per number.
-const MAX_READINGS: usize = 4;
-
 /// The live overlay settings (theme, 干支 line, datetime display style). Loaded
 /// from and saved to disk (see [`timeglyph_lens::settings`]) so a prior
 /// session's display frame carries over.
@@ -277,7 +274,7 @@ impl LensApp {
             return;
         }
         self.last_text.clone_from(&text);
-        let new_hits = scan::inspect_text(&text, MAX_READINGS, &self.zone.zone);
+        let new_hits = scan::inspect_text(&text, timeglyph_lens::READINGS_SHOWN, &self.zone.zone);
         if new_hits.is_empty() {
             return;
         }
@@ -444,7 +441,11 @@ impl eframe::App for LensApp {
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
-            self.hits = scan::inspect_text(&self.source, MAX_READINGS, &self.zone.zone);
+            self.hits = scan::inspect_text(
+                &self.source,
+                timeglyph_lens::READINGS_SHOWN,
+                &self.zone.zone,
+            );
         }
 
         // Snapshot into locals so the nested render closures capture no `self`.

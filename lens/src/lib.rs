@@ -8,6 +8,13 @@
 
 pub use timeglyph::scan;
 
+/// How many readings the overlay shows per number: **all** confident (in-window)
+/// ones. The readings pane scrolls, so there is no display reason to truncate —
+/// the show-all principle means likelihood ranks the readings, it never filters
+/// them to a top-N slice (the analyst decides which are useful). Passed as the
+/// per-number cap to [`scan::inspect_text`].
+pub const READINGS_SHOWN: usize = usize::MAX;
+
 pub mod fonts;
 pub mod ganzhi;
 pub mod settings;
