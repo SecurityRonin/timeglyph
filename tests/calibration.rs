@@ -58,8 +58,8 @@ fn corpus_covers_diverse_epoch_families() {
     let distinct: std::collections::BTreeSet<&str> =
         rows.iter().map(|r| r.format.as_str()).collect();
     assert!(
-        distinct.len() >= 19,
-        "corpus should span >=19 formats (has {}: {:?})",
+        distinct.len() >= 28,
+        "corpus should span >=28 formats (has {}: {:?})",
         distinct.len(),
         distinct
     );
@@ -69,6 +69,26 @@ fn corpus_covers_diverse_epoch_families() {
         assert!(
             distinct.contains(fmt),
             "corpus should include the float-strategy format {fmt}"
+        );
+    }
+    // Include packed/bit-field formats so the corpus validates the full packed
+    // tier: FAT/exFAT, BCD/semi-octet telephony, Nokia/Motorola/Symantec
+    // hardware clocks, GSM network time, SQL Server datetime, and MJD.
+    for fmt in [
+        "fat",
+        "exfat",
+        "bcd",
+        "sqlserver",
+        "gsm",
+        "moto",
+        "symantec",
+        "nokiale",
+        "ns40",
+        "logtime",
+    ] {
+        assert!(
+            distinct.contains(fmt),
+            "corpus should include the packed format {fmt}"
         );
     }
 }
