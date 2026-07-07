@@ -250,6 +250,37 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
                 .to_string(),
         );
     }
+    // A value at/near a 32-bit field boundary is evidence-relevant for a whole-
+    // seconds field (the time_t class): 2^31 is the signed max, 2^32 the unsigned
+    // max. Derived from the value + field width, so it holds for any seconds-unit
+    // LinearInt regardless of epoch — the Unix Y2038 boundary is just its most
+    // famous instance. Framed as a possibility (ADR 0005), never a verdict.
+    if matches!(
+        f.strategy,
+        Strategy::LinearInt {
+            unit: Unit::Seconds,
+            ..
+        }
+    ) {
+        const SIGNED_MAX: i64 = i32::MAX as i64; // 2_147_483_647
+        const UNSIGNED_MAX: i64 = u32::MAX as i64; // 4_294_967_295
+        const NEAR: i64 = 63_072_000; // ~2 years of seconds
+        if (SIGNED_MAX + 1..=UNSIGNED_MAX).contains(&value) {
+            assumptions.push(
+                "stored value exceeds the signed 32-bit range (2^31) but fits an unsigned \
+                 32-bit field — consistent with an unsigned 32-bit time field, or a value \
+                 past a signed field's rollover"
+                    .to_string(),
+            );
+        } else if (SIGNED_MAX - NEAR..=SIGNED_MAX).contains(&value) {
+            assumptions.push(
+                "stored value is within ~2 years of the signed 32-bit maximum (2^31-1) — \
+                 consistent with approaching the representable limit of a signed 32-bit field \
+                 (the Unix Y2038 boundary for a 1970-epoch field)"
+                    .to_string(),
+            );
+        }
+    }
     Some(Candidate {
         format_id: f.id,
         label: f.label,
