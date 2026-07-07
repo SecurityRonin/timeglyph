@@ -77,12 +77,21 @@ labels are committed, no URLs or content.
 | `filetime` | 15 | `magnet-summit-2023-ctf` `SOFTWARE` hive — registry key LastWrite via `regipy` (real) |
 | `iostime` | 10 | `time-decode --iostime` for real 2015–2024 dates — **tier-1 oracle-generated** (no clean in-hand artifact uses ns-since-2001; the values carry real-era magnitudes) |
 
-**Measured baseline (this corpus, 82 values):** top-1 26.2% on the first three
-formats alone was optimistic; adding `unix`/`filetime`/`iostime` exposed the
-honest number — **top-1 13.4%, top-3 91.5%**, with only `cocoa` reliably ranked
-#1. That diversity is the guard against tuning a magnitude/recency prior to a
-narrow corpus. Cross-checking oracles: `time-decode` (per-format) and `unfurl`
-(embedded-ID family).
+Beyond the artifact-carved rows above, the corpus is broadened with **tier-1
+oracle-generated** values — `time-decode --timestamp <date>` across 8 real
+2015–2023 dates, mapped to their timeglyph id (integer formats: `active`,
+`dotnet_ticks`, `discord`, `hfsplus`, `ksuid`, `linkedin`, `mastodon`, `prtime`,
+`snowflake`, `tiktok`, plus more `unix`/`unix_ms`/`webkit`/`cocoa`/`iostime`).
+Third-party-authored value→format, so a legitimate tier-1 label.
+
+**Corpus: 16 formats, 202 values.** Measured baseline **top-1 20.8%, top-3
+91.1%** — the narrow 3-format read (26.2%) was optimistic. Across 16 families
+only `cocoa`, `linkedin`, and `hfsplus` reliably rank #1; `unix`, `unix_ms`,
+`webkit`, `filetime`, `iostime`, `snowflake`, `discord` are 0/N. That breadth is
+the guard against tuning a magnitude/recency prior to a narrow set.
+
+Cross-checking oracles: `time-decode` (per-format), `unfurl` (embedded-ID
+family), plus CPython `datetime` / `sqlite3` / GNU `date` (`tests/oracle_extra.rs`).
 
 ## Checksum manifest
 
