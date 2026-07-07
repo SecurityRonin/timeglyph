@@ -127,3 +127,27 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - run: cargo update --locked
+
+  lean-build:
+    # Gate: `cargo add timeglyph --no-default-features` must NOT pull in clap,
+    # csv, or tracing-subscriber.  Those are CLI-only deps; a library consumer
+    # doing `default-features = false` should get a lean build with only the
+    # core engine deps (jiff, thiserror, hex, serde, serde_json, tracing facade).
+    # This job currently FAILS (RED) because clap/csv/tracing-subscriber are
+    # unconditional dependencies.  It will go GREEN once they are made optional
+    # behind a `cli` feature (Item B).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - name: Lean lib build (no default features)
+        run: cargo build --no-default-features
+      - name: Assert clap / csv / tracing-subscriber absent from lean tree
+        run: |
+          cargo tree --no-default-features -e no-dev --prefix none > /tmp/lean-tree.txt
+          UNWANTED=$(grep -E '^clap |^csv |^tracing-subscriber ' /tmp/lean-tree.txt || true)
+          if [ -n "$UNWANTED" ]; then
+            echo "FAIL: CLI-only deps present in lean (no-default-features) build:"
+            echo "$UNWANTED"
+            exit 1
+          fi
