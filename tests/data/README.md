@@ -68,16 +68,21 @@ values rather than self-authored fixtures. All values come from **reproducible
 public images** (AWS Open Data — redistributable); only the integer values +
 labels are committed, no URLs or content.
 
-| true_format | n | source (reproducible) |
+| true_format | n | source |
 |---|---|---|
-| `unix_ms` | 18 | `josh-hickman-android10/msgstore.db` — `messages.timestamp` |
-| `cocoa` | 11 | `josh-hickman-ios13/ChatStorage.sqlite` — `ZWAMESSAGE.ZMESSAGEDATE` (integer part) |
-| `webkit` | 13 | `josh-hickman-android10` Chrome — `urls.last_visit_time` (`data/data/com.android.chrome/app_chrome/Default/History`) |
+| `unix_ms` | 18 | `josh-hickman-android10/msgstore.db` — `messages.timestamp` (real) |
+| `cocoa` | 11 | `josh-hickman-ios13/ChatStorage.sqlite` — `ZWAMESSAGE.ZMESSAGEDATE` int part (real) |
+| `webkit` | 13 | `josh-hickman-android10` Chrome — `urls.last_visit_time` (real) |
+| `unix` | 15 | `josh-hickman-android10` MediaStore `external.db` — `files.date_added` (real) |
+| `filetime` | 15 | `magnet-summit-2023-ctf` `SOFTWARE` hive — registry key LastWrite via `regipy` (real) |
+| `iostime` | 10 | `time-decode --iostime` for real 2015–2024 dates — **tier-1 oracle-generated** (no clean in-hand artifact uses ns-since-2001; the values carry real-era magnitudes) |
 
-Extensible: FILETIME (`$MFT`/EVTX from the magnet Windows images), `iostime`
-(iOS `knowledgeC.db`), etc. are added as those artifacts are carved. The
-independent oracles for cross-checking are `time-decode` (per-format flags) and
-`unfurl` (embedded-ID family: snowflakes/ULID/UUID/ObjectId).
+**Measured baseline (this corpus, 82 values):** top-1 26.2% on the first three
+formats alone was optimistic; adding `unix`/`filetime`/`iostime` exposed the
+honest number — **top-1 13.4%, top-3 91.5%**, with only `cocoa` reliably ranked
+#1. That diversity is the guard against tuning a magnitude/recency prior to a
+narrow corpus. Cross-checking oracles: `time-decode` (per-format) and `unfurl`
+(embedded-ID family).
 
 ## Checksum manifest
 

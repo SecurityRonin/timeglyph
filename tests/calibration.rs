@@ -69,17 +69,20 @@ fn calibration_accuracy_meets_floor() {
         p1 * 100.0,
         p3 * 100.0
     );
-    // Regression floors, set just under the measured baseline (top-1 26.2%,
-    // top-3 100.0% on n=42) so a regression trips them. The prevalence prior
-    // (next) should raise top-1 substantially while keeping top-3 at 100%.
+    // Regression floors, set just under the measured baseline on the DIVERSE
+    // corpus: top-1 13.4%, top-3 91.5% (n=82). The narrow 3-format corpus read
+    // 26%/100% — optimistic; adding filetime/iostime/unix exposed that only
+    // `cocoa` reliably ranks #1 (the 18–19-digit 100 ns formats and the ms/µs
+    // families cross-tie). A magnitude/recency prior should raise top-1; these
+    // floors trip on a regression.
     assert!(
-        p3 >= 0.9,
-        "top-3 accuracy {:.1}% below floor 90%",
+        p3 >= 0.85,
+        "top-3 accuracy {:.1}% below floor 85%",
         p3 * 100.0
     );
     assert!(
-        p1 >= 0.2,
-        "top-1 accuracy {:.1}% below floor 20%",
+        p1 >= 0.10,
+        "top-1 accuracy {:.1}% below floor 10%",
         p1 * 100.0
     );
 }
