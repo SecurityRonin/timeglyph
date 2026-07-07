@@ -135,6 +135,26 @@ fn encode_all_emits_per_format_hex_needles() {
     );
 }
 
+#[test]
+fn scan_shows_all_readings_by_default() {
+    // Show-all principle: scan must not filter by likelihood — every reading is
+    // shown (out-of-window included), ranked; likelihood is information, not a
+    // gate. The old default capped at 4 in-window readings; now the full set
+    // shows and `--top` is the opt-in brevity knob.
+    let (all_out, _) = run(&["scan", "v 4294967296 w"]);
+    let n_all = all_out.lines().filter(|l| l.starts_with("    ")).count();
+    assert!(
+        n_all > 4,
+        "default scan must show all readings (not cap at 4): got {n_all}"
+    );
+    let (top_out, _) = run(&["scan", "v 4294967296 w", "--top", "3"]);
+    let n_top = top_out.lines().filter(|l| l.starts_with("    ")).count();
+    assert!(
+        n_top <= 3,
+        "--top 3 must cap readings per value: got {n_top}"
+    );
+}
+
 fn reading_lines(out: &str) -> Vec<&str> {
     out.lines()
         .filter(|l| l.trim_start().starts_with('['))
