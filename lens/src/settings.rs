@@ -17,8 +17,11 @@ use crate::theme::Theme;
 /// string), and the optional 干支 longitude.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PersistedSettings {
-    /// Dark (default) or light palette.
-    pub theme: Theme,
+    /// The theme preference: `None` (default) follows the OS light/dark setting;
+    /// `Some(Dark|Light)` is an explicit user choice, remembered across sessions.
+    /// `#[serde(default)]` so a settings file predating this key loads as `None`.
+    #[serde(default)]
+    pub theme: Option<Theme>,
     /// Whether the 干支 / lunisolar line (and the longitude input) is shown.
     pub show_lunar: bool,
     /// Datetime display style for rendered readings.
@@ -33,7 +36,7 @@ pub struct PersistedSettings {
 impl Default for PersistedSettings {
     fn default() -> Self {
         Self {
-            theme: Theme::default(),
+            theme: None,
             show_lunar: false,
             date_style: DateStyle::default(),
             zone_spec: "UTC".to_string(),

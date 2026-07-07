@@ -18,7 +18,7 @@ use eframe::egui;
 use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
 use timeglyph_lens::settings as persist;
-use timeglyph_lens::theme::{Palette, Theme};
+use timeglyph_lens::theme::{effective_theme, Palette, Theme};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
 use timeglyph_lens::{ganzhi, text, tzinfo, tzmap};
 
@@ -195,6 +195,14 @@ fn install_theme(ctx: &egui::Context, pal: &Palette) {
     ctx.style_mut(|s| s.spacing.item_spacing = egui::vec2(8.0, 6.0));
 }
 
+/// Map egui's reported OS theme to the overlay's own [`Theme`].
+fn from_egui_theme(t: egui::Theme) -> Theme {
+    match t {
+        egui::Theme::Dark => Theme::Dark,
+        egui::Theme::Light => Theme::Light,
+    }
+}
+
 struct LensApp {
     /// Latest text under the cursor, produced by the background poll thread; the
     /// render thread only reads this snapshot (never the AX/UIA API directly).
@@ -230,6 +238,10 @@ struct LensApp {
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
+    /// Whether the user has explicitly chosen a theme this profile. `false` =
+    /// follow the OS light/dark setting each frame; a Dark/Light pick sets it
+    /// `true` (and persists `Some(theme)`). Loaded from the saved preference.
+    theme_explicit: bool,
     /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
     /// raw element text under the cursor in the panel (a debug caption).
     verbose: u8,
@@ -346,10 +358,13 @@ impl LensApp {
             show_about: Arc::new(AtomicBool::new(false)),
             frozen: Arc::new(AtomicBool::new(false)),
             settings: Arc::new(Mutex::new(Settings {
-                theme: saved.theme,
+                // Concrete placeholder; update() resolves it from the OS each frame
+                // until an explicit choice is made.
+                theme: saved.theme.unwrap_or_default(),
                 show_lunar: saved.show_lunar,
                 date_style: saved.date_style,
             })),
+            theme_explicit: saved.theme.is_some(),
             verbose,
             logo,
             sr_logo_dark,
@@ -362,7 +377,9 @@ impl LensApp {
     fn save_settings(&self) {
         let cur = self.settings();
         persist::save(&persist::PersistedSettings {
-            theme: cur.theme,
+            // Persist a concrete theme only once explicitly chosen; otherwise
+            // None so the next launch still follows the system.
+            theme: self.theme_explicit.then_some(cur.theme),
             show_lunar: cur.show_lunar,
             date_style: cur.date_style,
             zone_spec: self.zone_spec(),
@@ -393,6 +410,14 @@ impl LensApp {
 
 impl eframe::App for LensApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Default to the OS light/dark setting, followed live, until the user makes
+        // an explicit Dark/Light choice (which then sticks and persists).
+        let system = ctx.system_theme().map(from_egui_theme);
+        let pref = self.theme_explicit.then(|| self.settings().theme);
+        let resolved = effective_theme(pref, system);
+        if let Ok(mut s) = self.settings.lock() {
+            s.theme = resolved;
+        }
         let cur = self.settings();
         let pal = cur.theme.palette();
         install_theme(ctx, &pal);
@@ -764,6 +789,9 @@ impl LensApp {
         let pal = self.settings().theme.palette();
         let mut open = true;
         let mut settings_changed = false;
+        // Tracks a deliberate Dark/Light pick this frame, which promotes the theme
+        // from "follow system" to an explicit, remembered choice.
+        let mut theme_chosen = false;
         egui::Window::new("TimeGlyph Lens — Settings")
             .collapsible(false)
             .resizable(false)
@@ -782,10 +810,10 @@ impl LensApp {
                             .color(pal.faint),
                     );
                     ui.horizontal(|ui| {
-                        settings_changed |= ui
+                        theme_chosen |= ui
                             .selectable_value(&mut s.theme, Theme::Dark, "Dark")
                             .changed();
-                        settings_changed |= ui
+                        theme_chosen |= ui
                             .selectable_value(&mut s.theme, Theme::Light, "Light")
                             .changed();
                     });
@@ -841,7 +869,11 @@ impl LensApp {
                     settings_changed = true;
                 }
             });
-        if settings_changed {
+        if theme_chosen {
+            // A deliberate pick sticks: stop following the OS and persist it.
+            self.theme_explicit = true;
+        }
+        if settings_changed || theme_chosen {
             self.save_settings();
         }
         if !open {

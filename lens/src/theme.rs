@@ -46,6 +46,16 @@ impl Theme {
     }
 }
 
+/// Resolve the theme to apply from a saved preference and the OS setting: an
+/// explicit user choice (`pref = Some`) always wins; with no choice (`None`) the
+/// overlay follows the system (`system`); when the OS preference is unknown, it
+/// falls back to [`Theme::Dark`]. This is how the overlay defaults to the system
+/// theme yet remembers a deliberate Dark/Light pick across sessions.
+#[must_use]
+pub fn effective_theme(pref: Option<Theme>, system: Option<Theme>) -> Theme {
+    pref.or(system).unwrap_or(Theme::Dark)
+}
+
 /// Warm near-black palette. Text vs `bg_deep`: ink ~15:1, amber ~10:1, mute ~8:1,
 /// faint ~5:1 — all clear WCAG AA.
 pub const DARK: Palette = Palette {
