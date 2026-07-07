@@ -429,10 +429,19 @@ fn differential_encode_g2_packed() {
 fn dhcp6_and_classic_hfs_decode_to_committed_oracle_values() {
     use timeglyph::TzSemantics;
     // dhcp6 = seconds since 2000-01-01 UTC.
-    assert_eq!(civil(&render_int("dhcp6", 700_000_000)), "2022-03-07 20:26:40");
-    assert_eq!(civil(&render_int("dhcp6", 946_684_800)), "2029-12-31 00:00:00");
+    assert_eq!(
+        civil(&render_int("dhcp6", 700_000_000)),
+        "2022-03-07 20:26:40"
+    );
+    assert_eq!(
+        civil(&render_int("dhcp6", 946_684_800)),
+        "2029-12-31 00:00:00"
+    );
     // classic HFS shares HFS+'s 1904 epoch AND value; only the tz meaning differs.
-    assert_eq!(civil(&render_int("hfs", 3_574_260_000)), "2017-04-05 18:00:00");
+    assert_eq!(
+        civil(&render_int("hfs", 3_574_260_000)),
+        "2017-04-05 18:00:00"
+    );
     assert_eq!(
         timeglyph::format("hfs").unwrap().tz,
         TzSemantics::LocalNaive,

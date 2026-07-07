@@ -215,7 +215,7 @@ fn prevalence(id: &str) -> f64 {
     match id {
         "active" | "excel1904" | "sony" | "dttm" | "bitdate" | "bitdec" | "bcd" | "moto"
         | "symantec" | "dvr" | "ns40" | "ns40le" | "logtime" | "semioctet" | "gsm" | "nokiale"
-        | "mjd" => 0.5,
+        | "mjd" | "dhcp6" | "hfs" => 0.5,
         _ => 1.0,
     }
 }

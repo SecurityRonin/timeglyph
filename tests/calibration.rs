@@ -121,9 +121,11 @@ fn calibration_accuracy_meets_floor() {
     // the prevalence TIE-BREAK (score-neutral; demotes only the rare long tail so
     // e.g. filetime beats AD `active`) lifted it to 60.1% — all by RE-ORDERING,
     // never hiding: every reading is still shown, likelihood is information not a
-    // filter. Current measured: top-1 60.1%, top-3 93.8% (n=336). Floors sit just
-    // under, so a regression trips them; top-3 must stay high (the true format is
-    // only re-ordered, never dropped from contention).
+    // filter. Current measured: top-1 60.1%, top-3 92.0% (n=336) — adding the
+    // niche dhcp6 + classic-hfs formats trims top-3 slightly (they legitimately
+    // enter some top-3 lists), the honest cost of more valid interpretations.
+    // Floors sit just under, so a regression trips them; top-3 must stay high
+    // (the true format is only re-ordered, never dropped from contention).
     assert!(
         p3 >= 0.90,
         "top-3 accuracy {:.1}% below floor 90% (the prior must not drop true formats)",

@@ -834,6 +834,22 @@ pub static FORMATS: &[Format] = &[
         plausible: W,
     },
     Format {
+        // Classic Mac HFS: same 1904 epoch + seconds unit as HFS+, but the stored
+        // value is LOCAL wall-clock (TN1150) — a distinct forensic reading of the
+        // same bits, surfaced alongside `hfsplus` rather than instead of it.
+        id: "hfs",
+        label: "Apple HFS (local, s since 1904)",
+        family: "HFS filesystem (classic Mac OS)",
+        strategy: Strategy::LinearInt {
+            epoch_ns: HFS_EPOCH_NS,
+            unit: Unit::Seconds,
+        },
+        citation: "Apple TN1150 (HFS)",
+        tz: LocalNaive,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
         id: "dotnet_ticks",
         label: ".NET DateTime.Ticks (100ns since 0001)",
         family: ".NET / SQL Server datetime2",
@@ -868,6 +884,21 @@ pub static FORMATS: &[Format] = &[
             unit: Unit::Nanos,
         },
         citation: "derived (Unix epoch, ns); Apple APFS reference",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
+        id: "dhcp6",
+        label: "DHCPv6 DUID-LLT (s since 2000)",
+        family: "DHCPv6 DUID-LLT (RFC 3315)",
+        strategy: Strategy::LinearInt {
+            // 2000-01-01 UTC — the same epoch as PostgreSQL (µs); DUID-LLT counts
+            // whole seconds. Reused DRY; the literal lives in one place.
+            epoch_ns: POSTGRES_EPOCH_NS,
+            unit: Unit::Seconds,
+        },
+        citation: "RFC 3315 §9.2 (DUID-LLT)",
         tz: Utc,
         leap: PosixIgnored,
         plausible: W,

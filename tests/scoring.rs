@@ -228,3 +228,33 @@ fn prevalence_ranks_ubiquitous_ole_above_niche_excel1904() {
         "ole {ole} must outrank excel1904 {excel} on a tie"
     );
 }
+
+#[test]
+fn new_niche_formats_dhcp6_and_hfs_are_rare_tail() {
+    // dhcp6 (DHCPv6 DUID) and classic hfs are niche forensic formats: like the
+    // other long-tail entries they carry prevalence 0.5, so on a score tie they
+    // sort below ubiquitous formats — a tie-break only, never a filter.
+    assert!(
+        (component(
+            &interpret::interpret_int(700_000_000),
+            "dhcp6",
+            "prevalence"
+        ) - 0.5)
+            .abs()
+            < 1e-9
+    );
+    assert!(
+        (component(
+            &interpret::interpret_int(3_574_260_000),
+            "hfs",
+            "prevalence"
+        ) - 0.5)
+            .abs()
+            < 1e-9
+    );
+    // A ubiquitous format in the same result set stays at full prevalence.
+    assert!(
+        (component(&interpret::interpret_int(700_000_000), "unix", "prevalence") - 1.0).abs()
+            < 1e-9
+    );
+}
