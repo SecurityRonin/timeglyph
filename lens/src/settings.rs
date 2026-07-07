@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use timeglyph::DateStyle;
 
-use crate::theme::Theme;
+use crate::theme::ThemePreference;
 
 /// The persisted overlay preferences: theme, whether the 干支 line shows, the
 /// datetime display style, the default display-zone spec (as a `parse_zone`
@@ -19,9 +19,9 @@ use crate::theme::Theme;
 pub struct PersistedSettings {
     /// The theme preference: `None` (default) follows the OS light/dark setting;
     /// `Some(Dark|Light)` is an explicit user choice, remembered across sessions.
-    /// `#[serde(default)]` so a settings file predating this key loads as `None`.
+    /// `#[serde(default)]` so a settings file predating this key loads as `System`.
     #[serde(default)]
-    pub theme: Option<Theme>,
+    pub theme: ThemePreference,
     /// Whether the 干支 / lunisolar line (and the longitude input) is shown.
     pub show_lunar: bool,
     /// Datetime display style for rendered readings.
@@ -36,7 +36,7 @@ pub struct PersistedSettings {
 impl Default for PersistedSettings {
     fn default() -> Self {
         Self {
-            theme: None,
+            theme: ThemePreference::System,
             show_lunar: false,
             date_style: DateStyle::default(),
             zone_spec: "UTC".to_string(),

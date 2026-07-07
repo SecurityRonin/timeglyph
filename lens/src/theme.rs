@@ -46,14 +46,32 @@ impl Theme {
     }
 }
 
-/// Resolve the theme to apply from a saved preference and the OS setting: an
-/// explicit user choice (`pref = Some`) always wins; with no choice (`None`) the
-/// overlay follows the system (`system`); when the OS preference is unknown, it
-/// falls back to [`Theme::Dark`]. This is how the overlay defaults to the system
-/// theme yet remembers a deliberate Dark/Light pick across sessions.
-#[must_use]
-pub fn effective_theme(pref: Option<Theme>, system: Option<Theme>) -> Theme {
-    pref.or(system).unwrap_or(Theme::Dark)
+/// The user's theme preference: follow the OS, or a fixed palette. Persisted;
+/// `System` is the default, so a fresh install matches the OS light/dark setting
+/// while a deliberate `Dark`/`Light` pick is remembered across sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum ThemePreference {
+    /// Follow the OS light/dark setting (the default).
+    #[default]
+    System,
+    /// Always the dark palette.
+    Dark,
+    /// Always the light palette.
+    Light,
+}
+
+impl ThemePreference {
+    /// Resolve to a concrete [`Theme`] given the OS setting (`system`, `None` if
+    /// unknown): `System` follows the OS and falls back to [`Theme::Dark`] when it
+    /// is unknown; `Dark`/`Light` ignore the OS.
+    #[must_use]
+    pub fn resolve(self, system: Option<Theme>) -> Theme {
+        match self {
+            ThemePreference::System => system.unwrap_or(Theme::Dark),
+            ThemePreference::Dark => Theme::Dark,
+            ThemePreference::Light => Theme::Light,
+        }
+    }
 }
 
 /// Warm near-black palette. Text vs `bg_deep`: ink ~15:1, amber ~10:1, mute ~8:1,
