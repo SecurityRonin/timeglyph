@@ -1,6 +1,7 @@
 //! CSV enrichment: add human-readable timestamp columns to a CSV, either by
 //! auto-detecting numeric timestamp columns or by explicit column→format
 //! conversion, optionally replacing the original column.
+#![cfg(feature = "csv")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::csv_enrich::{enrich, Conversion, EnrichOptions};

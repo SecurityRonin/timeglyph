@@ -3,6 +3,7 @@
 //! of an already-valid datetime) are instead annotated `// cov:unreachable`.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[cfg(feature = "csv")]
 use timeglyph::csv_enrich::{enrich, Conversion, EnrichOptions};
 use timeglyph::{format, interpret, scan, DateStyle, PosixNs, RenderZone, TzSemantics};
 
@@ -31,6 +32,7 @@ fn encode_int_overflow_is_an_error() {
     assert!(f.encode_int(PosixNs(i128::MAX)).is_err());
 }
 
+#[cfg(feature = "csv")]
 #[test]
 fn csv_unknown_column_is_an_error() {
     let opts = EnrichOptions {
@@ -45,6 +47,7 @@ fn csv_unknown_column_is_an_error() {
     assert!(enrich("id,created\n1,1577836800\n", &opts).is_err());
 }
 
+#[cfg(feature = "csv")]
 #[test]
 fn csv_replace_keeps_unrenderable_cells() {
     // replace=true + a non-numeric cell under a numeric format → render_cell None
@@ -132,6 +135,7 @@ fn bitwise_decimal_rejects_a_negative_value() {
     assert!(format("bitdec").unwrap().decode_int(-1).is_err());
 }
 
+#[cfg(feature = "csv")]
 #[test]
 fn csv_renders_a_fractional_cell_via_the_float_path() {
     // A fractional value fails i64 parse but decodes as a float → render_cell's
@@ -153,6 +157,7 @@ fn csv_renders_a_fractional_cell_via_the_float_path() {
     );
 }
 
+#[cfg(feature = "csv")]
 #[test]
 fn csv_auto_detect_skips_a_non_timestamp_column() {
     // auto-detect over a column that matches no format → detect_column_format None.

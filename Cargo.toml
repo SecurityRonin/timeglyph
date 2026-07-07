@@ -24,6 +24,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "timeglyph"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 # REUSE, don't reinvent calendar/tz math. jiff = civil time + IANA tz (incl.
@@ -32,17 +33,19 @@ path = "src/main.rs"
 jiff = "0.2"
 thiserror = "2"
 hex = "0.4"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # CSV enrichment (the `csv` subcommand): robust RFC 4180 reader/writer.
-csv = "1"
+# Optional — pulled in by the `csv` feature (and transitively `cli`).
+csv = { version = "1", optional = true }
 # Structured, always-on instrumentation for debuggability — the `tracing` facade
 # compiles to near-nothing without a subscriber. The CLI installs a subscriber
 # gated by `RUST_LOG` (silent by default), so a stuck decode/scan is a
 # `RUST_LOG=timeglyph=debug` away from a step-by-step trace.
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# tracing-subscriber is CLI-only; the lib uses only the `tracing` facade.
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 # Leap-aware time scales (GPS/TAI), behind the `leap` feature. hifitime carries a
 # built-in leap-second table and is the ONE place we do NOT reinvent (leap math
 # is solved; rolling our own would be wrong). MPL-2.0 (allowed in deny.toml).
@@ -64,7 +67,12 @@ flate2 = { version = "1", optional = true }
 # All on by default: timeglyph is an analyst tool, so the full format coverage
 # ships out of the box. Library consumers wanting a lean build can set
 # `default-features = false` and opt back in per feature.
-default = ["leap", "lunisolar", "holiday"]
+default = ["cli", "csv", "leap", "lunisolar", "holiday"]
+# CLI-only deps (clap + tracing-subscriber). The [[bin]] target requires this
+# feature; the library is fully usable without it.
+cli = ["dep:clap", "dep:tracing-subscriber", "csv"]
+# CSV enrichment (`csv_enrich` module + the CLI `csv` subcommand).
+csv = ["dep:csv"]
 # The leap-aware GPS/TAI/NTP family (`src/leap.rs`); pulls hifitime.
 leap = ["dep:hifitime"]
 # The Chinese lunisolar calendar + 干支 four pillars; pulls the stem-branch ephemeris.

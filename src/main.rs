@@ -11,6 +11,7 @@
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+#[cfg(feature = "csv")]
 use timeglyph::csv_enrich::{Conversion, EnrichOptions};
 use timeglyph::interpret::{self, Candidate};
 use timeglyph::{DateStyle, RenderZone};
@@ -159,6 +160,7 @@ enum Commands {
     /// List every registered format with its citation.
     List,
     /// Enrich a CSV: add a human-readable column for each timestamp column.
+    #[cfg(feature = "csv")]
     Csv {
         /// CSV file path, or `-` for stdin.
         path: String,
@@ -252,6 +254,7 @@ fn main() -> ExitCode {
             json,
         }) => run_scan(text.as_deref(), min_digits, all, json, &zone, style),
         Some(Commands::List) => run_list(),
+        #[cfg(feature = "csv")]
         Some(Commands::Csv {
             path,
             convert,
@@ -786,6 +789,7 @@ fn run_list() -> u8 {
     EXIT_OK
 }
 
+#[cfg(feature = "csv")]
 fn run_csv(
     path: &str,
     convert: &[String],
