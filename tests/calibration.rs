@@ -9,7 +9,7 @@
 use timeglyph::interpret;
 
 struct Row {
-    value: i64,
+    value: String,
     format: String,
 }
 
@@ -19,19 +19,25 @@ fn corpus() -> Vec<Row> {
         .skip(1) // header
         .filter_map(|l| {
             let mut it = l.split(',');
-            let value = it.next()?.trim().parse().ok()?;
+            let value = it.next()?.trim().to_string();
             let format = it.next()?.trim().to_string();
-            Some(Row { value, format })
+            (!value.is_empty()).then_some(Row { value, format })
         })
         .collect()
 }
 
-/// Zero-based rank of `format` in the ranked readings for `value`, or `None` if
-/// the true format is not among the readings at all.
-fn rank_of(value: i64, format: &str) -> Option<usize> {
-    interpret::interpret_int(value)
-        .iter()
-        .position(|c| c.format_id == format)
+/// Zero-based rank of `format` among the readings for `value`. Integer values go
+/// through interpret_int; a fractional literal (OLE/Excel/Julian/Cocoa-double)
+/// through interpret_float — mirroring the CLI auto path.
+fn rank_of(value: &str, format: &str) -> Option<usize> {
+    let cands = if let Ok(v) = value.parse::<i64>() {
+        interpret::interpret_int(v)
+    } else if let Ok(v) = value.parse::<f64>() {
+        interpret::interpret_float(v)
+    } else {
+        return None;
+    };
+    cands.iter().position(|c| c.format_id == format)
 }
 
 #[test]
@@ -73,7 +79,7 @@ fn calibration_accuracy_meets_floor() {
     assert!(!rows.is_empty(), "calibration corpus must load");
     let (mut top1, mut top3) = (0usize, 0usize);
     for r in &rows {
-        match rank_of(r.value, &r.format) {
+        match rank_of(&r.value, &r.format) {
             Some(0) => {
                 top1 += 1;
                 top3 += 1;
@@ -89,12 +95,12 @@ fn calibration_accuracy_meets_floor() {
         p1 * 100.0,
         p3 * 100.0
     );
-    // Regression floors, set just under the measured baseline on the DIVERSE
-    // corpus: top-1 13.4%, top-3 91.5% (n=82). The narrow 3-format corpus read
-    // 26%/100% — optimistic; adding filetime/iostime/unix exposed that only
-    // `cocoa` reliably ranks #1 (the 18–19-digit 100 ns formats and the ms/µs
-    // families cross-tie). A magnitude/recency prior should raise top-1; these
-    // floors trip on a regression.
+    // Regression floors, set well under the measured baseline on the broad
+    // corpus: top-1 21.4%, top-3 92.3% (n=234, 20 formats). The narrow 3-format
+    // corpus read 26%/100% — optimistic; breadth exposed that only a few formats
+    // (cocoa/linkedin/hfsplus) reliably rank #1 while the 18–19-digit 100 ns and
+    // ms/µs families cross-tie. A magnitude/recency prior should raise top-1;
+    // these floors trip on a regression.
     assert!(
         p3 >= 0.85,
         "top-3 accuracy {:.1}% below floor 85%",

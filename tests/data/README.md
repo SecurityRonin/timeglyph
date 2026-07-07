@@ -84,11 +84,14 @@ oracle-generated** values — `time-decode --timestamp <date>` across 8 real
 `snowflake`, `tiktok`, plus more `unix`/`unix_ms`/`webkit`/`cocoa`/`iostime`).
 Third-party-authored value→format, so a legitimate tier-1 label.
 
-**Corpus: 16 formats, 202 values.** Measured baseline **top-1 20.8%, top-3
-91.1%** — the narrow 3-format read (26.2%) was optimistic. Across 16 families
-only `cocoa`, `linkedin`, and `hfsplus` reliably rank #1; `unix`, `unix_ms`,
-`webkit`, `filetime`, `iostime`, `snowflake`, `discord` are 0/N. That breadth is
-the guard against tuning a magnitude/recency prior to a narrow set.
+Float-strategy formats (`ole`, `excel1904`, `sqlite_julian`, `cocoa_float`) are
+included too — the harness routes fractional values through `interpret_float`.
+
+**Corpus: 20 formats, 234 values.** Measured baseline **top-1 21.4%, top-3
+92.3%** — the narrow 3-format read (26.2%) was optimistic. Only a few families
+(`cocoa`, `linkedin`, `hfsplus`) reliably rank #1; `unix`, `unix_ms`, `webkit`,
+`filetime`, `iostime`, `snowflake`, `discord` are 0/N. That breadth is the guard
+against tuning a magnitude/recency prior to a narrow set.
 
 Cross-checking oracles: `time-decode` (per-format), `unfurl` (embedded-ID
 family), plus CPython `datetime` / `sqlite3` / GNU `date` (`tests/oracle_extra.rs`).
