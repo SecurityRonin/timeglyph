@@ -823,6 +823,13 @@ const STRING_FORMATS: &[StringFormat] = &[
         note: "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
     },
     StringFormat {
+        parse: parse_google_ei,
+        id: "google_ei",
+        label: "Google ei= URL parameter (Unix seconds in the first 4 bytes)",
+        spec: "Google ei URL param (urlsafe base64; first 4 bytes little-endian Unix seconds)",
+        note: "parsed as a Google ei= URL parameter — the leading 4 bytes are little-endian Unix seconds",
+    },
+    StringFormat {
         parse: parse_rfc2822,
         id: "rfc2822",
         label: "RFC 2822 / email date",
@@ -1029,6 +1036,38 @@ fn parse_objectid(s: &str) -> Option<PosixNs> {
     }
     let secs = i128::from(u32::from_str_radix(s.get(0..8)?, 16).ok()?);
     Some(PosixNs(secs.checked_mul(Unit::Seconds.nanos())?))
+}
+
+/// Google's `ei=` URL parameter (urlsafe base64): its leading 4 decoded bytes are
+/// a little-endian Unix-seconds count. Decoded ONLY when the `ei=` marker is
+/// present (the format *is* a named URL parameter) — a bare base64-looking token
+/// carries no structural signature, so requiring the marker keeps auto-detect
+/// quiet instead of reading a timestamp out of any 6-char word. `None` if no
+/// `ei=` marker, or the value is under 6 chars / not urlsafe base64.
+fn parse_google_ei(s: &str) -> Option<PosixNs> {
+    // The value after the `ei=` marker, up to the next query delimiter.
+    let val = s.split("ei=").nth(1)?.split(['&', '#']).next()?;
+    // 6 urlsafe-base64 chars = 36 bits; the first 4 bytes are the top 32.
+    let mut acc: u64 = 0;
+    for ch in val.get(..6)?.bytes() {
+        acc = (acc << 6) | u64::from(urlsafe_b64_val(ch)?);
+    }
+    let bytes = ((acc >> 4) as u32).to_be_bytes();
+    let secs = i128::from(u32::from_le_bytes(bytes));
+    Some(PosixNs(secs.checked_mul(Unit::Seconds.nanos())?))
+}
+
+/// One urlsafe-base64 character (`A–Z a–z 0–9 - _`) to its 6-bit value; `None`
+/// for padding or any other byte.
+fn urlsafe_b64_val(c: u8) -> Option<u8> {
+    match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'-' => Some(62),
+        b'_' => Some(63),
+        _ => None,
+    }
 }
 
 /// Parse an RFC 2822 / email date-time (e.g. `Sun, 04 May 2025 15:18:50 +0000`)

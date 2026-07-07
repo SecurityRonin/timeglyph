@@ -43,7 +43,7 @@ independently of any tool, which is why both kinds of check are used together.
 
 timeglyph implements **43 numeric/packed formats** (`src/registry.rs`), plus the
 self-describing string forms in `interpret.rs` (ISO-8601/RFC-3339, RFC-2822,
-HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId). `tests/docs_sync.rs` fails the
+HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId, Google `ei=`). `tests/docs_sync.rs` fails the
 build if any registry format drifts out of this list, so coverage cannot fall
 silently behind:
 
