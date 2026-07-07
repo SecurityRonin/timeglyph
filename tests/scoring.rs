@@ -184,3 +184,49 @@ fn genuine_early_epoch_reading_still_appears() {
         "an hour past the epoch scores low epoch_distance — but is still surfaced"
     );
 }
+
+fn pos_int(value: i64, id: &str) -> usize {
+    interpret::interpret_int(value)
+        .iter()
+        .position(|c| c.format_id == id)
+        .unwrap_or_else(|| panic!("no candidate {id} for {value}"))
+}
+
+#[test]
+fn every_candidate_emits_the_prevalence_component() {
+    let cands = interpret::interpret_int(1_577_836_800);
+    assert!(
+        cands[0].components.iter().any(|(n, _)| *n == "prevalence"),
+        "prevalence component must be emitted"
+    );
+}
+
+#[test]
+fn prevalence_ranks_ubiquitous_filetime_above_niche_active() {
+    // A real FILETIME (100 ns since 1601) also decodes in-window as AD `active`
+    // (identical encoding), so they tie on every other component. FILETIME is
+    // ubiquitous in evidence; AD `active` is niche — the prevalence prior must
+    // rank filetime first (previously lost the alphabetical tie-break to active).
+    assert!(
+        pos_int(132_963_748_799_479_404, "filetime") < pos_int(132_963_748_799_479_404, "active"),
+        "filetime must outrank the niche `active` on a tie"
+    );
+}
+
+#[test]
+fn prevalence_ranks_ubiquitous_ole_above_niche_excel1904() {
+    // OLE automation date (ubiquitous in Windows/Office) vs Excel-1904 (rare
+    // legacy Mac Excel) — a value valid as both must rank ole first.
+    let ole = interpret::interpret_float(42073.333_333_333_336)
+        .iter()
+        .position(|c| c.format_id == "ole")
+        .unwrap();
+    let excel = interpret::interpret_float(42073.333_333_333_336)
+        .iter()
+        .position(|c| c.format_id == "excel1904")
+        .unwrap();
+    assert!(
+        ole < excel,
+        "ole {ole} must outrank excel1904 {excel} on a tie"
+    );
+}
