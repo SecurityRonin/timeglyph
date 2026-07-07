@@ -98,6 +98,11 @@ merge-assets.append = [["target/release/timeglyph-lens", "usr/bin/", "755"]]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and
 # the primary specs' worked examples. NEVER decompile DCode.
 serde_json = "1"
+# Rust-crate differential oracles: independent crate implementations that
+# cross-check timeglyph's decoders. All MIT or Apache-2.0 (deny.toml-clean).
+nt-time = "0.15"     # FILETIME oracle: Apache-2.0 OR MIT
+ulid = "1.2"         # ULID oracle: MIT
+uuid = { version = "1", features = ["v1"] }  # UUIDv1 oracle: Apache-2.0 OR MIT
 
 # Paranoid Gatekeeper: this is forensic code that parses attacker-influenced
 # values — never panic, never trust a length/width field.
