@@ -410,10 +410,55 @@ pub fn inspect_text_opts(
 ) -> Vec<NumberReadings> {
     // Bound untrusted input up front so every extractor works on capped text.
     let text = bounded(text);
-    let mut out: Vec<NumberReadings> = scan_numbers_min(text, min_digits)
+
+    // Collect all numeric tokens first so we can build per-value neighbour lists.
+    let numbers = scan_numbers_min(text, min_digits);
+
+    // Parse every token that is a plain integer.  We use these as neighbours when
+    // the count is column-like (>= 3) — a proxy for "this is a log/table column,
+    // not random prose".  Fewer than 3 integers means no neighbours: the
+    // neighbour_monotonicity component is not emitted and behaviour is identical
+    // to the bare interpret_int path (the empty-context contract).
+    let int_values: Vec<(usize, i64)> = numbers
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| s.parse::<i64>().ok().map(|v| (i, v)))
+        .collect();
+    let use_neighbours = int_values.len() >= 3;
+
+    let mut out: Vec<NumberReadings> = numbers
         .into_iter()
-        .filter_map(|number| {
-            let readings = readings_for_opts(&number, max_per_number, include_all, zone, style);
+        .enumerate()
+        .filter_map(|(i, number)| {
+            // Integer path: use context when column-like; float/other: bare path.
+            let candidates = if let Ok(value) = number.parse::<i64>() {
+                if use_neighbours {
+                    // Neighbours = all other integer values in this text,
+                    // excluding the value at position i (self-exclusion).
+                    let neighbours: Vec<i64> = int_values
+                        .iter()
+                        .filter(|(j, _)| *j != i)
+                        .map(|(_, v)| *v)
+                        .collect();
+                    let ctx = interpret::InterpretContext {
+                        neighbours: &neighbours,
+                        ..Default::default()
+                    };
+                    interpret::interpret_int_with_context(value, &ctx)
+                } else {
+                    interpret::interpret_int(value)
+                }
+            } else if let Ok(value) = number.parse::<f64>() {
+                interpret::interpret_float(value)
+            } else {
+                return None;
+            };
+            let readings: Vec<Reading> = candidates
+                .into_iter()
+                .filter(|c| confident(c, include_all))
+                .take(max_per_number)
+                .map(|c| reading_from(c, zone, style))
+                .collect();
             (!readings.is_empty()).then_some(NumberReadings { number, readings })
         })
         .collect();
