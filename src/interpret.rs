@@ -198,6 +198,20 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
             "value {value} is a likely sentinel ({reason}) — an 'unset'/'never' marker, not necessarily a real instant"
         ));
     }
+    // FILETIME and Active Directory store 100 ns ticks since 1601-01-01.  When
+    // the sub-second 100 ns field is exactly zero (instant lands on a clean UTC
+    // second), it is consistent with a SetFileTime-style programmatic set: the
+    // Windows API typically produces whole-second precision when called directly,
+    // whereas naturally-recorded timestamps almost never fall on an exact second
+    // boundary.  This is a soft forensic signal only — framed "consistent with",
+    // never a verdict (ADR 0005 epistemics).
+    if matches!(f.id, "filetime" | "active") && instant.0 % 1_000_000_000 == 0 {
+        assumptions.push(
+            "sub-second field is exactly zero — consistent with a SetFileTime-style \
+             manipulation, not a naturally-recorded instant"
+                .to_string(),
+        );
+    }
     Some(Candidate {
         format_id: f.id,
         label: f.label,
