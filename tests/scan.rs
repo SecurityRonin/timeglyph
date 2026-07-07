@@ -318,3 +318,70 @@ fn inspect_text_short_hex_word_does_not_explode() {
         "short hex word must not decode: {hits:?}"
     );
 }
+
+// ── neighbour-monotonicity context wiring ────────────────────────────────────
+
+#[test]
+fn column_of_timestamps_gets_neighbour_monotonicity_component() {
+    // A text that contains >= 3 integer timestamp-like values (column-like) must
+    // pass sibling values as neighbours, causing every integer reading to carry
+    // the `neighbour_monotonicity` component.  RED: today's bare interpret_int
+    // path emits no such component, so all assertions below currently fail.
+    //
+    // Three Unix-seconds values that are monotonically increasing:
+    //   2020-01-01  2020-01-02  2020-01-03
+    let text = "ts1=1577836800 ts2=1577923200 ts3=1578009600";
+    let hits = scan::inspect_text(text, 5, &RenderZone::Utc);
+    // All three integers must appear.
+    assert_eq!(hits.len(), 3, "expected 3 numeric hits: {hits:?}");
+    for hit in &hits {
+        let top = hit.readings.first().expect("at least one reading");
+        assert!(
+            top.components
+                .iter()
+                .any(|(name, _)| *name == "neighbour_monotonicity"),
+            "reading for {} missing neighbour_monotonicity component; components: {:?}",
+            hit.number,
+            top.components
+        );
+    }
+}
+
+#[test]
+fn single_integer_value_is_unchanged_without_neighbours() {
+    // A text with only ONE integer (the lens-hover case: < 3 integers found)
+    // must produce byte-for-byte identical readings to readings_for — no
+    // neighbour context applied, no neighbour_monotonicity component.
+    let lone = "created=1577836800 done";
+    let hits_inspect = scan::inspect_text(lone, 5, &RenderZone::Utc);
+    let nr = hits_inspect
+        .iter()
+        .find(|h| h.number == "1577836800")
+        .expect("integer must be found");
+
+    let readings_direct = scan::readings_for("1577836800", 5, &RenderZone::Utc);
+
+    // Scores and component sets must be identical — no neighbours were injected.
+    assert_eq!(
+        nr.readings.len(),
+        readings_direct.len(),
+        "reading count must match"
+    );
+    for (a, b) in nr.readings.iter().zip(readings_direct.iter()) {
+        assert_eq!(
+            a.format_id, b.format_id,
+            "format_id mismatch for lone integer"
+        );
+        assert!(
+            (a.score - b.score).abs() < f64::EPSILON,
+            "score must be identical for lone integer (no context injected): \
+             inspect={} direct={}",
+            a.score,
+            b.score
+        );
+        assert_eq!(
+            a.components, b.components,
+            "components must be identical for lone integer (no neighbour_monotonicity)"
+        );
+    }
+}
