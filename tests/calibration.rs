@@ -115,20 +115,21 @@ fn calibration_accuracy_meets_floor() {
         p1 * 100.0,
         p3 * 100.0
     );
-    // Regression floors, set well under the measured baseline on the broad
-    // corpus: top-1 21.4%, top-3 92.3% (n=234, 20 formats). The narrow 3-format
-    // corpus read 26%/100% — optimistic; breadth exposed that only a few formats
-    // (cocoa/linkedin/hfsplus) reliably rank #1 while the 18–19-digit 100 ns and
-    // ms/µs families cross-tie. A magnitude/recency prior should raise top-1;
-    // these floors trip on a regression.
+    // Regression floors. Baseline before the epoch_distance (MAGNITUDE/RECENCY)
+    // prior was top-1 27.1%, top-3 92.9% (n=336) — the ms/µs/ns families all
+    // cross-tied because a value hugging a format's own epoch (e.g. a 13-digit
+    // Unix-ms read as iostime = 2001 + minutes) sat in-window and won on
+    // alphabetical order. The epoch_distance prior demotes epoch-huggers; top-1
+    // must clear a materially higher floor, and top-3 must NOT regress (the true
+    // format is only re-ordered, never dropped from contention).
     assert!(
-        p3 >= 0.85,
-        "top-3 accuracy {:.1}% below floor 85%",
+        p3 >= 0.90,
+        "top-3 accuracy {:.1}% below floor 90% (the prior must not drop true formats)",
         p3 * 100.0
     );
     assert!(
-        p1 >= 0.10,
-        "top-1 accuracy {:.1}% below floor 10%",
+        p1 >= 0.40,
+        "top-1 accuracy {:.1}% below floor 40%",
         p1 * 100.0
     );
 }

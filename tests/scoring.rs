@@ -108,3 +108,79 @@ fn real_discord_id_surfaces_a_confident_discord_reading() {
         "a real id sits well past the epoch → high magnitude_fit"
     );
 }
+
+// --- epoch_distance prior (MAGNITUDE/RECENCY) --------------------------------
+// A real timestamp's magnitude places the decoded instant WELL PAST the
+// format's own epoch, not hugging it. A reading that lands minutes/hours after
+// a format's epoch (because the value is orders of magnitude too small for that
+// unit) is weak evidence for that format. This is a low-weight prior: it nudges
+// the rank, never hides a reading (see interpret::score_components).
+
+#[test]
+fn every_candidate_emits_the_epoch_distance_component() {
+    let cands = interpret::interpret_int(1_577_836_800);
+    let unix = cands.iter().find(|c| c.format_id == "unix").unwrap();
+    assert!(
+        unix.components.iter().any(|(n, _)| *n == "epoch_distance"),
+        "epoch_distance must be a visible, named component on every candidate"
+    );
+}
+
+#[test]
+fn epoch_hugging_reading_scores_low_epoch_distance() {
+    // 1487100001000 is a real 2017 Unix-ms value. Read as iostime (ns since
+    // 2001) it decodes to 2001-01-01 + ~24 minutes — essentially AT the iostime
+    // epoch, which is implausibly small for a ns-since-2001 value (a real one is
+    // ~17-19 digits). So iostime's epoch_distance must be ~0, while unix_ms
+    // (2017, decades past its 1970 epoch) must be ~1.
+    let cands = interpret::interpret_int(1_487_100_001_000);
+    assert!(
+        component(&cands, "iostime", "epoch_distance") < 0.05,
+        "an epoch-hugging iostime reading must score ~0 epoch_distance"
+    );
+    assert!(
+        component(&cands, "unix_ms", "epoch_distance") > 0.95,
+        "a value decades past the unix epoch must score ~1 epoch_distance"
+    );
+}
+
+#[test]
+fn epoch_distance_lifts_the_true_format_above_an_epoch_hugger() {
+    // The whole point: the true unix_ms reading (13-digit 2017 ms) must rank #1,
+    // ABOVE iostime which only wins by hugging its 2001 epoch and sorting first
+    // alphabetically. This is the top-1 win the prior exists to deliver.
+    let cands = interpret::interpret_int(1_487_100_001_000);
+    assert_eq!(
+        cands[0].format_id, "unix_ms",
+        "unix_ms must rank #1 for a real 2017 Unix-ms value, not the epoch-hugging iostime"
+    );
+}
+
+#[test]
+fn webkit_outranks_epoch_hugging_iostime() {
+    // 13224789208197989 is a real Chrome/WebKit (µs since 1601) 2020 value. Read
+    // as iostime it lands mid-2001 (only ~months past the 2001 epoch), so webkit
+    // — decades past its own epoch — must rank #1.
+    let cands = interpret::interpret_int(13_224_789_208_197_989);
+    assert_eq!(
+        cands[0].format_id, "webkit",
+        "webkit must rank #1 for a real 2020 Chrome µs value, not iostime"
+    );
+}
+
+#[test]
+fn genuine_early_epoch_reading_still_appears() {
+    // Epistemics: the prior LOWERS rank, it NEVER hides a reading. A genuine
+    // cocoa value one hour past the 2001 epoch (small, epoch-hugging) must still
+    // appear as a candidate — just ranked lower — never filtered out.
+    let cands = interpret::interpret_int(3_600); // cocoa: 2001-01-01T01:00:00Z
+    let cocoa = cands.iter().find(|c| c.format_id == "cocoa");
+    assert!(
+        cocoa.is_some(),
+        "a genuine early-epoch cocoa reading must still appear (ranked, not hidden)"
+    );
+    assert!(
+        component(&cands, "cocoa", "epoch_distance") < 0.05,
+        "an hour past the epoch scores low epoch_distance — but is still surfaced"
+    );
+}
