@@ -127,3 +127,23 @@ fn systemtime_128bit_struct() {
     let all: Vec<_> = groups.iter().flat_map(|(_, c)| c.clone()).collect();
     assert_form(&all, "systemtime", "2025-05-04T15:18:50");
 }
+
+#[test]
+fn google_ei_url_parameter_first_4_bytes_le_unix_seconds() {
+    // Google's `ei=` URL parameter is urlsafe base64; its leading 4 bytes are a
+    // little-endian Unix-seconds count. Recognised only via the `ei=` marker, so
+    // a bare base64-looking token is not blindly decoded (the format IS the URL
+    // parameter). Value + answer authored by the time-decode oracle (--eitime).
+    let cands = interpret::interpret_string("ei=Yx1sYw");
+    assert_form(&cands, "google_ei", "2022-11-09T21:36:35");
+    // Also works embedded in a full query string, stopping at the `&`.
+    let url = interpret::interpret_string("https://www.google.com/search?q=x&ei=Yx1sYw&oq=x");
+    assert_form(&url, "google_ei", "2022-11-09T21:36:35");
+    // No `ei=` marker → not decoded (noise gate): a bare token yields nothing.
+    assert!(
+        !interpret::interpret_string("Yx1sYw")
+            .iter()
+            .any(|c| c.format_id == "google_ei"),
+        "a bare base64 token must not be blindly read as a Google ei timestamp"
+    );
+}

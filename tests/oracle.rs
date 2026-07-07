@@ -489,3 +489,22 @@ fn classic_hfs_agrees_with_time_decode_live() {
         "3574260000",
     );
 }
+
+/// Live differential: Google EI (`--eitime`). timeglyph recognises the value via
+/// the `ei=` URL marker; the oracle takes the bare base64 value.
+#[test]
+fn google_ei_agrees_with_time_decode_live() {
+    if !oracle_available() {
+        eprintln!("skipping: time-decode not on PATH");
+        return;
+    }
+    for tok in ["Yx1sYw", "ZBqbYw"] {
+        let got = oracle("--eitime", tok).expect("eitime: no oracle output");
+        let mine = timeglyph::interpret::interpret_string(&format!("ei={tok}"))
+            .into_iter()
+            .find(|c| c.format_id == "google_ei")
+            .and_then(|c| c.rendered)
+            .expect("timeglyph google_ei candidate");
+        assert_eq!(got, civil(&mine), "google_ei {tok}");
+    }
+}
