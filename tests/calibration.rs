@@ -35,6 +35,19 @@ fn rank_of(value: i64, format: &str) -> Option<usize> {
 }
 
 #[test]
+fn corpus_covers_diverse_epoch_families() {
+    // Beyond the initial unix_ms/cocoa/webkit, the corpus must carry the epoch
+    // families the ranking most confuses — Unix seconds, FILETIME (100 ns since
+    // 1601), and iostime (ns since 2001) — so a magnitude/recency prior can be
+    // validated across formats rather than over-fit to three.
+    let rows = corpus();
+    for fmt in ["unix", "filetime", "iostime"] {
+        let n = rows.iter().filter(|r| r.format == fmt).count();
+        assert!(n >= 5, "corpus needs >=5 {fmt} values (has {n})");
+    }
+}
+
+#[test]
 fn calibration_accuracy_meets_floor() {
     let rows = corpus();
     assert!(!rows.is_empty(), "calibration corpus must load");
