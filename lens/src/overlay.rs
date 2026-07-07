@@ -226,6 +226,10 @@ struct LensApp {
     /// Whether the About window is open. Shared with its viewport (flips false on
     /// close). Opened from the macOS About menu item or the clickable corner logo.
     show_about: Arc<AtomicBool>,
+    /// Freeze toggle: when `true`, `ingest_cursor_text` is skipped so the user
+    /// can hover over the overlay to read or copy without the displayed reading
+    /// changing. Toggled by the ⏸ header button or the Space key.
+    frozen: Arc<AtomicBool>,
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
@@ -259,6 +263,11 @@ impl LensApp {
     /// non-timestamp UI (including this panel, which exposes no accessible text)
     /// leaves the reading intact instead of wiping it.
     fn ingest_cursor_text(&mut self) {
+        // Frozen: hold the current reading so the cursor can move onto the overlay
+        // to read/copy without the hovered value changing.
+        if self.frozen.load(Ordering::Relaxed) {
+            return;
+        }
         let text = self
             .latest
             .lock()
@@ -338,6 +347,7 @@ impl LensApp {
             map_pick: None,
             show_settings: Arc::new(AtomicBool::new(false)),
             show_about: Arc::new(AtomicBool::new(false)),
+            frozen: Arc::new(AtomicBool::new(false)),
             settings: Arc::new(Mutex::new(Settings {
                 theme: saved.theme,
                 show_lunar: saved.show_lunar,
@@ -392,6 +402,13 @@ impl eframe::App for LensApp {
 
         self.sync_native_menu();
 
+        // Space toggles the freeze/pin state (the ⏸/▶ header button is the other
+        // path). Read before ingest so a press takes effect this frame.
+        if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
+            let f = self.frozen.load(Ordering::Relaxed);
+            self.frozen.store(!f, Ordering::Relaxed);
+        }
+
         let mut dirty = false;
         self.ingest_cursor_text();
 
@@ -443,9 +460,10 @@ impl eframe::App for LensApp {
         let show_lunar = cur.show_lunar;
         let date_style = cur.date_style;
         let logo = self.logo.clone();
-        // Cloned Arc so the header's top-right gear can open settings without the
-        // central closure borrowing `self`.
+        // Cloned Arcs so the header's top-right controls (gear, ⏸ freeze) can
+        // write back without the central closure borrowing `self`.
         let show_settings = self.show_settings.clone();
+        let frozen = self.frozen.clone();
         let sr_logo = if pal.base_dark {
             self.sr_logo_dark.clone()
         } else {
@@ -456,7 +474,7 @@ impl eframe::App for LensApp {
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16.0, 14.0));
         egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
-            header(ui, &source, pal, logo.as_ref(), &show_settings);
+            header(ui, &source, pal, logo.as_ref(), &show_settings, &frozen);
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -923,6 +941,7 @@ fn header(
     pal: Palette,
     logo: Option<&egui::TextureHandle>,
     show_settings: &AtomicBool,
+    frozen: &AtomicBool,
 ) {
     ui.horizontal(|ui| {
         if let Some(tex) = logo {
@@ -963,6 +982,18 @@ fn header(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("⚙").on_hover_text("settings").clicked() {
                 show_settings.store(true, Ordering::Relaxed);
+            }
+            // Freeze toggle, left of the gear. Frozen holds the current reading so
+            // the cursor can move onto the overlay to read/copy without the value
+            // changing; ▶ resumes cursor-following. Space also toggles it.
+            let is_frozen = frozen.load(Ordering::Relaxed);
+            let (glyph, tip) = if is_frozen {
+                ("▶", "resume following the cursor (Space)")
+            } else {
+                ("⏸", "freeze the reading (Space)")
+            };
+            if ui.button(glyph).on_hover_text(tip).clicked() {
+                frozen.store(!is_frozen, Ordering::Relaxed);
             }
         });
     });
@@ -1019,18 +1050,18 @@ fn datetime_cell(
     // The displayed datetime, in the chosen style. Local-naive readings keep
     // their own wall-clock rendering (never shifted); the styled form is only for
     // the zone-shiftable case. The ISO-anchored `r.rendered` still drives the
-    // weekday / holiday / `Z` designator logic below.
-    let shown = if r.local {
-        r.rendered.clone()
-    } else {
-        timeglyph::datefmt::format_instant(r.instant, zone, style)
-    };
+    // weekday / holiday / `Z` designator logic below. `copy_text_for` owns this
+    // choice so the click-to-copy string always matches what is shown.
+    let shown = text::copy_text_for(r, zone, style);
     let datetime = || {
         RichText::new(&shown)
             .font(FontId::monospace(14.0))
             .color(pal.ink)
     };
-    ui.horizontal(|ui| {
+    // The whole row is click-to-copy: clicking copies the shown datetime to the
+    // clipboard via egui's platform output (ctx.copy_text → PlatformOutput
+    // .copied_text, egui 0.29). A pointing-hand cursor + tooltip advertise it.
+    let resp = ui.horizontal(|ui| {
         // Uniform row height (see `row_h`) across all rows so dots stay evenly
         // spaced; egui's Align::Center then centers each cell's content on the
         // shared midline.
@@ -1116,6 +1147,14 @@ fn datetime_cell(
             );
         }
     });
+    let resp = resp
+        .response
+        .interact(egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text("click to copy");
+    if resp.clicked() {
+        ui.ctx().copy_text(shown);
+    }
 }
 
 /// Grid column 1: the confidence — a red/amber/green dot (by the engine's
