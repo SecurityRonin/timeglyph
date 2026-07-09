@@ -55,8 +55,10 @@ silently behind:
   `discord`, `mastodon`, `linkedin`, `tiktok`, `sony`, `gmsgid`.
 - **Composite (two-word)** (`src/compose.rs`; a value split across two integer
   fields): `filetime_hilo` — `decode filetime_hilo "low:high"` reassembles a
-  FILETIME's two 32-bit halves as they appear in `.reg` exports / IE cookies.
-  Validated against `time-decode --filetimelohi`.
+  FILETIME's two 32-bit halves (`.reg` exports / IE cookies; validated against
+  `time-decode --filetimelohi`); `unix_sec_nsec` — `decode unix_sec_nsec
+  "sec:nsec"` reassembles a `struct timespec` (ext4/BTRFS/ZFS `stat`, protobuf
+  `Timestamp`, Java `Instant`).
 - **Packed bit-field / civil**: `fat`, `exfat`, `dttm`, `bitdate`, `bitdec`,
   `bcd`, `moto`, `symantec`, `dvr`, `ns40`, `ns40le`, `logtime`, `semioctet`,
   `gsm`, `sqlserver`.

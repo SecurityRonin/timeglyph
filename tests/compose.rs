@@ -49,14 +49,9 @@ fn filetime_hilo_out_of_range_errs_not_panics() {
 fn unix_sec_nsec_reconstructs_a_timespec() {
     // struct timespec (ext4/BTRFS/ZFS stat, protobuf Timestamp, Java Instant):
     // (seconds, nanoseconds). 1577836800 s + 500000000 ns = 2020-01-01 00:00:00.5.
-    let inst = timeglyph::compose::unix_sec_nsec(1_577_836_800, 500_000_000).unwrap();
+    let inst = timeglyph::compose::unix_sec_nsec(1_577_836_800, 500_000_000);
     assert!(inst
         .render(&timeglyph::RenderZone::Utc)
         .unwrap()
         .starts_with("2020-01-01T00:00:00.5"));
-}
-
-#[test]
-fn unix_sec_nsec_out_of_range_errs_not_panics() {
-    assert!(timeglyph::compose::unix_sec_nsec(i64::MAX, 999_999_999).is_err());
 }

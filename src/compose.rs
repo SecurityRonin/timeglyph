@@ -22,3 +22,13 @@ pub fn filetime_hilo(low: u32, high: u32) -> Result<PosixNs, ChronoError> {
     })?;
     crate::format("filetime")?.decode_int(ticks)
 }
+
+/// Reconstruct a Unix timestamp from a `(seconds, nanoseconds)` pair — a
+/// `struct timespec` as stored by ext4/BTRFS/ZFS/XFS `stat`, protobuf
+/// `google.protobuf.Timestamp`, and Java `Instant`. `PosixNs = sec*1e9 + nsec`.
+///
+/// Total (never fails): `i64 * 1e9 + u32` always fits [`PosixNs`]'s `i128`.
+#[must_use]
+pub fn unix_sec_nsec(sec: i64, nsec: u32) -> PosixNs {
+    PosixNs(i128::from(sec) * 1_000_000_000 + i128::from(nsec))
+}

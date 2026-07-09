@@ -461,14 +461,35 @@ fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: 
     }
 }
 
-/// Composite (two-word) decode: `Some` iff `format` is a composite id, with the
-/// parsed instant or a parse/decode error message. `None` lets the caller fall
-/// through to the single-value path.
-fn decode_composite(format: &str, value: &str) -> Option<Result<timeglyph::PosixNs, String>> {
+/// Composite (two-word) decode: `Some((result, render_id))` iff `format` is a
+/// composite id — the parsed instant (or a parse/decode error) plus the
+/// single-value format id to render/label it with. `None` falls through to the
+/// single-value path.
+fn decode_composite(
+    format: &str,
+    value: &str,
+) -> Option<(Result<timeglyph::PosixNs, String>, &'static str)> {
     match format {
-        "filetime_hilo" => Some(parse_filetime_hilo(value)),
+        "filetime_hilo" => Some((parse_filetime_hilo(value), "filetime")),
+        "unix_sec_nsec" => Some((parse_unix_sec_nsec(value), "unix")),
         _ => None,
     }
+}
+
+/// Parse a `"sec:nsec"` (or `sec.nsec` / `sec,nsec`) decimal timespec pair.
+fn parse_unix_sec_nsec(value: &str) -> Result<timeglyph::PosixNs, String> {
+    let (s, n) = value
+        .split_once([':', '.', ','])
+        .ok_or_else(|| format!("expected 'sec:nsec', got {value:?}"))?;
+    let sec: i64 = s
+        .trim()
+        .parse()
+        .map_err(|_| format!("not integer seconds: {s:?}"))?;
+    let nsec: u32 = n
+        .trim()
+        .parse()
+        .map_err(|_| format!("not integer nanoseconds: {n:?}"))?;
+    Ok(timeglyph::compose::unix_sec_nsec(sec, nsec))
 }
 
 /// Parse a `"low:high"` (or `low|high`) pair of 32-bit hex halves and reconstruct
@@ -509,11 +530,11 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) ->
     }
     // Composite (two-word) formats take a "low:high" hex pair, reassembled and
     // decoded via the underlying single-value format's epoch math.
-    if let Some(result) = decode_composite(format, value) {
+    if let Some((result, render_id)) = decode_composite(format, value) {
         return match result {
-            Ok(instant) => match timeglyph::format("filetime") {
-                Ok(ft) => print_decode(ft, value, instant, zone, style),
-                Err(_) => EXIT_ERR, // cov:unreachable: filetime is always registered
+            Ok(instant) => match timeglyph::format(render_id) {
+                Ok(f) => print_decode(f, value, instant, zone, style),
+                Err(_) => EXIT_ERR, // cov:unreachable: render_id is always registered
             },
             Err(msg) => {
                 eprintln!("error: cannot decode {value:?} as {format}: {msg}");
