@@ -1,0 +1,23 @@
+[workspace]
+
+[package]
+name = "timeglyph-py"
+version = "0.3.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "Python bindings for the timeglyph forensic timestamp engine."
+
+[lib]
+name = "timeglyph"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The lean engine (no CLI/csv) — same core the WASM binding uses.
+timeglyph = { path = "../..", default-features = false }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# pyo3 emits `unsafe` glue, so `forbid` is impossible here; isolated to this thin
+# binding crate so the engine itself keeps `unsafe_code = forbid`.
+[lints.rust]
+unsafe_code = "allow"

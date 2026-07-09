@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.5"]
+build-backend = "maturin"
+
+[project]
+name = "timeglyph"
+version = "0.3.0"
+description = "Decode, encode, and identify forensic timestamps — ranked, scored, cited."
+requires-python = ">=3.9"
+license = "Apache-2.0"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: Scientific/Engineering",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
