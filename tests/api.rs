@@ -47,3 +47,31 @@ fn identify_json_is_a_parseable_array_of_readings() {
     // Undecodable input is an empty array, never an error.
     assert_eq!(timeglyph::interpret::identify_json("nope!!!"), "[]");
 }
+
+fn iso(s: &str) -> timeglyph::PosixNs {
+    timeglyph::interpret::interpret_string(s)
+        .into_iter()
+        .find(|c| c.format_id == "iso8601")
+        .unwrap()
+        .instant
+}
+
+#[test]
+fn syslog_infers_year_from_a_reference() {
+    use timeglyph::interpret::parse_syslog_with_reference;
+    // RFC 3164 syslog omits the year. Jan 12 with a March-2026 reference is the
+    // same year (before the reference).
+    let r = parse_syslog_with_reference("Jan 12 06:30:00", iso("2026-03-01T00:00:00Z")).unwrap();
+    assert_eq!(
+        r.render(&timeglyph::RenderZone::Utc).unwrap(),
+        "2026-01-12T06:30:00Z"
+    );
+    // Dec 25 with a January-2026 reference resolves to the PRIOR year (Dec 25
+    // 2026 would be in the future relative to the reference).
+    let r2 =
+        parse_syslog_with_reference("Dec 25 06:30:00", iso("2026-01-15T00:00:00Z")).unwrap();
+    assert_eq!(
+        r2.render(&timeglyph::RenderZone::Utc).unwrap(),
+        "2025-12-25T06:30:00Z"
+    );
+}

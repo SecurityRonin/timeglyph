@@ -527,3 +527,10 @@ fn decode_gps_week_tow_composite() {
     assert!(out.contains("2018-05-05T23:59:42"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn decode_syslog_infers_year() {
+    let (out, code) = run(&["decode", "syslog", "Jan 12 06:30:00@2026-03-01T00:00:00Z"]);
+    assert!(out.contains("2026-01-12T06:30:00"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}
