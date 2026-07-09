@@ -21,7 +21,9 @@ in bulk from a CSV, or hover the number on screen and read the time live. No mor
 copying each one into a converter app. One static Rust binary, plus a live overlay
 that decodes whatever is under your cursor.
 
-**[Full documentation →](https://securityronin.github.io/timeglyph/)**
+**[Try it in your browser →](https://securityronin.github.io/timeglyph/playground.html)** · **[Full documentation →](https://securityronin.github.io/timeglyph/)**
+
+The playground runs the real engine as WebAssembly, entirely client-side — paste a value, see every ranked, cited reading; nothing leaves the page.
 
 ```console
 $ timeglyph 1577836800
