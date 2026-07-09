@@ -479,3 +479,20 @@ fn removed_string_subcommand_is_unknown() {
     let (out, code) = run(&["string", "2020-01-01T00:00:00Z"]);
     assert_ne!(code, 0, "removed `string` subcommand should error: {out}");
 }
+
+#[test]
+fn provenance_envelope_wraps_json_with_engine_and_digest() {
+    let (out, _) = run(&["1577836800", "--json", "--provenance"]);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).expect("valid JSON envelope");
+    assert_eq!(v["engine"], "timeglyph");
+    assert!(
+        v["engine_version"].as_str().is_some_and(|s| !s.is_empty()),
+        "{out}"
+    );
+    assert_eq!(v["registry_digest"].as_str().unwrap().len(), 16);
+    assert_eq!(v["input"], "1577836800");
+    let readings = v["readings"].as_array().expect("readings array");
+    assert!(readings.iter().any(|r| r["format_id"] == "unix"), "{out}");
+    // Each reading carries its spec citation (traceable provenance).
+    assert!(readings[0]["citation"].as_str().is_some(), "{out}");
+}
