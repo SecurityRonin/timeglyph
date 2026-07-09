@@ -489,6 +489,15 @@ fn endian_match(f: &Format, value: i64, width: u8) -> f64 {
 /// of the hint appearing in the format's id/family/label is a full match; no
 /// overlap is a weak non-match (0.2) — a hint nudges the rank, never a filter.
 fn artifact_match(f: &Format, hint: &str) -> f64 {
+    // Authoritative artifact→format knowledge from forensicnomicon (the fleet's
+    // DFIR catalog): if that artifact is catalogued, the format it ACTUALLY
+    // stores is a full match and every other reading scores below it — knowledge
+    // pinning the decoder where a keyword heuristic can't (e.g. imessage→iostime).
+    // Falls through to the heuristic for artifacts forensicnomicon doesn't list.
+    #[cfg(feature = "artifact-hints")]
+    if let Some(a) = forensicnomicon::timestamp_artifacts::timestamp_format_for(hint) {
+        return if f.id == a.format { 1.0 } else { 0.3 };
+    }
     let haystack = format!("{} {} {}", f.id, f.family, f.label).to_lowercase();
     let matched = hint
         .split(|c: char| !c.is_ascii_alphanumeric())

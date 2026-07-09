@@ -77,6 +77,15 @@ The differential battery below validates a subset against `time-decode`;
 formats without a matching oracle flag are tier-2 (spec worked example) — see the
 note after the table.
 
+## Artifact hints (forensicnomicon linkage)
+
+With the `artifact-hints` feature, the `--artifact` hint consults
+[forensicnomicon](https://crates.io/crates/forensicnomicon)'s authoritative
+artifact→timestamp-format catalog: `--artifact "imessage"` pins `iostime`,
+`"ntfs mft"` pins `filetime`, etc. — the format the artifact ACTUALLY stores,
+where a keyword heuristic can't. Forensic knowledge lives in forensicnomicon;
+timeglyph is the decoder that consumes it. Off by default (opt-in dependency).
+
 ## The differential battery
 
 Every input below is **time-decode's own published example value** for that
