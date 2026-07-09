@@ -504,3 +504,10 @@ fn decode_filetime_hilo_composite() {
     assert!(out.contains("2020-01-01"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn decode_unix_sec_nsec_composite() {
+    let (out, code) = run(&["decode", "unix_sec_nsec", "1577836800:500000000"]);
+    assert!(out.contains("2020-01-01T00:00:00.5"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}
