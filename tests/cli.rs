@@ -519,3 +519,11 @@ fn decode_elapsed_realtime_with_anchor() {
     assert!(out.contains("2020-01-01T01:00:00"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn decode_gps_week_tow_composite() {
+    // "week:tow" -> leap-correct UTC.
+    let (out, code) = run(&["decode", "gps_week_tow", "2000:0"]);
+    assert!(out.contains("2018-05-05T23:59:42"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}

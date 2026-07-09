@@ -68,3 +68,13 @@ fn relative_adds_a_duration_to_an_anchor() {
         "2020-01-01T01:00:00Z"
     );
 }
+
+#[cfg(feature = "leap")]
+#[test]
+fn gps_week_tow_resolves_leap_correct_utc() {
+    // GPS week 2000, time-of-week 0 = 1_209_600_000 GPS seconds since 1980-01-06,
+    // leap-corrected to 2018-05-05T23:59:42Z. Oracle: time-decode --gps. GNSS
+    // receiver time (u-blox, NMEA, Berla iVe, drone logs) is natively week+TOW.
+    let r = timeglyph::compose::gps_week_tow(2000, 0.0);
+    assert!(r.utc_rfc3339.starts_with("2018-05-05T23:59:42"), "{r:?}");
+}
