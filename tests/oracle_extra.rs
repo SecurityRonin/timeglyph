@@ -89,3 +89,21 @@ fn gnu_date_agrees_on_unix() {
     };
     assert_eq!(got, tg_int("unix", UNIX_V), "GNU date vs timeglyph unix");
 }
+
+#[test]
+fn cpython_agrees_on_unix_float() {
+    // A Unix timestamp carried as a float (Slack `ts`, Zeek/Squid, Splunk `_time`):
+    // the integer part is Unix seconds, the fraction sub-second. Distinct from the
+    // integer `unix` (a float input never matched a LinearInt format before this).
+    let v = 1_712_345_678.001_2_f64;
+    // Committed backstop (survives without the oracle):
+    assert_eq!(tg_float("unix_float", v), "2024-04-05T19:34:38");
+    let code = format!(
+        "import datetime;print(datetime.datetime.fromtimestamp({v},datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S'))"
+    );
+    let Some(got) = run("python3", &["-c", &code]) else {
+        eprintln!("python3 absent — skipping");
+        return;
+    };
+    assert_eq!(got, tg_float("unix_float", v), "CPython vs timeglyph unix_float");
+}
