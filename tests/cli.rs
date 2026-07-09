@@ -496,3 +496,11 @@ fn provenance_envelope_wraps_json_with_engine_and_digest() {
     // Each reading carries its spec citation (traceable provenance).
     assert!(readings[0]["citation"].as_str().is_some(), "{out}");
 }
+
+#[test]
+fn decode_filetime_hilo_composite() {
+    // Two hex halves, low:high — the way FILETIME appears split in .reg exports.
+    let (out, code) = run(&["decode", "filetime_hilo", "69050000:01d5c036"]);
+    assert!(out.contains("2020-01-01"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}
