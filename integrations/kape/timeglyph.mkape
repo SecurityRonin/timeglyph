@@ -1,0 +1,12 @@
+Description: Identify/scan timestamps in module output with timeglyph
+Category: Timestamps
+Author: Albert Hui (Security Ronin)
+Version: '1.0'
+Id: 6b8f6a1e-9d3c-4e2a-8f4b-2c1d5a7e9b30
+BinaryUrl: https://github.com/SecurityRonin/timeglyph
+ExportFormat: jsonl
+Processors:
+  -
+    Executable: timeglyph.exe
+    CommandLine: scan --json %sourceDirectory%\*
+    ExportFormat: jsonl

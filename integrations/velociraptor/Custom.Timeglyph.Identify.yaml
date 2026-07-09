@@ -1,0 +1,28 @@
+name: Custom.Timeglyph.Identify
+author: Albert Hui (Security Ronin)
+description: |
+  Identify an unknown timestamp value with **timeglyph** — every plausible
+  reading, ranked, scored, and cited. Shells out to the timeglyph binary
+  (`identify <value> --json`) and parses its JSON array of readings.
+
+  Deploy the `timeglyph` binary to the endpoint (or set `TimeglyphPath` to its
+  absolute path). timeglyph never parses artifacts itself — it is the time layer;
+  point it at values other artifacts surface.
+type: CLIENT
+parameters:
+  - name: Value
+    description: The timestamp value to identify (integer, hex, or datetime string).
+  - name: TimeglyphPath
+    default: timeglyph
+    description: Path to the timeglyph binary.
+sources:
+  - query: |
+      SELECT format_id, rendered, score, citation, label
+      FROM foreach(
+        row={
+          SELECT Stdout FROM execve(argv=[TimeglyphPath, "identify", Value, "--json"])
+        },
+        query={
+          SELECT * FROM parse_json_array(data=Stdout)
+        })
+      ORDER BY score DESC
