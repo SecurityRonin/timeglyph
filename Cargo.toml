@@ -62,6 +62,12 @@ stem-branch = { version = "0.4", optional = true }
 # core dep) parses it. Off by default — the ~1.5 MB blob and its parse cost are
 # opt-in, so the majority build carries neither.
 flate2 = { version = "1", optional = true }
+# Authoritative artifact→timestamp-format knowledge (the `artifact-hints`
+# feature): the fleet's DFIR "Knowledge-as-Code" catalog. forensic knowledge
+# belongs to forensicnomicon; timeglyph is the decoder that consumes it. Lean
+# (no default features — just the compile-time constant tables). Off by default
+# so the majority build carries none of it.
+forensicnomicon = { version = "1.2", optional = true, default-features = false }
 
 [features]
 # All on by default: timeglyph is an analyst tool, so the full format coverage
@@ -79,6 +85,9 @@ leap = ["dep:hifitime"]
 lunisolar = ["dep:stem-branch"]
 # The whole-world public-holiday dataset (~1.5 MB gzipped); pulls flate2.
 holiday = ["dep:flate2"]
+# Authoritative artifact→format hints from forensicnomicon: `--artifact "ntfs mft"`
+# pins the format that artifact actually stores (filetime) over heuristic guesses.
+artifact-hints = ["dep:forensicnomicon"]
 
 # Debian packaging (the `deb` release job). The base package is CLI-only
 # (`$auto` picks up the `timeglyph` binary), which is what the aarch64 .deb

@@ -251,6 +251,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "forensicnomicon"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaae83223f6ed7c144998bbd43859846cb0608ee8b1df57560856ec3a4b1d1d9"
+dependencies = [
+ "forensicnomicon-core",
+ "forensicnomicon-data",
+]
+
+[[package]]
+name = "forensicnomicon-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5d5b96ffd37d1e758a1657839de8b4d5e7bfc024a5500509d07ff7acd7b9461"
+
+[[package]]
+name = "forensicnomicon-data"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "664814f07d95790e9c38a9c2c3a0a5539ba4e1ef8e4de72cf32424fc397364ba"
+dependencies = [
+ "forensicnomicon-core",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,6 +882,7 @@ dependencies = [
  "clap",
  "csv",
  "flate2",
+ "forensicnomicon",
  "hex",
  "hifitime",
  "jiff",

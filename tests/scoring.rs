@@ -258,3 +258,25 @@ fn new_niche_formats_dhcp6_and_hfs_are_rare_tail() {
             < 1e-9
     );
 }
+
+#[cfg(feature = "artifact-hints")]
+#[test]
+fn forensicnomicon_artifact_hint_pins_the_authoritative_format() {
+    // forensicnomicon authoritatively maps "imessage" -> iostime. The heuristic
+    // keyword overlap ("imessage" vs iostime's "Apple NSDate iOS 11+") does NOT
+    // match, so only forensicnomicon's knowledge lifts iostime to a full
+    // artifact_match — the knowledge (forensicnomicon) driving the decoder.
+    let ctx = interpret::InterpretContext {
+        artifact: Some("imessage"),
+        ..Default::default()
+    };
+    let cands = interpret::interpret_int_with_context(133_908_455_300_649_390, &ctx);
+    assert!(
+        (component(&cands, "iostime", "artifact_match") - 1.0).abs() < 1e-9,
+        "iostime must be the authoritative match for 'imessage'"
+    );
+    assert!(
+        component(&cands, "filetime", "artifact_match") < 1.0,
+        "a format the artifact does not store scores below the authoritative one"
+    );
+}
