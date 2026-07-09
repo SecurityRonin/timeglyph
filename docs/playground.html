@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>timeglyph playground — identify any timestamp</title>
+<meta name="description" content="Paste any timestamp value and see every plausible reading, ranked, scored, and cited — runs entirely in your browser, nothing leaves the page." />
+<style>
+  :root { --bg:#14120f; --card:#1f1c16; --ink:#f0e9dc; --amber:#e0a458; --mute:#b7ac97; --faint:#8a8069; --line:#342f26; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#faf7f0; --card:#fff; --ink:#2a2620; --amber:#9a6b1f; --mute:#5f584a; --faint:#877f6c; --line:#e6ded0; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h1 .g { color: var(--amber); }
+  p.tag { color: var(--mute); margin:.25rem 0 1.5rem; }
+  input { width:100%; padding:.85rem 1rem; font-size:1.05rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+          background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; }
+  input:focus { outline:2px solid var(--amber); outline-offset:1px; }
+  .hint { color:var(--faint); font-size:.85rem; margin:.5rem 0 1.25rem; }
+  .hint code { color:var(--amber); cursor:pointer; }
+  table { width:100%; border-collapse:collapse; margin-top:.5rem; }
+  th { text-align:left; color:var(--faint); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; padding:.4rem .5rem; border-bottom:1px solid var(--line); }
+  td { padding:.55rem .5rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  td.fmt { font-family:ui-monospace,monospace; color:var(--amber); white-space:nowrap; }
+  td.dt { font-family:ui-monospace,monospace; }
+  td.score { text-align:right; color:var(--mute); font-variant-numeric:tabular-nums; }
+  td.cite { color:var(--faint); font-size:.82rem; }
+  .empty { color:var(--faint); padding:1rem .5rem; }
+  footer { margin-top:2.5rem; color:var(--faint); font-size:.82rem; }
+  footer a { color:var(--mute); }
+</style>
+</head>
+<body>
+<main>
+  <h1>time<span class="g">glyph</span> playground</h1>
+  <p class="tag">Paste any timestamp. See <strong>every plausible reading</strong> — ranked, scored, and cited. Runs entirely in your browser; nothing leaves this page.</p>
+  <input id="v" type="text" placeholder="e.g. 133801920000000000  ·  1712345678.001200  ·  D:20260709123456+08'00'" autocomplete="off" autofocus />
+  <div class="hint">Try:
+    <code data-v="1577836800">1577836800</code> ·
+    <code data-v="133801920000000000">133801920000000000</code> ·
+    <code data-v="1712345678.001200">1712345678.001200</code> ·
+    <code data-v="[10/Oct/2000:13:55:36 -0700]">Apache log date</code>
+  </div>
+  <div id="out"></div>
+  <footer>
+    A raw value is usually underdetermined — timeglyph reports the ranked possibilities, never a single guessed verdict.
+    <a href="https://github.com/SecurityRonin/timeglyph">github.com/SecurityRonin/timeglyph</a>
+  </footer>
+</main>
+<script type="module">
+  import init, { identify } from "./timeglyph_wasm.js";
+  const out = document.getElementById("out");
+  const input = document.getElementById("v");
+  let ready = false;
+  init().then(() => { ready = true; render(input.value); });
+
+  function esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c])); }
+
+  function render(value) {
+    if (!ready) return;
+    const v = value.trim();
+    if (!v) { out.innerHTML = ""; return; }
+    let readings;
+    try { readings = JSON.parse(identify(v)); }
+    catch (e) { out.innerHTML = '<p class="empty">Could not parse.</p>'; return; }
+    if (!readings.length) { out.innerHTML = '<p class="empty">No reading matched — not a recognised timestamp.</p>'; return; }
+    const rows = readings.map(r => `<tr>
+      <td class="fmt">${esc(r.format_id)}</td>
+      <td class="dt">${esc(r.rendered ?? "—")}</td>
+      <td class="score">${(r.score * 100).toFixed(0)}%</td>
+      <td class="cite">${esc(r.citation ?? "")}</td></tr>`).join("");
+    out.innerHTML = `<table><thead><tr><th>format</th><th>datetime</th><th>score</th><th>citation</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  input.addEventListener("input", e => render(e.target.value));
+  document.querySelectorAll(".hint code").forEach(c =>
+    c.addEventListener("click", () => { input.value = c.dataset.v; render(input.value); input.focus(); }));
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[package]
+name = "timeglyph-wasm"
+version = "0.3.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "WASM bindings for the timeglyph engine (the browser playground)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The engine, lean (no CLI/csv) — it compiles to wasm32 (gated by ci.yml).
+timeglyph = { path = "..", default-features = false }
+wasm-bindgen = "0.2"
+
+# wasm-bindgen emits `unsafe` glue, so `forbid` is impossible here. Isolated to
+# this thin binding crate so the engine itself keeps `unsafe_code = forbid`.
+[lints.rust]
+unsafe_code = "allow"

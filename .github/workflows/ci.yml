@@ -166,3 +166,5 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: WASM lib build (wasm32-unknown-unknown, no default features)
         run: cargo build --lib --no-default-features --target wasm32-unknown-unknown
+      - name: WASM playground binding build (wasm32)
+        run: cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown
