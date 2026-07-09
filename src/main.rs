@@ -472,8 +472,28 @@ fn decode_composite(
     match format {
         "filetime_hilo" => Some((parse_filetime_hilo(value), "filetime")),
         "unix_sec_nsec" => Some((parse_unix_sec_nsec(value), "unix")),
+        "elapsed_realtime" => Some((parse_relative(value, timeglyph::Unit::Millis), "unix")),
+        "mach_continuous" => Some((parse_relative(value, timeglyph::Unit::Nanos), "unix")),
         _ => None,
     }
+}
+
+/// Parse a `"<ticks>@<anchor>"` boot-relative value: an integer duration in
+/// `unit` after an ISO-8601 anchor instant.
+fn parse_relative(value: &str, unit: timeglyph::Unit) -> Result<timeglyph::PosixNs, String> {
+    let (ticks_s, anchor_s) = value
+        .split_once('@')
+        .ok_or_else(|| format!("expected '<ticks>@<anchor>', got {value:?}"))?;
+    let ticks: i64 = ticks_s
+        .trim()
+        .parse()
+        .map_err(|_| format!("not integer ticks: {ticks_s:?}"))?;
+    let anchor = interpret::interpret_string(anchor_s.trim())
+        .into_iter()
+        .find(|c| c.format_id == "iso8601")
+        .map(|c| c.instant)
+        .ok_or_else(|| format!("anchor must be an ISO 8601 datetime: {anchor_s:?}"))?;
+    Ok(timeglyph::compose::relative(anchor, ticks, unit))
 }
 
 /// Parse a `"sec:nsec"` (or `sec.nsec` / `sec,nsec`) decimal timespec pair.

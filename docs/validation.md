@@ -59,6 +59,10 @@ silently behind:
   `time-decode --filetimelohi`); `unix_sec_nsec` — `decode unix_sec_nsec
   "sec:nsec"` reassembles a `struct timespec` (ext4/BTRFS/ZFS `stat`, protobuf
   `Timestamp`, Java `Instant`).
+- **Anchored-relative** (`src/compose.rs`; a boot/epoch-relative *duration*
+  resolved against an anchor): `elapsed_realtime` (Android, ms since boot) and
+  `mach_continuous` (Apple, ns since boot) via `decode <id> "<ticks>@<anchor>"`,
+  where `<anchor>` is an ISO-8601 instant.
 - **Packed bit-field / civil**: `fat`, `exfat`, `dttm`, `bitdate`, `bitdec`,
   `bcd`, `moto`, `symantec`, `dvr`, `ns40`, `ns40le`, `logtime`, `semioctet`,
   `gsm`, `sqlserver`.

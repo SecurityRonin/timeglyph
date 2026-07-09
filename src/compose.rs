@@ -5,7 +5,7 @@
 //! the halves and decodes via the canonical single-value path, so the same
 //! epoch math applies. No single-value converter reconstructs these.
 
-use crate::{ChronoError, PosixNs};
+use crate::{ChronoError, PosixNs, Unit};
 
 /// Reconstruct a Windows FILETIME from its low and high 32-bit halves and decode
 /// it as 100 ns since 1601. `FILETIME = (high << 32) | low` — the order the two
@@ -21,6 +21,18 @@ pub fn filetime_hilo(low: u32, high: u32) -> Result<PosixNs, ChronoError> {
         value: i128::from(ft),
     })?;
     crate::format("filetime")?.decode_int(ticks)
+}
+
+/// An instant `ticks` × `unit` after an `anchor` — for boot/epoch-relative times
+/// whose stored value is a *duration*, not an absolute instant: Android
+/// `elapsedRealtime` (ms since boot), Apple mach continuous time (ns since boot),
+/// kernel uptime jiffies. The anchor (e.g. the boot instant) must be supplied
+/// separately because the value alone cannot place the event on a calendar.
+///
+/// Total: `anchor.0 (i128) + i64 × unit-ns (i128)` stays within [`PosixNs`]'s i128.
+#[must_use]
+pub fn relative(anchor: PosixNs, ticks: i64, unit: Unit) -> PosixNs {
+    PosixNs(anchor.0 + i128::from(ticks) * unit.nanos())
 }
 
 /// Reconstruct a Unix timestamp from a `(seconds, nanoseconds)` pair — a
