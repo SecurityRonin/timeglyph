@@ -147,3 +147,40 @@ fn google_ei_url_parameter_first_4_bytes_le_unix_seconds() {
         "a bare base64 token must not be blindly read as a Google ei timestamp"
     );
 }
+
+#[test]
+fn apache_clf_datetime() {
+    // Apache/nginx common-log-format date, with and without the surrounding
+    // brackets. -0700 offset normalised to UTC. Oracle: CPython strptime.
+    assert_form(
+        &interpret::interpret_string("10/Oct/2000:13:55:36 -0700"),
+        "clf",
+        "2000-10-10T20:55:36",
+    );
+    assert_form(
+        &interpret::interpret_string("[10/Oct/2000:13:55:36 -0700]"),
+        "clf",
+        "2000-10-10T20:55:36",
+    );
+}
+
+#[test]
+fn pdf_date_string() {
+    // PDF metadata date: D:YYYYMMDDHHmmSS±HH'mm'. +08'00' → UTC.
+    assert_form(
+        &interpret::interpret_string("D:20260709123456+08'00'"),
+        "pdf_date",
+        "2026-07-09T04:34:56",
+    );
+}
+
+#[test]
+fn dmtf_cim_datetime() {
+    // DMTF/WMI CIM_DATETIME: yyyymmddHHMMSS.mmmmmm±UUU (UUU = minutes east of UTC).
+    // +480 = UTC+8. A staple of WMI-persistence IR (__EventFilter, SCCM).
+    assert_form(
+        &interpret::interpret_string("20260709123456.123456+480"),
+        "dmtf_cim",
+        "2026-07-09T04:34:56",
+    );
+}
