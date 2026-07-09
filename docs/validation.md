@@ -63,6 +63,9 @@ silently behind:
   resolved against an anchor): `elapsed_realtime` (Android, ms since boot) and
   `mach_continuous` (Apple, ns since boot) via `decode <id> "<ticks>@<anchor>"`,
   where `<anchor>` is an ISO-8601 instant.
+- **GPS week + time-of-week** (`compose::gps_week_tow`, `leap` feature): `decode
+  gps_week_tow "<week>:<tow>"` — GNSS receiver time (u-blox, NMEA, Berla iVe,
+  drone logs), leap-corrected to UTC. Validated against `time-decode --gps`.
 - **Packed bit-field / civil**: `fat`, `exfat`, `dttm`, `bitdate`, `bitdec`,
   `bcd`, `moto`, `symantec`, `dvr`, `ns40`, `ns40le`, `logtime`, `semioctet`,
   `gsm`, `sqlserver`.

@@ -478,6 +478,23 @@ fn decode_composite(
     }
 }
 
+/// Parse a `"<week>:<tow>"` GPS pair into a leap-correct reading.
+#[cfg(feature = "leap")]
+fn parse_gps_week_tow(value: &str) -> Result<timeglyph::leap::LeapReading, String> {
+    let (w, t) = value
+        .split_once([':', '@', ','])
+        .ok_or_else(|| format!("expected '<week>:<tow>', got {value:?}"))?;
+    let week: u32 = w
+        .trim()
+        .parse()
+        .map_err(|_| format!("not an integer GPS week: {w:?}"))?;
+    let tow: f64 = t
+        .trim()
+        .parse()
+        .map_err(|_| format!("not a time-of-week: {t:?}"))?;
+    Ok(timeglyph::compose::gps_week_tow(week, tow))
+}
+
 /// Parse a `"<ticks>@<anchor>"` boot-relative value: an integer duration in
 /// `unit` after an ISO-8601 anchor instant.
 fn parse_relative(value: &str, unit: timeglyph::Unit) -> Result<timeglyph::PosixNs, String> {
@@ -547,6 +564,27 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) ->
                 }
             };
         }
+    }
+    // GPS week+TOW is leap-aware (returns a LeapReading, out of the PosixNs
+    // spine), so it decodes like the other leap scales, not via decode_composite.
+    #[cfg(feature = "leap")]
+    if format == "gps_week_tow" {
+        return match parse_gps_week_tow(value) {
+            Ok(r) => {
+                println!(
+                    "{}  {value}  ->  {}  (leap-correct UTC)",
+                    r.scale, r.utc_rfc3339
+                );
+                for a in &r.assumptions {
+                    println!("    - {a}");
+                }
+                EXIT_OK
+            }
+            Err(msg) => {
+                eprintln!("error: cannot decode {value:?} as {format}: {msg}");
+                EXIT_ERR
+            }
+        };
     }
     // Composite (two-word) formats take a "low:high" hex pair, reassembled and
     // decoded via the underlying single-value format's epoch math.

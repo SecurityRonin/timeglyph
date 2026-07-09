@@ -23,6 +23,17 @@ pub fn filetime_hilo(low: u32, high: u32) -> Result<PosixNs, ChronoError> {
     crate::format("filetime")?.decode_int(ticks)
 }
 
+/// Reconstruct a leap-correct UTC reading from a GPS `(week, time-of-week)` pair —
+/// the native form of GNSS receiver time (u-blox, NMEA, Berla iVe vehicle
+/// extractions, drone flight logs). `gps_seconds = week × 604800 + tow`, then
+/// GPS↔UTC via the leap-second table (GPS itself has no leap seconds). Returns a
+/// [`crate::leap::LeapReading`], deliberately outside the [`PosixNs`] spine.
+#[cfg(feature = "leap")]
+#[must_use]
+pub fn gps_week_tow(week: u32, tow: f64) -> crate::leap::LeapReading {
+    crate::leap::from_gps_seconds(f64::from(week) * 604_800.0 + tow)
+}
+
 /// An instant `ticks` × `unit` after an `anchor` — for boot/epoch-relative times
 /// whose stored value is a *duration*, not an absolute instant: Android
 /// `elapsedRealtime` (ms since boot), Apple mach continuous time (ns since boot),
