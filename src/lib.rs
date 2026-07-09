@@ -39,8 +39,8 @@
 //! break them — lives at <https://securityronin.github.io/timeglyph/>.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-#[cfg(feature = "csv")]
 pub mod compose;
+#[cfg(feature = "csv")]
 pub mod csv_enrich;
 pub mod datefmt;
 pub use datefmt::DateStyle;
