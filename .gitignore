@@ -18,3 +18,7 @@ lcov.info
 
 # Claude Code session state (worktrees, memory, plans) — ephemeral, never tracked
 /.claude/
+
+# Playground WASM built into docs/ at deploy time (source is wasm/)
+/docs/timeglyph_wasm.js
+/docs/timeglyph_wasm_bg.wasm

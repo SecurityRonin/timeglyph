@@ -62,6 +62,7 @@ extra:
 
 nav:
   - Home: index.md
+  - Playground: playground.html
   - Concepts:
       - Time scales & leap seconds: concepts/time-scales.md
       - Calendars (Julian, Gregorian, Julian Day): concepts/calendars.md
