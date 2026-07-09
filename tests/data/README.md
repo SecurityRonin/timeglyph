@@ -102,3 +102,30 @@ family), plus CPython `datetime` / `sqlite3` / GNU `date` (`tests/oracle_extra.r
 9313bcb2d92c3249aff3c20ad8a2ab7a  josh-hickman-android10/msgstore.db
 8a597e2c9aa5e024661bd56ce5eef4a6  josh-hickman-ios13/ChatStorage.sqlite
 ```
+
+## Reconciliation corpus (`reconciliation.csv`)
+
+**Source / tier:** documented tier-1 ground truth — time-decode published example
+values, Discord's own developer docs (`175928847299117063` → 2016-04-30
+11:18:25.796 UTC), and Apple TN1150's stated HFS+ maximum (2040-02-06 06:28:15).
+**Contents:** `value,format,expected_utc` rows. **License:** the values are
+published facts (spec/docs); freely redistributable. **Use case:**
+`tests/reconciliation.rs` decodes each value and asserts the rendered UTC prefix
+— a decode-correctness backstop that runs in CI.
+
+### External corpus (env-gated)
+
+`tests/reconciliation.rs::external_corpus_reconciles_when_present` additionally
+reconciles a larger real-world corpus when `TIMEGLYPH_CORPUS_CSV` points to a
+`value,format,expected_utc` file — the fleet pattern for large artifacts (kept
+out of the repo, provided at runtime). Populate it by extracting known-format
+timestamp columns from real forensic databases (e.g. the iOS/Android artifacts
+above) with their ground-truth times.
+
+### `libfdatetime` differential (external dependency)
+
+A differential against libyal's `libfdatetime` (Joachim Metz — the C reference
+that underpins plaso) is the one validation oracle not wired in-repo: it has no
+PyPI wheel and needs the C library built from source. Once `pyfdatetime` is
+built and importable, add it beside the `time-decode`/CPython oracles in
+`tests/oracle_extra.rs`.
