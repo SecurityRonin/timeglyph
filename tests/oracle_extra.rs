@@ -105,5 +105,9 @@ fn cpython_agrees_on_unix_float() {
         eprintln!("python3 absent — skipping");
         return;
     };
-    assert_eq!(got, tg_float("unix_float", v), "CPython vs timeglyph unix_float");
+    assert_eq!(
+        got,
+        tg_float("unix_float", v),
+        "CPython vs timeglyph unix_float"
+    );
 }

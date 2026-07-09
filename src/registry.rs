@@ -930,6 +930,23 @@ pub static FORMATS: &[Format] = &[
         plausible: W,
     },
     Format {
+        // Unix seconds carried as an IEEE-754 double — the integer part is the
+        // time_t, the fraction is sub-second. The float twin of `unix`, mirroring
+        // the cocoa/cocoa_float pair; a float input never matched the LinearInt
+        // `unix` before this. Ubiquitous in log pipelines.
+        id: "unix_float",
+        label: "Unix time (seconds, double)",
+        family: "Slack ts, Zeek/Squid, Splunk _time, log pipelines",
+        strategy: Strategy::LinearFloat {
+            epoch_ns: 0,
+            unit: Unit::Seconds,
+        },
+        citation: "POSIX time_t (IEEE-754 double; fractional seconds)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
         id: "sqlite_julian",
         label: "SQLite Julian day (float days)",
         family: "SQLite julianday() / REAL date storage",

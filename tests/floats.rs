@@ -34,13 +34,13 @@ fn fractional_cocoa_is_identified_with_subsecond_precision() {
 #[test]
 fn float_path_yields_only_float_strategy_formats() {
     // The integer-only decoders (unix, filetime, cocoa, …) never appear on the
-    // float path — only the five LinearFloat strategies can decode a double.
+    // float path — only the LinearFloat strategies can decode a double.
     let cands = interpret::interpret_float(608_322_295.311_65);
     assert!(!cands.is_empty(), "expected at least cocoa_float");
     assert!(
         cands.iter().all(|c| matches!(
             c.format_id,
-            "cocoa_float" | "ole" | "sqlite_julian" | "excel1904" | "mjd"
+            "cocoa_float" | "unix_float" | "ole" | "sqlite_julian" | "excel1904" | "mjd"
         )),
         "a non-float-strategy format leaked onto the float path: {:?}",
         cands.iter().map(|c| c.format_id).collect::<Vec<_>>()
