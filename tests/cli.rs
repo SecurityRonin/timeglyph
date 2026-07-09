@@ -511,3 +511,11 @@ fn decode_unix_sec_nsec_composite() {
     assert!(out.contains("2020-01-01T00:00:00.5"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn decode_elapsed_realtime_with_anchor() {
+    // Relative decode: "<ticks>@<anchor>" — 3_600_000 ms after 2020-01-01T00:00Z.
+    let (out, code) = run(&["decode", "elapsed_realtime", "3600000@2020-01-01T00:00:00Z"]);
+    assert!(out.contains("2020-01-01T01:00:00"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}

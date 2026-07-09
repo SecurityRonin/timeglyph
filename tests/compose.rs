@@ -55,3 +55,16 @@ fn unix_sec_nsec_reconstructs_a_timespec() {
         .unwrap()
         .starts_with("2020-01-01T00:00:00.5"));
 }
+
+#[test]
+fn relative_adds_a_duration_to_an_anchor() {
+    // Boot-relative times (Android elapsedRealtime = ms since boot, mach
+    // continuous time = ns since boot): the value is a DURATION, resolved against
+    // an anchor. 2020-01-01T00:00:00Z + 3_600_000 ms = 2020-01-01T01:00:00Z.
+    let anchor = timeglyph::compose::unix_sec_nsec(1_577_836_800, 0);
+    let inst = timeglyph::compose::relative(anchor, 3_600_000, timeglyph::Unit::Millis);
+    assert_eq!(
+        inst.render(&timeglyph::RenderZone::Utc).unwrap(),
+        "2020-01-01T01:00:00Z"
+    );
+}
