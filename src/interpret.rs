@@ -861,6 +861,27 @@ const STRING_FORMATS: &[StringFormat] = &[
         note: "parsed as a Google ei= URL parameter — the leading 4 bytes are little-endian Unix seconds",
     },
     StringFormat {
+        parse: parse_clf,
+        id: "clf",
+        label: "Apache/nginx common-log-format date",
+        spec: "Apache mod_log_config (CLF): dd/Mon/YYYY:HH:MM:SS ±HHMM",
+        note: "parsed as an Apache/nginx CLF date-time (offset normalised to UTC)",
+    },
+    StringFormat {
+        parse: parse_pdf_date,
+        id: "pdf_date",
+        label: "PDF metadata date (D:YYYYMMDDHHmmSS)",
+        spec: "ISO 32000-1 §7.9.4 (PDF date string)",
+        note: "parsed as a PDF metadata date (offset normalised to UTC)",
+    },
+    StringFormat {
+        parse: parse_dmtf_cim,
+        id: "dmtf_cim",
+        label: "DMTF/WMI CIM_DATETIME",
+        spec: "DMTF DSP0004 (CIM_DATETIME): yyyymmddHHMMSS.mmmmmm±UUU",
+        note: "parsed as a DMTF/WMI CIM datetime — UUU is the offset in minutes east of UTC",
+    },
+    StringFormat {
         parse: parse_rfc2822,
         id: "rfc2822",
         label: "RFC 2822 / email date",
@@ -1227,6 +1248,130 @@ fn frac_to_nanos(frac: &str) -> i32 {
         t.push('0');
     }
     t.parse().unwrap_or(0)
+}
+
+/// Three-letter English month abbreviation (`Jan`..`Dec`, case-insensitive) to
+/// its 1-based number. `None` for anything else.
+fn month_abbr(m: &str) -> Option<i8> {
+    const MONTHS: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    let m = m.to_ascii_lowercase();
+    MONTHS
+        .iter()
+        .position(|x| *x == m)
+        .map(|i| i8::try_from(i + 1).unwrap_or(1))
+}
+
+/// Parse a `±HHMM` numeric offset (e.g. `-0700`) into seconds east of UTC.
+fn numeric_offset_secs(tz: &str) -> Option<i64> {
+    let sign = match tz.as_bytes().first()? {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let digits = &tz[1..];
+    if digits.len() != 4 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let h: i64 = digits.get(0..2)?.parse().ok()?;
+    let mi: i64 = digits.get(2..4)?.parse().ok()?;
+    Some(sign * (h * 3600 + mi * 60))
+}
+
+/// Apache/nginx common-log-format date: `dd/Mon/YYYY:HH:MM:SS ±HHMM`, optionally
+/// wrapped in `[...]` as it appears in a log line. `None` unless the whole shape
+/// (including the numeric offset) matches.
+fn parse_clf(s: &str) -> Option<PosixNs> {
+    let s = s
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim();
+    let (date_time, tz) = s.rsplit_once(' ')?;
+    let (date, time) = date_time.split_once(':')?;
+    let mut d = date.split('/');
+    let day: i8 = d.next()?.parse().ok()?;
+    let mon = month_abbr(d.next()?)?;
+    let year: i16 = d.next()?.parse().ok()?;
+    if d.next().is_some() {
+        return None;
+    }
+    let mut t = time.split(':');
+    let (h, mi, sec) = (
+        t.next()?.parse().ok()?,
+        t.next()?.parse().ok()?,
+        t.next()?.parse().ok()?,
+    );
+    if t.next().is_some() {
+        return None;
+    }
+    civil_to_posix(year, mon, day, h, mi, sec, 0, numeric_offset_secs(tz)?)
+}
+
+/// PDF metadata date (ISO 32000-1 §7.9.4): `D:YYYYMMDDHHmmSS` with an optional
+/// `±HH'mm'`/`Z` offset. Trailing civil fields may be omitted (default to the
+/// start of the period). `None` unless the `D:` marker and a 4-digit year are
+/// present.
+fn parse_pdf_date(s: &str) -> Option<PosixNs> {
+    let body = s.trim().strip_prefix("D:")?;
+    let digits: String = body.chars().take_while(char::is_ascii_digit).collect();
+    let year: i16 = digits.get(0..4)?.parse().ok()?;
+    let f = |r: std::ops::Range<usize>, dflt: i8| -> i8 {
+        digits.get(r).and_then(|x| x.parse().ok()).unwrap_or(dflt)
+    };
+    let (mo, d) = (f(4..6, 1), f(6..8, 1));
+    let (h, mi, sec) = (f(8..10, 0), f(10..12, 0), f(12..14, 0));
+    // Offset: the remainder after the digits — `Z`, empty, or `±HH'mm'`.
+    let rest = &body[digits.len()..];
+    let offset = if rest.is_empty() || rest.starts_with('Z') {
+        0
+    } else {
+        let cleaned: String = rest.chars().filter(|c| *c != '\'').take(5).collect();
+        numeric_offset_secs(&cleaned)?
+    };
+    civil_to_posix(year, mo, d, h, mi, sec, 0, offset)
+}
+
+/// DMTF/WMI CIM_DATETIME (DSP0004): `yyyymmddHHMMSS.mmmmmm±UUU`, where `UUU` is
+/// the offset in whole minutes east of UTC (or `***` for "unknown", treated as
+/// UTC). `None` unless this exact shape matches — distinctive enough to avoid
+/// colliding with bare civil integers.
+fn parse_dmtf_cim(s: &str) -> Option<PosixNs> {
+    let s = s.trim();
+    let (main, tz) = s.split_once(['+', '-'])?;
+    let sign: i64 = if s.as_bytes()[main.len()] == b'-' {
+        -1
+    } else {
+        1
+    };
+    let (date, frac) = main.split_once('.')?;
+    if date.len() != 14 || !date.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if frac.len() != 6 || !frac.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let g = |r: std::ops::Range<usize>| -> Option<i64> { date.get(r)?.parse().ok() };
+    let year = i16::try_from(g(0..4)?).ok()?;
+    let offset = if tz == "***" {
+        0
+    } else {
+        if tz.len() != 3 || !tz.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        sign * tz.parse::<i64>().ok()? * 60
+    };
+    civil_to_posix(
+        year,
+        i8::try_from(g(4..6)?).ok()?,
+        i8::try_from(g(6..8)?).ok()?,
+        i8::try_from(g(8..10)?).ok()?,
+        i8::try_from(g(10..12)?).ok()?,
+        i8::try_from(g(12..14)?).ok()?,
+        frac_to_nanos(frac),
+        offset,
+    )
 }
 
 /// Shared ASN.1 time parser (ITU-T X.680). `year_digits` is 4 (GeneralizedTime)
