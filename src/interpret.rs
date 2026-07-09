@@ -93,6 +93,32 @@ pub fn interpret_int(value: i64) -> Vec<Candidate> {
     interpret_int_with_context(value, &InterpretContext::default())
 }
 
+/// Identify a value across every interpretation family — the one-call entry
+/// point for library consumers (language bindings, the WASM playground,
+/// downstream integrations). Merges integer, float, and self-describing-string
+/// readings and returns them ranked by score (descending); empty if nothing
+/// decodes. Renderings are UTC — re-render an individual [`Candidate::instant`]
+/// via [`PosixNs::render`](crate::PosixNs::render) for another zone. Mirrors the
+/// `identify` CLI's auto mode (no artifact hint; use
+/// [`interpret_int_with_context`] for that).
+#[must_use]
+pub fn identify(value: &str) -> Vec<Candidate> {
+    let s = value.trim();
+    let mut cands = Vec::new();
+    if let Ok(v) = s.parse::<i64>() {
+        cands.extend(interpret_int(v));
+    } else if let Ok(v) = s.parse::<f64>() {
+        cands.extend(interpret_float(v));
+    }
+    cands.extend(interpret_string(s));
+    cands.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    cands
+}
+
 /// Like [`interpret_int`], but with an [`InterpretContext`] supplying the
 /// on-disk width/byte-order, an artifact hint, and/or sibling column values.
 /// Each present context field adds one named component to every candidate; an
