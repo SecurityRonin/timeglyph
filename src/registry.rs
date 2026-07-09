@@ -974,6 +974,23 @@ pub static FORMATS: &[Format] = &[
         plausible: W,
     },
     Format {
+        // GMail Message ID: the top 44 bits of the 64-bit id are Unix
+        // milliseconds — i.e. `id >> 20`. The low 20 bits are a per-message
+        // counter. Email-forensics dating (the id appears in headers / Takeout).
+        id: "gmsgid",
+        label: "GMail Message ID (ms since 1970, >>20)",
+        family: "GMail message identifiers",
+        strategy: Strategy::Embedded {
+            epoch_ns: 0,
+            shift_bits: 20,
+            unit: Unit::Millis,
+        },
+        citation: "GMail Message ID (top 44 bits = Unix ms; 20-bit shift)",
+        tz: Utc,
+        leap: PosixIgnored,
+        plausible: W,
+    },
+    Format {
         id: "discord",
         label: "Discord Snowflake ID (ms since 2015, <<22)",
         family: "Discord object IDs",
