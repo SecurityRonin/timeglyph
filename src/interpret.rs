@@ -119,6 +119,18 @@ pub fn identify(value: &str) -> Vec<Candidate> {
     cands
 }
 
+/// [`identify`] serialized to a JSON array of readings — the JSON-in/JSON-out
+/// entry point for the WASM playground, a C ABI, and language bindings that
+/// prefer a string boundary over the typed [`Candidate`]. Never fails: an
+/// undecodable value yields `"[]"`.
+#[must_use]
+pub fn identify_json(value: &str) -> String {
+    serde_json::to_string(&identify(value))
+        // cov:unreachable: Candidate serialization is infallible (no fallible
+        // types); the fallback is a kept defensive arm, never taken.
+        .unwrap_or_else(|_| "[]".to_owned())
+}
+
 /// Like [`interpret_int`], but with an [`InterpretContext`] supplying the
 /// on-disk width/byte-order, an artifact hint, and/or sibling column values.
 /// Each present context field adds one named component to every candidate; an

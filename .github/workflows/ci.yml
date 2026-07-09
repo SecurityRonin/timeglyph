@@ -153,3 +153,16 @@ jobs:
             echo "$UNWANTED"
             exit 1
           fi
+
+  wasm-build:
+    # Gate: the core engine must compile to wasm32 so the WASM playground and
+    # browser / CyberChef embeddings stay buildable. Depends on the engine being
+    # pure (no I/O, no clap/csv) and jiff + serde being wasm-compatible.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: WASM lib build (wasm32-unknown-unknown, no default features)
+        run: cargo build --lib --no-default-features --target wasm32-unknown-unknown
