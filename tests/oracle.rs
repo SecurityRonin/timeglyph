@@ -508,3 +508,25 @@ fn google_ei_agrees_with_time_decode_live() {
         assert_eq!(got, civil(&mine), "google_ei {tok}");
     }
 }
+
+/// GMail Message ID: the top 44 bits (`id >> 20`) are Unix milliseconds — an
+/// embedded-timestamp id (like snowflake). Email-forensics dating; the value is
+/// the 19-digit decimal / 16-hex message id. Oracle: time-decode --gmsgid.
+#[test]
+fn gmsgid_agrees_with_time_decode() {
+    // Committed backstop (survives without the oracle):
+    assert_eq!(
+        civil(&render_int("gmsgid", 1_654_481_800_396_800_000)),
+        "2020-01-01 00:00:00"
+    );
+    if !oracle_available() {
+        eprintln!("skipping: time-decode not on PATH");
+        return;
+    }
+    agree(
+        "gmsgid",
+        &render_int("gmsgid", 1_654_481_800_396_800_000),
+        "--gmsgid",
+        "1654481800396800000",
+    );
+}
