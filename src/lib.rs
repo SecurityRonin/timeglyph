@@ -40,6 +40,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 #[cfg(feature = "csv")]
+pub mod compose;
 pub mod csv_enrich;
 pub mod datefmt;
 pub use datefmt::DateStyle;

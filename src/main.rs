@@ -461,6 +461,29 @@ fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: 
     }
 }
 
+/// Composite (two-word) decode: `Some` iff `format` is a composite id, with the
+/// parsed instant or a parse/decode error message. `None` lets the caller fall
+/// through to the single-value path.
+fn decode_composite(format: &str, value: &str) -> Option<Result<timeglyph::PosixNs, String>> {
+    match format {
+        "filetime_hilo" => Some(parse_filetime_hilo(value)),
+        _ => None,
+    }
+}
+
+/// Parse a `"low:high"` (or `low|high`) pair of 32-bit hex halves and reconstruct
+/// the FILETIME they encode.
+fn parse_filetime_hilo(value: &str) -> Result<timeglyph::PosixNs, String> {
+    let (lo, hi) = value
+        .split_once([':', '|'])
+        .ok_or_else(|| format!("expected 'low:high', got {value:?}"))?;
+    let half = |h: &str| -> Result<u32, String> {
+        u32::from_str_radix(h.trim().trim_start_matches("0x"), 16)
+            .map_err(|_| format!("not a 32-bit hex half: {h:?}"))
+    };
+    timeglyph::compose::filetime_hilo(half(lo)?, half(hi)?).map_err(|e| e.to_string())
+}
+
 fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) -> u8 {
     // Leap-aware scales (gps/tai64/ntp) decode separately — never via PosixNs.
     #[cfg(feature = "leap")]
@@ -483,6 +506,20 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) ->
                 }
             };
         }
+    }
+    // Composite (two-word) formats take a "low:high" hex pair, reassembled and
+    // decoded via the underlying single-value format's epoch math.
+    if let Some(result) = decode_composite(format, value) {
+        return match result {
+            Ok(instant) => match timeglyph::format("filetime") {
+                Ok(ft) => print_decode(ft, value, instant, zone, style),
+                Err(_) => EXIT_ERR, // cov:unreachable: filetime is always registered
+            },
+            Err(msg) => {
+                eprintln!("error: cannot decode {value:?} as {format}: {msg}");
+                EXIT_ERR
+            }
+        };
     }
     let f = match timeglyph::format(format) {
         Ok(f) => f,

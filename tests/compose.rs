@@ -37,3 +37,10 @@ fn filetime_hilo_agrees_with_time_decode() {
         .unwrap()
         .starts_with("2020-01-01T00:00:00"));
 }
+
+#[test]
+fn filetime_hilo_out_of_range_errs_not_panics() {
+    // A pair whose reconstructed FILETIME exceeds i64 must error, never panic
+    // (untrusted input robustness).
+    assert!(timeglyph::compose::filetime_hilo(0xffff_ffff, 0xffff_ffff).is_err());
+}
