@@ -35,3 +35,15 @@ fn identify_is_sorted_by_score_descending() {
     let cands = identify("1300000000");
     assert!(cands.windows(2).all(|w| w[0].score >= w[1].score));
 }
+
+#[test]
+fn identify_json_is_a_parseable_array_of_readings() {
+    // The JSON-in/JSON-out boundary the WASM playground and other bindings call.
+    let json = timeglyph::interpret::identify_json("1577836800");
+    let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+    let arr = v.as_array().expect("array");
+    assert!(arr.iter().any(|r| r["format_id"] == "unix"));
+    assert!(arr[0]["citation"].as_str().is_some());
+    // Undecodable input is an empty array, never an error.
+    assert_eq!(timeglyph::interpret::identify_json("nope!!!"), "[]");
+}
