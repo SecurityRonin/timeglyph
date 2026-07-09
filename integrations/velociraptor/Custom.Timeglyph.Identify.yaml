@@ -17,12 +17,10 @@ parameters:
     description: Path to the timeglyph binary.
 sources:
   - query: |
+      -- execve chunks large stdout across rows, so aggregate the chunks before
+      -- parsing the JSON array of readings.
+      LET chunks = SELECT Stdout
+        FROM execve(argv=[TimeglyphPath, "identify", Value, "--json"])
       SELECT format_id, rendered, score, citation, label
-      FROM foreach(
-        row={
-          SELECT Stdout FROM execve(argv=[TimeglyphPath, "identify", Value, "--json"])
-        },
-        query={
-          SELECT * FROM parse_json_array(data=Stdout)
-        })
+      FROM parse_json_array(data=join(array=chunks.Stdout, sep=""))
       ORDER BY score DESC
