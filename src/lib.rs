@@ -542,3 +542,20 @@ pub fn format(id: &str) -> Result<&'static Format, ChronoError> {
         .find(|f| f.id == id)
         .ok_or_else(|| ChronoError::UnknownFormat(id.to_string()))
 }
+
+/// A deterministic 16-hex-character fingerprint of the format registry — each
+/// entry's `id` and `citation`, in registry order. The provenance anchor for
+/// `--provenance`: the same engine build always yields the same digest, and any
+/// change to a format definition changes it, so a reading is traceable to the
+/// exact method version that produced it. Pure FNV-1a (no dependency).
+#[must_use]
+pub fn registry_digest() -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a 64-bit offset basis
+    for f in registry::FORMATS {
+        for byte in f.id.bytes().chain(f.citation.bytes()) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3); // FNV prime
+        }
+    }
+    format!("{hash:016x}")
+}

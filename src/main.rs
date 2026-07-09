@@ -102,6 +102,11 @@ struct Cli {
         default_value_t = 1e-9
     )]
     ambiguity_gap: f64,
+    /// Wrap `--json` identify output in a reproducible provenance envelope:
+    /// engine name/version, a registry digest, the verbatim input, and each
+    /// reading's citation — traceable back to the exact method version.
+    #[arg(long, global = true)]
+    provenance: bool,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -240,6 +245,7 @@ fn main() -> ExitCode {
         Some(Commands::Identify { value, json }) => run_identify(
             &value,
             json,
+            cli.provenance,
             &zone,
             style,
             cli.artifact.as_deref(),
@@ -273,6 +279,7 @@ fn main() -> ExitCode {
                 run_identify(
                     &v,
                     cli.json,
+                    cli.provenance,
                     &zone,
                     style,
                     cli.artifact.as_deref(),
@@ -316,9 +323,14 @@ fn looks_like_hex_bytes(s: &str) -> bool {
         && s.bytes().any(|b| b.is_ascii_alphabetic())
 }
 
+// The identify shell threads eight distinct, unrelated CLI inputs (value, two
+// output flags, zone, style, artifact hint, family selector, rank knobs); they
+// don't form a natural bundle beyond the existing `RankOpts`.
+#[allow(clippy::too_many_arguments)]
 fn run_identify(
     input: &str,
     json: bool,
+    provenance: bool,
     zone: &RenderZone,
     style: DateStyle,
     artifact: Option<&str>,
@@ -391,7 +403,19 @@ fn run_identify(
         cands.truncate(n);
     }
     if json {
-        match serde_json::to_string_pretty(&cands) {
+        let serialized = if provenance {
+            serde_json::to_string_pretty(&ProvenanceEnvelope {
+                schema_version: SCHEMA_VERSION,
+                engine: "timeglyph",
+                engine_version: env!("CARGO_PKG_VERSION"),
+                registry_digest: timeglyph::registry_digest(),
+                input: s,
+                readings: &cands,
+            })
+        } else {
+            serde_json::to_string_pretty(&cands)
+        };
+        match serialized {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("error: serializing candidates: {e}");
@@ -651,6 +675,19 @@ fn run_string(text: &str, zone: &RenderZone, style: DateStyle) -> u8 {
 /// JSON output schema version for the machine-readable surfaces. Bump on any
 /// breaking shape change so downstream parsers can pin the contract.
 const SCHEMA_VERSION: u32 = 1;
+
+/// The `--provenance` envelope wrapping identify `--json` output: a reproducible
+/// record of what decoded the value, for court-defensible/citable output. The
+/// readings are the full `Candidate`s (citation, components, assumptions).
+#[derive(serde::Serialize)]
+struct ProvenanceEnvelope<'a> {
+    schema_version: u32,
+    engine: &'static str,
+    engine_version: &'static str,
+    registry_digest: String,
+    input: &'a str,
+    readings: &'a [Candidate],
+}
 
 /// One reading in JSON output — a deliberate CLI-owned shape (not a serialized
 /// display type), so the wire contract is stable and versioned.
