@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: timeglyph
+message: >-
+  If you use timeglyph in forensic examination or research, please cite it.
+  For a reading traceable to a specific engine build, run with `--provenance`
+  and record the reported `engine_version` and `registry_digest`.
+type: software
+authors:
+  - family-names: Hui
+    given-names: Albert
+    email: albert@securityronin.com
+    affiliation: Security Ronin
+repository-code: "https://github.com/SecurityRonin/timeglyph"
+url: "https://securityronin.github.io/timeglyph/"
+abstract: >-
+  A forensic timestamp decipherment engine: decode, encode, and identify the
+  many ways systems inscribe time, with scored, cited, ambiguity-first
+  interpretation — every plausible reading ranked, with stated assumptions and a
+  spec citation, rather than a single guessed answer.
+keywords:
+  - digital-forensics
+  - DFIR
+  - timestamp
+  - epoch
+  - datetime
+license: Apache-2.0
+version: 0.3.0
