@@ -63,6 +63,9 @@ silently behind:
   resolved against an anchor): `elapsed_realtime` (Android, ms since boot) and
   `mach_continuous` (Apple, ns since boot) via `decode <id> "<ticks>@<anchor>"`,
   where `<anchor>` is an ISO-8601 instant.
+- **Syslog RFC 3164** (`interpret::parse_syslog_with_reference`): `decode
+  syslog "<Mon DD HH:MM:SS>@<reference>"` infers the omitted year as the most
+  recent one at-or-before the ISO-8601 reference (firewall/router/Linux logs).
 - **GPS week + time-of-week** (`compose::gps_week_tow`, `leap` feature): `decode
   gps_week_tow "<week>:<tow>"` — GNSS receiver time (u-blox, NMEA, Berla iVe,
   drone logs), leap-corrected to UTC. Validated against `time-decode --gps`.

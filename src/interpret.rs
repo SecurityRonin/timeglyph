@@ -1278,6 +1278,37 @@ fn civil_to_posix(
     Some(PosixNs(zoned.timestamp().as_nanosecond()))
 }
 
+/// Parse an RFC 3164 syslog timestamp (`Mon DD HH:MM:SS`, day space- or
+/// zero-padded) and infer its omitted year from `reference` — the most recent
+/// year that places the event at-or-before the reference (assumed UTC; syslog
+/// carries no offset). `None` if the fields are not a valid civil date-time.
+#[must_use]
+pub fn parse_syslog_with_reference(dt: &str, reference: PosixNs) -> Option<PosixNs> {
+    let mut parts = dt.split_whitespace();
+    let mon = month_abbr(parts.next()?)?;
+    let day: i8 = parts.next()?.parse().ok()?;
+    let mut t = parts.next()?.split(':');
+    let (h, mi, s) = (
+        t.next()?.parse().ok()?,
+        t.next()?.parse().ok()?,
+        t.next()?.parse().ok()?,
+    );
+    if t.next().is_some() || parts.next().is_some() {
+        return None;
+    }
+    // The most recent year whose instant is at-or-before the reference.
+    let ref_year = jiff::Timestamp::from_nanosecond(reference.0)
+        .ok()?
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .year();
+    let candidate = civil_to_posix(ref_year, mon, day, h, mi, s, 0, 0)?;
+    if candidate.0 > reference.0 {
+        civil_to_posix(ref_year - 1, mon, day, h, mi, s, 0, 0)
+    } else {
+        Some(candidate)
+    }
+}
+
 /// Convert an ASN.1 fractional-second digit string to nanoseconds (the first 9
 /// digits, right-padded; further digits truncated).
 fn frac_to_nanos(frac: &str) -> i32 {

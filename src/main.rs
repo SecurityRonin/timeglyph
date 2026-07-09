@@ -474,8 +474,24 @@ fn decode_composite(
         "unix_sec_nsec" => Some((parse_unix_sec_nsec(value), "unix")),
         "elapsed_realtime" => Some((parse_relative(value, timeglyph::Unit::Millis), "unix")),
         "mach_continuous" => Some((parse_relative(value, timeglyph::Unit::Nanos), "unix")),
+        "syslog" => Some((parse_syslog(value), "unix")),
         _ => None,
     }
+}
+
+/// Parse a `"<Mon DD HH:MM:SS>@<reference>"` RFC 3164 syslog value: the year is
+/// inferred from the ISO-8601 reference instant.
+fn parse_syslog(value: &str) -> Result<timeglyph::PosixNs, String> {
+    let (dt_s, ref_s) = value
+        .split_once('@')
+        .ok_or_else(|| format!("expected '<Mon DD HH:MM:SS>@<reference>', got {value:?}"))?;
+    let reference = interpret::interpret_string(ref_s.trim())
+        .into_iter()
+        .find(|c| c.format_id == "iso8601")
+        .map(|c| c.instant)
+        .ok_or_else(|| format!("reference must be an ISO 8601 datetime: {ref_s:?}"))?;
+    interpret::parse_syslog_with_reference(dt_s.trim(), reference)
+        .ok_or_else(|| format!("not an RFC 3164 syslog date: {dt_s:?}"))
 }
 
 /// Parse a `"<week>:<tow>"` GPS pair into a leap-correct reading.

@@ -68,8 +68,7 @@ fn syslog_infers_year_from_a_reference() {
     );
     // Dec 25 with a January-2026 reference resolves to the PRIOR year (Dec 25
     // 2026 would be in the future relative to the reference).
-    let r2 =
-        parse_syslog_with_reference("Dec 25 06:30:00", iso("2026-01-15T00:00:00Z")).unwrap();
+    let r2 = parse_syslog_with_reference("Dec 25 06:30:00", iso("2026-01-15T00:00:00Z")).unwrap();
     assert_eq!(
         r2.render(&timeglyph::RenderZone::Utc).unwrap(),
         "2025-12-25T06:30:00Z"
