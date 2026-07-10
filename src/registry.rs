@@ -1,26 +1,22 @@
-//! The forensic format registry.
+//! The forensic format registry — the ENGINE half of the knowledge/engine split.
 //!
-//! Covers the linear (LinearInt/LinearFloat), embedded-ID (`Strategy::Embedded`,
-//! any unit), and packed integer strategies — FAT/DOS plus the full bit-field
-//! family (exFAT, DTTM, BitDate/BitDec, BCD/GSM semi-octet, Motorola, Symantec,
-//! DVR, NS40/NS40LE, LogTime, Sonyflake). The SYSTEMTIME packed and
+//! The authoritative catalog of the 45 formats (ids, labels, epochs, tick units,
+//! tz/leap semantics, and packed-layout tags) lives in
+//! [`forensicnomicon::temporal_formats`] (a zero-dep, clean-room, primary-source
+//! knowledge table). This module is the decoder: it owns the calendar math for
+//! the 16 packed bit-field layouts — FAT/DOS, exFAT, DTTM, BitDate/BitDec, BCD/GSM
+//! semi-octet, Motorola, Symantec, DVR, NS40/NS40LE, LogTime, Nokia LE, SQL Server
+//! — and builds [`FORMATS`] by wrapping each catalog entry in an engine [`Format`]
+//! with the matching [`crate::PackedCodec`]. The SYSTEMTIME packed and
 //! ULID/UUIDv1/RFC-2822/EXIF string forms live in `interpret.rs`; the leap-aware
-//! GPS/NTP/TAI scales in `leap.rs`. Each entry's epoch and worked example are
-//! cross-validated against the MIT `time-decode` oracle (tests/oracle.rs,
-//! tests/catalog.rs), and `tests/docs_sync.rs` fails the build if a format here
-//! drifts out of `docs/validation.md`.
-//!
-//! Every epoch_ns constant below is a CLEAN-ROOM fact from a primary spec, to be
-//! cross-validated against the MIT `time-decode` oracle and each spec's worked
-//! example (ADR 0007). NEVER sourced from decompiling DCode.
+//! GPS/NTP/TAI scales in `leap.rs`. Each packed codec is cross-validated against
+//! the MIT `time-decode` oracle (tests/oracle.rs, tests/catalog.rs), and
+//! `tests/docs_sync.rs` fails the build if a format drifts out of
+//! `docs/validation.md`.
 
-use crate::{
-    ChronoError, Format,
-    LeapSemantics::PosixIgnored,
-    PosixNs, Strategy,
-    TzSemantics::{LocalNaive, Utc},
-    Unit,
-};
+use crate::{ChronoError, Format, PackedCodec, PosixNs};
+use forensicnomicon::temporal_formats::{Encoding, PackedLayout, SQLSERVER_EPOCH_NS, TIME_FORMATS};
+use std::sync::LazyLock;
 
 /// Unpack a 32-bit FAT/DOS packed date+time into an instant. The high 16 bits
 /// are the date word (`(year-1980) << 9 | month << 5 | day`), the low 16 are the
@@ -710,646 +706,104 @@ fn encode_sqlserver(instant: PosixNs) -> Result<i64, ChronoError> {
     Ok((i64::from(days) << 32) | ticks as i64)
 }
 
-// Epoch offsets, in nanoseconds relative to the Unix epoch (1970-01-01).
-// (seconds between the format epoch and 1970-01-01) × 1e9.
-const NS: i128 = 1_000_000_000;
-const FILETIME_EPOCH_NS: i128 = -11_644_473_600 * NS; // 1601-01-01  [MS-DTYP]
-const COCOA_EPOCH_NS: i128 = 978_307_200 * NS; //        2001-01-01  (CFAbsoluteTime)
-const HFS_EPOCH_NS: i128 = -2_082_844_800 * NS; //       1904-01-01  (HFS+ TN1150)
-const DOTNET_EPOCH_NS: i128 = -62_135_596_800 * NS; //   0001-01-01  (.NET DateTime.Ticks)
-const OLE_EPOCH_NS: i128 = -2_209_161_600 * NS; //       1899-12-30  (OLE Automation)
-const POSTGRES_EPOCH_NS: i128 = 946_684_800 * NS; //     2000-01-01  (PostgreSQL timestamp)
-                                                  // Julian Day 0 = noon, 24 Nov 4714 BC (proleptic Gregorian). unix_seconds(JD 0)
-                                                  // = (0 - 2440587.5) × 86400, since JD 2440587.5 == the Unix epoch (SQLite docs).
-const JULIAN_EPOCH_NS: i128 = -210_866_760_000 * NS;
-// Modified Julian Day 0 = 1858-11-17 00:00 UTC (= JD − 2400000.5). MJD 40587 =
-// 1970-01-01, so MJD day 0 is 40587 days before the Unix epoch.
-const MJD_EPOCH_NS: i128 = -3_506_716_800 * NS;
-const SQLSERVER_EPOCH_NS: i128 = -2_208_988_800 * NS; // 1900-01-01 (SQL Server datetime)
-                                                      // Snowflake-ID epochs, stored in ns (the scheme epoch is published in ms).
-const MS: i128 = 1_000_000;
-const TWITTER_EPOCH_NS: i128 = 1_288_834_974_657 * MS; // 2010-11-04 (Twitter/X)
-const DISCORD_EPOCH_NS: i128 = 1_420_070_400_000 * MS; // 2015-01-01 (Discord)
-const SONY_EPOCH_NS: i128 = 1_409_529_600 * NS; //        2014-09-01 (Sonyflake, 10ms units)
-                                                // KSUID epoch: Unix second 1_400_000_000 == 2014-05-13T16:53:20Z (Segment KSUID).
-const KSUID_EPOCH_NS: i128 = 1_400_000_000 * NS;
+// ---------------------------------------------------------------------------
+// Packed-codec dispatch + the engine's format registry.
+//
+// The 45-format catalog (ids, labels, epochs, units, tz/leap semantics, packed
+// LAYOUT TAGS) is authoritative in `forensicnomicon::temporal_formats`. This
+// module is the ENGINE: it owns the calendar math for the packed layouts and
+// wraps each catalog entry in a `Format` that carries the matching codec.
+// ---------------------------------------------------------------------------
 
-// Plausibility window for auto-detect ranking: 1990-01-01 .. 2040-01-01.
-// NOT a filter on truth — only a prior on which readings to surface first.
-const W_FROM: i128 = 631_152_000 * NS; // 1990-01-01
-const W_TO: i128 = 2_208_988_800 * NS; // 2040-01-01
-const W: (i128, i128) = (W_FROM, W_TO);
-
-/// All registered formats (scaffold subset).
-pub static FORMATS: &[Format] = &[
-    Format {
-        id: "unix",
-        label: "Unix time (seconds)",
-        family: "POSIX / Linux / web",
-        strategy: Strategy::LinearInt {
-            epoch_ns: 0,
-            unit: Unit::Seconds,
-        },
-        citation: "POSIX.1-2017 §4.16",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "unix_ms",
-        label: "Unix time (milliseconds, Java/JS)",
-        family: "Java, JavaScript Date",
-        strategy: Strategy::LinearInt {
-            epoch_ns: 0,
-            unit: Unit::Millis,
-        },
-        citation: "ECMA-262 (Date)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "unix_us",
-        label: "Unix time (microseconds)",
-        family: "various (sqlite, syslog)",
-        strategy: Strategy::LinearInt {
-            epoch_ns: 0,
-            unit: Unit::Micros,
-        },
-        citation: "derived (Unix epoch, µs)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "filetime",
-        label: "Windows FILETIME (100ns since 1601)",
-        family: "NTFS, Registry, Event Log, AD",
-        strategy: Strategy::LinearInt {
-            epoch_ns: FILETIME_EPOCH_NS,
-            unit: Unit::HundredNanos,
-        },
-        citation: "[MS-DTYP] §2.3.3 FILETIME",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "webkit",
-        label: "Chrome / WebKit (µs since 1601)",
-        family: "Chromium history/cookies",
-        strategy: Strategy::LinearInt {
-            epoch_ns: FILETIME_EPOCH_NS,
-            unit: Unit::Micros,
-        },
-        citation: "Chromium base::Time (Windows epoch, µs)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "cocoa",
-        label: "Cocoa / CFAbsoluteTime (s since 2001)",
-        family: "macOS/iOS, NSDate, Core Data",
-        strategy: Strategy::LinearInt {
-            epoch_ns: COCOA_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "Apple Foundation NSDate (CFAbsoluteTime)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "hfsplus",
-        label: "Apple HFS+ (s since 1904)",
-        family: "HFS+ filesystem",
-        strategy: Strategy::LinearInt {
-            epoch_ns: HFS_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "Apple TN1150 (HFS Plus)",
-        tz: Utc, // NB: classic-Mac HFS stored LOCAL; HFS+ is UTC.
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        // Classic Mac HFS: same 1904 epoch + seconds unit as HFS+, but the stored
-        // value is LOCAL wall-clock (TN1150) — a distinct forensic reading of the
-        // same bits, surfaced alongside `hfsplus` rather than instead of it.
-        id: "hfs",
-        label: "Apple HFS (local, s since 1904)",
-        family: "HFS filesystem (classic Mac OS)",
-        strategy: Strategy::LinearInt {
-            epoch_ns: HFS_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "Apple TN1150 (HFS)",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "dotnet_ticks",
-        label: ".NET DateTime.Ticks (100ns since 0001)",
-        family: ".NET / SQL Server datetime2",
-        strategy: Strategy::LinearInt {
-            epoch_ns: DOTNET_EPOCH_NS,
-            unit: Unit::HundredNanos,
-        },
-        citation: "ECMA-335 / .NET DateTime.Ticks",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "ole",
-        label: "OLE Automation date (days since 1899-12-30)",
-        family: "Excel, COM, VARIANT DATE",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: OLE_EPOCH_NS,
-            unit: Unit::Days,
-        },
-        citation: "MS OLE Automation (DATE / VT_DATE)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "unix_ns",
-        label: "Unix time (nanoseconds)",
-        family: "Go time.UnixNano, APFS on-disk",
-        strategy: Strategy::LinearInt {
-            epoch_ns: 0,
-            unit: Unit::Nanos,
-        },
-        citation: "derived (Unix epoch, ns); Apple APFS reference",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "dhcp6",
-        label: "DHCPv6 DUID-LLT (s since 2000)",
-        family: "DHCPv6 DUID-LLT (RFC 3315)",
-        strategy: Strategy::LinearInt {
-            // 2000-01-01 UTC — the same epoch as PostgreSQL (µs); DUID-LLT counts
-            // whole seconds. Reused DRY; the literal lives in one place.
-            epoch_ns: POSTGRES_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "RFC 3315 §9.2 (DUID-LLT)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "postgres",
-        label: "PostgreSQL timestamp (µs since 2000)",
-        family: "PostgreSQL (64-bit integer datetimes)",
-        strategy: Strategy::LinearInt {
-            epoch_ns: POSTGRES_EPOCH_NS,
-            unit: Unit::Micros,
-        },
-        citation: "PostgreSQL src timestamp.h (POSTGRES_EPOCH_JDATE)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "cocoa_float",
-        label: "Cocoa CFAbsoluteTime (signed double, s since 2001)",
-        family: "macOS/iOS plists, NSKeyedArchiver, Core Data",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: COCOA_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "Apple CoreFoundation CFAbsoluteTime (CFDateGetAbsoluteTime)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        // Unix seconds carried as an IEEE-754 double — the integer part is the
-        // time_t, the fraction is sub-second. The float twin of `unix`, mirroring
-        // the cocoa/cocoa_float pair; a float input never matched the LinearInt
-        // `unix` before this. Ubiquitous in log pipelines.
-        id: "unix_float",
-        label: "Unix time (seconds, double)",
-        family: "Slack ts, Zeek/Squid, Splunk _time, log pipelines",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: 0,
-            unit: Unit::Seconds,
-        },
-        citation: "POSIX time_t (IEEE-754 double; fractional seconds)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "sqlite_julian",
-        label: "SQLite Julian day (float days)",
-        family: "SQLite julianday() / REAL date storage",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: JULIAN_EPOCH_NS,
-            unit: Unit::Days,
-        },
-        citation: "SQLite date-and-time functions (Julian day number)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "snowflake",
-        label: "Twitter/X Snowflake ID (ms since 2010, <<22)",
-        family: "Twitter/X object IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: TWITTER_EPOCH_NS,
-            shift_bits: 22,
-            unit: Unit::Millis,
-        },
-        citation: "Twitter Snowflake (epoch 1288834974657 ms, 22-bit shift)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        // GMail Message ID: the top 44 bits of the 64-bit id are Unix
-        // milliseconds — i.e. `id >> 20`. The low 20 bits are a per-message
-        // counter. Email-forensics dating (the id appears in headers / Takeout).
-        id: "gmsgid",
-        label: "GMail Message ID (ms since 1970, >>20)",
-        family: "GMail message identifiers",
-        strategy: Strategy::Embedded {
-            epoch_ns: 0,
-            shift_bits: 20,
-            unit: Unit::Millis,
-        },
-        citation: "GMail Message ID (top 44 bits = Unix ms; 20-bit shift)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "discord",
-        label: "Discord Snowflake ID (ms since 2015, <<22)",
-        family: "Discord object IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: DISCORD_EPOCH_NS,
-            shift_bits: 22,
-            unit: Unit::Millis,
-        },
-        citation: "Discord developer docs (epoch 1420070400000 ms, 22-bit shift)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "fat",
-        label: "FAT/DOS packed date+time (LOCAL time)",
-        family: "FAT/exFAT, ZIP, DOS",
-        strategy: Strategy::Packed {
+/// The engine codec (unpacker + optional packer) for a knowledge-table
+/// [`PackedLayout`] tag — the seam between the zero-dep catalog (which names the
+/// layout) and the engine (which owns the calendar math). Exhaustive over the
+/// tag, so a new layout in the catalog is a compile error here until wired.
+fn packed_codec(layout: PackedLayout) -> PackedCodec {
+    match layout {
+        PackedLayout::FatDos => PackedCodec {
             decode: decode_fat_dos,
             encode: Some(encode_fat_dos),
         },
-        citation: "Microsoft FAT spec / ECMA-107 (DOS date/time fields)",
-        // FAT stores wall-clock LOCAL time with NO offset — the rendered instant
-        // is naive and must not be assumed UTC.
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    // --- Catalog build-out, each cross-checked vs the MIT
-    // `time-decode` oracle (tests/oracle.rs, tests/catalog.rs). --------------
-    Format {
-        id: "active",
-        label: "Active Directory / LDAP (100ns since 1601)",
-        family: "Active Directory, LDAP (lastLogon, pwdLastSet)",
-        strategy: Strategy::LinearInt {
-            epoch_ns: FILETIME_EPOCH_NS,
-            unit: Unit::HundredNanos,
-        },
-        citation: "[MS-DTYP] §2.3.3 FILETIME (AD Integer8 date attributes)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "prtime",
-        label: "Mozilla PRTime (µs since 1970)",
-        family: "Firefox places.sqlite, Mozilla NSPR",
-        strategy: Strategy::LinearInt {
-            epoch_ns: 0,
-            unit: Unit::Micros,
-        },
-        citation: "Mozilla NSPR PRTime (microseconds since the Unix epoch)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "iostime",
-        label: "Apple NSDate iOS 11+ (ns since 2001)",
-        family: "iOS 11+ Cocoa nanosecond NSDate",
-        strategy: Strategy::LinearInt {
-            epoch_ns: COCOA_EPOCH_NS,
-            unit: Unit::Nanos,
-        },
-        citation: "Apple Foundation NSDate (CFAbsoluteTime), nanosecond form",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "ksuid",
-        label: "KSUID timestamp (s since 2014-05-13)",
-        family: "Segment KSUID (k-sortable unique IDs)",
-        strategy: Strategy::LinearInt {
-            epoch_ns: KSUID_EPOCH_NS,
-            unit: Unit::Seconds,
-        },
-        citation: "Segment KSUID (epoch 1_400_000_000 = 2014-05-13T16:53:20Z)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "excel1904",
-        label: "Microsoft Excel 1904 date (float days since 1904-01-01)",
-        family: "Excel (legacy Mac 1904 date system)",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: HFS_EPOCH_NS,
-            unit: Unit::Days,
-        },
-        citation: "Microsoft Excel 1904 date system (serial day 0 = 1904-01-01)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "mastodon",
-        label: "Mastodon Snowflake ID (ms since 1970, <<16)",
-        family: "Mastodon status / object IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: 0,
-            shift_bits: 16,
-            unit: Unit::Millis,
-        },
-        citation: "Mastodon Snowflake (Unix-ms epoch, 16-bit shift); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "linkedin",
-        label: "LinkedIn activity ID (ms since 1970, <<22)",
-        family: "LinkedIn activity / URN IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: 0,
-            shift_bits: 22,
-            unit: Unit::Millis,
-        },
-        citation: "LinkedIn activity timestamp (Unix-ms epoch, 22-bit shift); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "tiktok",
-        label: "TikTok Snowflake ID (s since 1970, <<32)",
-        family: "TikTok object IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: 0,
-            shift_bits: 32,
-            unit: Unit::Seconds,
-        },
-        citation: "TikTok ID (Unix-seconds epoch, 32-bit shift); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    // --- Packed bit-field formats (HANDOFF §5a long tail), LOCAL/naive time,
-    // each cross-checked vs the MIT time-decode oracle (tests/packed.rs). ------
-    Format {
-        id: "exfat",
-        label: "exFAT packed timestamp (LOCAL time)",
-        family: "exFAT filesystem",
-        strategy: Strategy::Packed {
+        PackedLayout::ExFat => PackedCodec {
             decode: decode_exfat,
             encode: Some(encode_exfat),
         },
-        citation: "Microsoft exFAT spec (32-bit packed timestamp); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "dttm",
-        label: "Microsoft DTTM packed date (LOCAL time)",
-        family: "Microsoft Compound File / Office DTTM",
-        strategy: Strategy::Packed {
+        PackedLayout::Dttm => PackedCodec {
             decode: decode_dttm,
             encode: Some(encode_dttm),
         },
-        citation: "Microsoft DTTM packed date (year since 1900); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "bitdate",
-        label: "Samsung/LG BitDate (byte-reversed packed, LOCAL time)",
-        family: "Samsung / LG device timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::BitDate => PackedCodec {
             decode: decode_bitdate,
             encode: Some(encode_bitdate),
         },
-        citation: "Samsung/LG BitDate (byte-reversed 32-bit packed); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "bitdec",
-        label: "Bitwise Decimal packed date (LOCAL time)",
-        family: "Bitwise Decimal packed timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::BitDec => PackedCodec {
             decode: decode_bitdec,
             encode: Some(encode_bitdec),
         },
-        citation: "Bitwise Decimal (decimal bit-packed date); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "bcd",
-        label: "Binary-Coded-Decimal YYMMDDHHMMSS (LOCAL time)",
-        family: "BCD digit-pair timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::Bcd => PackedCodec {
             decode: decode_bcd,
             encode: Some(encode_bcd),
         },
-        citation: "Binary-Coded-Decimal (YY+2000 MM DD HH MM SS pairs); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "moto",
-        label: "Motorola 6-byte timestamp",
-        family: "Motorola device timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::Moto => PackedCodec {
             decode: decode_moto,
             encode: Some(encode_moto),
         },
-        citation: "Motorola 6-byte (one byte per field, year+1970); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "symantec",
-        label: "Symantec AV 6-byte timestamp",
-        family: "Symantec antivirus logs",
-        strategy: Strategy::Packed {
+        PackedLayout::Symantec => PackedCodec {
             decode: decode_symantec,
             encode: Some(encode_symantec),
         },
-        citation: "Symantec AV 6-byte (year+1970, month+1); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "dvr",
-        label: "DVR (WFS/DHFS) packed timestamp (LOCAL time)",
-        family: "DVR WFS / DHFS filesystems",
-        strategy: Strategy::Packed {
+        PackedLayout::Dvr => PackedCodec {
             decode: decode_dvr,
             encode: Some(encode_dvr),
         },
-        citation: "DVR WFS/DHFS 32-bit packed (year since 2000); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "sony",
-        label: "Sonyflake ID (10ms units since 2014-09-01, <<24)",
-        family: "Sonyflake distributed IDs",
-        strategy: Strategy::Embedded {
-            epoch_ns: SONY_EPOCH_NS,
-            shift_bits: 24,
-            unit: Unit::CentiSecond,
-        },
-        citation: "Sonyflake (id>>24 in 10ms units, 2014-09-01 epoch); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "ns40",
-        label: "Nokia S40 7-byte timestamp",
-        family: "Nokia S40 devices",
-        strategy: Strategy::Packed {
+        PackedLayout::Ns40 => PackedCodec {
             decode: decode_ns40,
             encode: Some(encode_ns40),
         },
-        citation: "Nokia S40 7-byte (year BE u16 + field bytes); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "ns40le",
-        label: "Nokia S40 7-byte timestamp (LE year)",
-        family: "Nokia S40 devices",
-        strategy: Strategy::Packed {
+        PackedLayout::Ns40Le => PackedCodec {
             decode: decode_ns40le,
             encode: Some(encode_ns40le),
         },
-        citation: "Nokia S40 7-byte, little-endian year u16; vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "logtime",
-        label: "JET LogTime 8-byte timestamp",
-        family: "Microsoft JET / ESE database logs",
-        strategy: Strategy::Packed {
+        PackedLayout::LogTime => PackedCodec {
             decode: decode_logtime,
             encode: Some(encode_logtime),
         },
-        citation: "JET LogTime (reversed field bytes, year+1900); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "semioctet",
-        label: "Semi-Octet decimal (LOCAL time)",
-        family: "Semi-octet (nibble-swapped) timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::SemiOctet => PackedCodec {
             decode: decode_semioctet,
             encode: Some(encode_semioctet),
         },
-        citation: "Semi-Octet decimal (nibble-swapped pairs, YY+2000); vs time-decode",
-        tz: LocalNaive,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "gsm",
-        label: "GSM 7-byte semi-octet timestamp",
-        family: "GSM mobile timestamps",
-        strategy: Strategy::Packed {
+        PackedLayout::Gsm => PackedCodec {
             decode: decode_gsm,
             encode: Some(encode_gsm),
         },
-        citation: "GSM semi-octet (per-byte nibble swap + tz byte); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "nokiale",
-        label: "Nokia time LE (seconds before 2050)",
-        family: "Nokia devices",
-        strategy: Strategy::Packed {
+        PackedLayout::NokiaLe => PackedCodec {
             decode: decode_nokiale,
             encode: Some(encode_nokiale),
         },
-        citation: "Nokia LE (byte-reversed two's-complement seconds before 2050); vs time-decode",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "mjd",
-        label: "Modified Julian Day (float days since 1858-11-17)",
-        family: "astronomy / VMS / scientific timestamps",
-        strategy: Strategy::LinearFloat {
-            epoch_ns: MJD_EPOCH_NS,
-            unit: Unit::Days,
-        },
-        citation: "Modified Julian Day (JD − 2400000.5; day 0 = 1858-11-17)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-    Format {
-        id: "sqlserver",
-        label: "SQL Server datetime (days since 1900 + 1/300s ticks)",
-        family: "Microsoft SQL Server datetime",
-        strategy: Strategy::Packed {
+        PackedLayout::SqlServer => PackedCodec {
             decode: decode_sqlserver,
             encode: Some(encode_sqlserver),
         },
-        citation: "SQL Server datetime (int32 days since 1900-01-01 + uint32 1/300s ticks)",
-        tz: Utc,
-        leap: PosixIgnored,
-        plausible: W,
-    },
-];
+    }
+}
+
+/// The engine's format registry: every authoritative
+/// [`forensicnomicon::temporal_formats::TIME_FORMATS`] entry wrapped in an engine
+/// [`Format`] that carries the packed codec for a packed layout (and `None` for
+/// the linear/embedded/float families). The knowledge is forensicnomicon's; the
+/// decode/encode behaviour is the engine's.
+pub static FORMATS: LazyLock<Vec<Format>> = LazyLock::new(|| {
+    TIME_FORMATS
+        .iter()
+        .map(|meta| Format {
+            meta,
+            packed: match meta.encoding {
+                Encoding::Packed(layout) => Some(packed_codec(layout)),
+                Encoding::LinearInt { .. }
+                | Encoding::LinearFloat { .. }
+                | Encoding::Embedded { .. } => None,
+            },
+        })
+        .collect()
+});

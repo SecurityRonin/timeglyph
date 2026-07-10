@@ -41,7 +41,9 @@ independently of any tool, which is why both kinds of check are used together.
 
 ## Format coverage
 
-timeglyph implements **45 numeric/packed formats** (`src/registry.rs`), plus the
+timeglyph implements **45 numeric/packed formats** — catalogued authoritatively in
+`forensicnomicon::temporal_formats::TIME_FORMATS` (the zero-dep knowledge table) and
+decoded by the engine in `src/registry.rs` — plus the
 self-describing string forms in `interpret.rs` (ISO-8601/RFC-3339, RFC-2822,
 HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId, Google `ei=`, Apache CLF, PDF date, DMTF/WMI CIM, JWT `iat`/`exp`/`nbf`). `tests/docs_sync.rs` fails the
 build if any registry format drifts out of this list, so coverage cannot fall

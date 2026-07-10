@@ -767,7 +767,7 @@ fn needle_bytes(enc: timeglyph::Encoded, width: u8) -> (String, String) {
 fn run_encode_all(instant: timeglyph::PosixNs) -> u8 {
     println!("# on-disk needles for this time (format  value  LE  BE) — search representations, not proof of occurrence");
     let mut any = false;
-    for f in timeglyph::registry::FORMATS {
+    for f in timeglyph::registry::FORMATS.iter() {
         let Ok(enc) = f.encode(instant) else { continue };
         let (le, be) = needle_bytes(enc, f.storage_bytes());
         println!("{:<16} {:<22} LE {le:<16} BE {be}", f.id, enc);
@@ -973,7 +973,7 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
 }
 
 fn run_list() -> u8 {
-    for f in timeglyph::registry::FORMATS {
+    for f in timeglyph::registry::FORMATS.iter() {
         println!("{:<16} {:<48} {}", f.id, f.label, f.citation);
     }
     EXIT_OK

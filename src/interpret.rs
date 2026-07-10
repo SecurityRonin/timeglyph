@@ -15,7 +15,7 @@
 //! the reading.
 
 use crate::{
-    registry::FORMATS, ChronoError, Format, LeapSemantics, PosixNs, Strategy, TzSemantics, Unit,
+    registry::FORMATS, ChronoError, Encoding, Format, LeapSemantics, PosixNs, TzSemantics, Unit,
 };
 
 /// One candidate interpretation of a value. Carries its score *components* and
@@ -140,7 +140,7 @@ pub fn identify_json(value: &str) -> String {
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
-    for f in FORMATS {
+    for f in FORMATS.iter() {
         // Any integer-decodable strategy is a candidate; float-only and
         // out-of-range readings are skipped inside build_candidate.
         if let Some(c) = build_candidate(f, value, ctx) {
@@ -172,7 +172,7 @@ pub fn interpret_int_with_context(value: i64, ctx: &InterpretContext) -> Vec<Can
 #[must_use]
 pub fn interpret_float(value: f64) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = Vec::new();
-    for f in FORMATS {
+    for f in FORMATS.iter() {
         // Only float strategies decode a double; `decode_float` rejects the rest,
         // and an out-of-civil-range instant is dropped inside build_candidate_float.
         if let Some(c) = build_candidate_float(f, value) {
@@ -229,8 +229,8 @@ fn score_components_float(f: &Format, instant: PosixNs) -> Vec<(&'static str, f6
         ("representable", 1.0),
         ("in_window", in_window),
         ("granularity_match", 1.0),
-        ("magnitude_fit", magnitude_fit(f.strategy, instant)),
-        ("epoch_distance", epoch_distance(f.strategy, instant)),
+        ("magnitude_fit", magnitude_fit(f.encoding, instant)),
+        ("epoch_distance", epoch_distance(f.encoding, instant)),
         ("prevalence", prevalence(f.id)),
         ("not_sentinel", 1.0),
     ]
@@ -294,8 +294,8 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
     // LinearInt regardless of epoch — the Unix Y2038 boundary is just its most
     // famous instance. Framed as a possibility (ADR 0005), never a verdict.
     if matches!(
-        f.strategy,
-        Strategy::LinearInt {
+        f.encoding,
+        Encoding::LinearInt {
             unit: Unit::Seconds,
             ..
         }
@@ -397,9 +397,9 @@ fn score_components(
     let in_window = f64::from(u8::from(
         instant.0 >= f.plausible.0 && instant.0 < f.plausible.1,
     ));
-    let granularity = granularity_match(f.strategy, value);
-    let magnitude = magnitude_fit(f.strategy, instant);
-    let epoch_dist = epoch_distance(f.strategy, instant);
+    let granularity = granularity_match(f.encoding, value);
+    let magnitude = magnitude_fit(f.encoding, instant);
+    let epoch_dist = epoch_distance(f.encoding, instant);
     let not_sentinel = f64::from(u8::from(sentinel_reason(value).is_none()));
     let mut components = vec![
         ("representable", representable),
@@ -546,9 +546,9 @@ const TWO_YEARS_NS: i128 = 730 * 86_400 * 1_000_000_000;
 /// IDs it is diagnostic: a tiny value decodes to an instant essentially AT the
 /// scheme epoch (`id >> shift ≈ 0`), which is implausible for a real ID — so the
 /// score ramps from `0.0` at the epoch to `1.0` two years past it.
-fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
+fn magnitude_fit(strategy: Encoding, instant: PosixNs) -> f64 {
     match strategy {
-        Strategy::Embedded { epoch_ns, .. } => {
+        Encoding::Embedded { epoch_ns, .. } => {
             let past = instant.0 - epoch_ns;
             if past <= 0 {
                 0.0
@@ -556,7 +556,7 @@ fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
                 (past as f64 / TWO_YEARS_NS as f64).min(1.0)
             }
         }
-        Strategy::LinearInt { .. } | Strategy::LinearFloat { .. } | Strategy::Packed { .. } => 1.0,
+        Encoding::LinearInt { .. } | Encoding::LinearFloat { .. } | Encoding::Packed(_) => 1.0,
     }
 }
 
@@ -583,12 +583,12 @@ fn magnitude_fit(strategy: Strategy, instant: PosixNs) -> f64 {
 /// still appears as a candidate, just ranked lower; the reading is never hidden.
 /// `Packed` civil-field formats carry no linear epoch offset, so they score
 /// `1.0` (the prior does not apply), exactly as [`magnitude_fit`] treats them.
-fn epoch_distance(strategy: Strategy, instant: PosixNs) -> f64 {
+fn epoch_distance(strategy: Encoding, instant: PosixNs) -> f64 {
     let epoch_ns = match strategy {
-        Strategy::LinearInt { epoch_ns, .. }
-        | Strategy::LinearFloat { epoch_ns, .. }
-        | Strategy::Embedded { epoch_ns, .. } => epoch_ns,
-        Strategy::Packed { .. } => return 1.0,
+        Encoding::LinearInt { epoch_ns, .. }
+        | Encoding::LinearFloat { epoch_ns, .. }
+        | Encoding::Embedded { epoch_ns, .. } => epoch_ns,
+        Encoding::Packed(_) => return 1.0,
     };
     let past = instant.0 - epoch_ns;
     if past <= 0 {
@@ -603,13 +603,13 @@ fn epoch_distance(strategy: Strategy, instant: PosixNs) -> f64 {
 /// value carrying real sub-second digits fits perfectly (`1.0`). Coarse units
 /// (seconds/days) never penalise. This is the core seconds-vs-ms-vs-µs-vs-ns
 /// disambiguation, expressed structurally rather than by "looks human".
-fn granularity_match(strategy: Strategy, value: i64) -> f64 {
+fn granularity_match(strategy: Encoding, value: i64) -> f64 {
     let unit: Unit = match strategy {
-        Strategy::LinearInt { unit, .. }
-        | Strategy::LinearFloat { unit, .. }
-        | Strategy::Embedded { unit, .. } => unit,
+        Encoding::LinearInt { unit, .. }
+        | Encoding::LinearFloat { unit, .. }
+        | Encoding::Embedded { unit, .. } => unit,
         // Packed civil fields have no linear sub-second unit to mismatch against.
-        Strategy::Packed { .. } => return 1.0,
+        Encoding::Packed(_) => return 1.0,
     };
     let ssd = unit.sub_second_digits();
     if ssd == 0 {
