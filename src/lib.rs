@@ -193,145 +193,50 @@ fn parse_offset(s: &str) -> Option<jiff::tz::Offset> {
     jiff::tz::Offset::from_seconds(sign * (hh * 3600 + mm * 60)).ok()
 }
 
-/// The tick unit a format counts in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unit {
-    /// Whole seconds.
-    Seconds,
-    /// Milliseconds (Java/JS).
-    Millis,
-    /// Centiseconds — 10-millisecond units (Sonyflake's embedded time field).
-    CentiSecond,
-    /// Microseconds (Chrome/WebKit, PostgreSQL).
-    Micros,
-    /// 100-nanosecond intervals (FILETIME, .NET ticks).
-    HundredNanos,
-    /// Nanoseconds (APFS, Unix-ns).
-    Nanos,
-    /// Whole days (OLE Automation / Excel serial — usually fractional).
-    Days,
-}
+// The timestamp-format *knowledge* — tick units, timezone/leap semantics, the
+// packed-layout tags, the `Encoding` a format uses, and the [`TimeFormat`] record
+// itself — lives in forensicnomicon (the zero-dep DFIR knowledge leaf). timeglyph
+// is the *engine* that decodes it, so it re-exports those types and wraps each
+// catalog entry in an engine-side [`Format`] that adds the decode/encode methods
+// and the packed codec.
+pub use forensicnomicon::temporal_formats::{
+    Encoding, LeapSemantics, PackedLayout, TimeFormat, TzSemantics, Unit,
+};
 
-impl Unit {
-    /// Nanoseconds per tick of this unit.
-    #[must_use]
-    pub const fn nanos(self) -> i128 {
-        match self {
-            Self::Seconds => 1_000_000_000,
-            Self::Millis => 1_000_000,
-            Self::CentiSecond => 10_000_000,
-            Self::Micros => 1_000,
-            Self::HundredNanos => 100,
-            Self::Nanos => 1,
-            Self::Days => 86_400 * 1_000_000_000,
-        }
-    }
-
-    /// Decimal digits of *sub-second* resolution this unit can express
-    /// (seconds/days → 0, millis → 3, micros → 6, 100-nanos → 7, nanos → 9).
-    /// Drives auto-detect granularity scoring: a whole-second raw value is a
-    /// poor fit for a finer unit, so it is penalised, never hidden.
-    #[must_use]
-    pub const fn sub_second_digits(self) -> u32 {
-        match self {
-            Self::Seconds | Self::Days => 0,
-            Self::CentiSecond => 2,
-            Self::Millis => 3,
-            Self::Micros => 6,
-            Self::HundredNanos => 7,
-            Self::Nanos => 9,
-        }
-    }
-}
-
-/// How a stored value maps to an instant.
+/// The engine-side codec for a [`Encoding::Packed`] format: the layout-specific
+/// unpacker (and inverse packer, when one exists) that the knowledge table's
+/// [`PackedLayout`] tag dispatches to. The calendar math lives here in the engine,
+/// not in the zero-dep knowledge table.
 #[derive(Debug, Clone, Copy)]
-pub enum Strategy {
-    /// `value` (integer ticks) × `unit` + `epoch_ns` = [`PosixNs`].
-    LinearInt {
-        /// The format's epoch as nanoseconds relative to the Unix epoch.
-        epoch_ns: i128,
-        /// The tick unit.
-        unit: Unit,
-    },
-    /// `value` (floating ticks, e.g. OLE days as `f64`) × `unit` + `epoch_ns`.
-    /// Lossy by nature; the registry entry must flag the precision caveat.
-    LinearFloat {
-        /// The format's epoch as nanoseconds relative to the Unix epoch.
-        epoch_ns: i128,
-        /// The tick unit.
-        unit: Unit,
-    },
-    /// An ID with an embedded timestamp in its high bits: the low `shift_bits`
-    /// bits are worker/sequence/random, so `value >> shift_bits` is a count of
-    /// `unit` ticks since `epoch_ns`. Most snowflake-class IDs count
-    /// milliseconds (Twitter/Discord/Mastodon/LinkedIn), but the unit is part of
-    /// the scheme — TikTok counts whole seconds — so it is carried explicitly.
-    Embedded {
-        /// The scheme's epoch as nanoseconds relative to the Unix epoch.
-        epoch_ns: i128,
-        /// Number of low bits to discard before reading the timestamp.
-        shift_bits: u32,
-        /// The tick unit of the embedded timestamp.
-        unit: Unit,
-    },
-    /// A bit-packed civil datetime (FAT/DOS, SYSTEMTIME, exFAT): the integer is
-    /// not a linear offset but packed calendar fields, so decoding needs a
-    /// dedicated unpacker. The function returns the instant; tz semantics (e.g.
-    /// FAT's LOCAL naive time) are carried on the [`Format`] entry.
-    Packed {
-        /// Unpack the integer into an instant.
-        decode: fn(i64) -> Result<PosixNs, ChronoError>,
-        /// Inverse packer, if the format can re-encode an instant to its packed
-        /// integer. `None` until an oracle-validated encoder exists for it.
-        encode: Option<fn(PosixNs) -> Result<i64, ChronoError>>,
-    },
-    // TODO: SYSTEMTIME / exFAT (offset field) packed layouts;
-    // ASN.1 / EXIF / RFC-2822 string forms.
+pub(crate) struct PackedCodec {
+    /// Unpack the integer into an instant.
+    pub(crate) decode: fn(i64) -> Result<PosixNs, ChronoError>,
+    /// Inverse packer, if the format can re-encode an instant to its packed
+    /// integer. `None` until an oracle-validated encoder exists for it.
+    pub(crate) encode: Option<fn(PosixNs) -> Result<i64, ChronoError>>,
 }
 
-/// Timezone semantics of a format's stored value — NOT garnish: FAT stores local
-/// time, EXIF often lacks an offset, Event Logs store UTC but display local.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TzSemantics {
-    /// The value denotes UTC (POSIX, leap-ignoring).
-    Utc,
-    /// The value denotes naive *local* time with no recorded offset (FAT/DOS).
-    LocalNaive,
-    /// The value carries its own offset (exFAT tz field, EXIF with offset).
-    OffsetEmbedded,
-}
-
-/// Leap-second semantics — the partition Codex flagged. Most forensic epochs are
-/// POSIX (leap-ignoring); only the GPS/TAI/NTP family needs true leap math.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LeapSemantics {
-    /// UTC-labelled but leap-ignoring (pure constant offset to Unix). The norm.
-    PosixIgnored,
-    /// True leap-aware scale (GPS/TAI/NTP) — handled by a separate instant type.
-    LeapAware,
-}
-
-/// One forensic timestamp format: evidence metadata, not just a converter.
+/// One forensic timestamp format: the authoritative catalog record ([`meta`], the
+/// evidence metadata + [`Encoding`], owned by forensicnomicon) plus the engine's
+/// packed codec when the encoding is [`Encoding::Packed`]. Derefs to [`meta`], so
+/// `f.id`, `f.citation`, `f.tz`, `f.encoding`, … read straight through to the
+/// catalog entry.
+///
+/// [`meta`]: Format::meta
 #[derive(Debug, Clone, Copy)]
 pub struct Format {
-    /// Stable id (e.g. `"filetime"`).
-    pub id: &'static str,
-    /// Human label (e.g. `"Windows FILETIME"`).
-    pub label: &'static str,
-    /// Where it's found / who writes it.
-    pub family: &'static str,
-    /// How the value maps to an instant.
-    pub strategy: Strategy,
-    /// Authoritative spec citation (clean-room provenance for the paper).
-    pub citation: &'static str,
-    /// Timezone semantics.
-    pub tz: TzSemantics,
-    /// Leap-second semantics.
-    pub leap: LeapSemantics,
-    /// Observed forensic plausibility window `[from, to)` in [`PosixNs`] — used
-    /// to rank auto-detect candidates (NOT to assert a single answer).
-    pub plausible: (i128, i128),
+    /// The authoritative catalog record from forensicnomicon (id, label, family,
+    /// citation, tz/leap semantics, plausibility window, and the [`Encoding`]).
+    pub meta: &'static TimeFormat,
+    /// The engine codec for a packed encoding; `None` for linear/embedded/float.
+    pub(crate) packed: Option<PackedCodec>,
+}
+
+impl std::ops::Deref for Format {
+    type Target = TimeFormat;
+    fn deref(&self) -> &Self::Target {
+        self.meta
+    }
 }
 
 impl Format {
@@ -342,10 +247,10 @@ impl Format {
     /// (FILETIME, .NET ticks, ms/µs/ns counts, snowflake IDs, OLE `f64`).
     #[must_use]
     pub fn storage_bytes(&self) -> u8 {
-        match self.strategy {
-            Strategy::Packed { .. } => 4,
-            Strategy::Embedded { .. } | Strategy::LinearFloat { .. } => 8,
-            Strategy::LinearInt { unit, .. } => match unit {
+        match self.meta.encoding {
+            Encoding::Packed(_) => 4,
+            Encoding::Embedded { .. } | Encoding::LinearFloat { .. } => 8,
+            Encoding::LinearInt { unit, .. } => match unit {
                 Unit::Seconds | Unit::Days => 4,
                 Unit::CentiSecond
                 | Unit::Millis
@@ -359,8 +264,8 @@ impl Format {
     /// Decode an integer value under this format. Errors (never panics) on
     /// overflow or on a float-only strategy.
     pub fn decode_int(&self, value: i64) -> Result<PosixNs, ChronoError> {
-        match self.strategy {
-            Strategy::LinearInt { epoch_ns, unit } => {
+        match self.meta.encoding {
+            Encoding::LinearInt { epoch_ns, unit } => {
                 let ticks = i128::from(value);
                 let ns = ticks
                     .checked_mul(unit.nanos())
@@ -371,7 +276,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::Embedded {
+            Encoding::Embedded {
                 epoch_ns,
                 shift_bits,
                 unit,
@@ -391,18 +296,28 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::Packed { decode, .. } => decode(value),
-            Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
+            Encoding::Packed(_) => (self.packed_codec()?.decode)(value),
+            Encoding::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format decoded as integer",
                 value: i128::from(value),
             }),
         }
     }
 
+    /// The engine codec for this format's packed layout, or a loud error if the
+    /// encoding is `Packed` but no codec was wired (an internal invariant break —
+    /// the registry builder attaches a codec to every packed format).
+    fn packed_codec(&self) -> Result<PackedCodec, ChronoError> {
+        self.packed.ok_or(ChronoError::OutOfRange {
+            what: "packed format has no engine codec (internal invariant broken)",
+            value: 0,
+        })
+    }
+
     /// Decode a floating value (OLE days etc.). Lossy; see `precision` caveat.
     pub fn decode_float(&self, value: f64) -> Result<PosixNs, ChronoError> {
-        match self.strategy {
-            Strategy::LinearFloat { epoch_ns, unit } => {
+        match self.meta.encoding {
+            Encoding::LinearFloat { epoch_ns, unit } => {
                 // Reject non-finite or absurd magnitudes rather than let the
                 // float→int cast saturate into a plausible-but-wrong instant.
                 if !value.is_finite() {
@@ -428,7 +343,7 @@ impl Format {
                     })?;
                 Ok(PosixNs(ns))
             }
-            Strategy::LinearInt { .. } | Strategy::Embedded { .. } | Strategy::Packed { .. } => {
+            Encoding::LinearInt { .. } | Encoding::Embedded { .. } | Encoding::Packed(_) => {
                 Err(ChronoError::OutOfRange {
                     what: "integer format decoded as float",
                     value: 0,
@@ -440,8 +355,8 @@ impl Format {
     /// Encode an instant to this format's integer value (truncating toward the
     /// epoch at the unit granularity). Errors on overflow / float-only formats.
     pub fn encode_int(&self, instant: PosixNs) -> Result<i64, ChronoError> {
-        match self.strategy {
-            Strategy::LinearInt { epoch_ns, unit } => {
+        match self.meta.encoding {
+            Encoding::LinearInt { epoch_ns, unit } => {
                 let rel = instant
                     .0
                     .checked_sub(epoch_ns)
@@ -455,11 +370,11 @@ impl Format {
                     value: ticks,
                 })
             }
-            Strategy::LinearFloat { .. } => Err(ChronoError::OutOfRange {
+            Encoding::LinearFloat { .. } => Err(ChronoError::OutOfRange {
                 what: "float-format encoded as integer",
                 value: 0,
             }),
-            Strategy::Embedded {
+            Encoding::Embedded {
                 epoch_ns,
                 shift_bits,
                 unit,
@@ -481,7 +396,7 @@ impl Format {
                     value: shifted,
                 })
             }
-            Strategy::Packed { encode, .. } => match encode {
+            Encoding::Packed(_) => match self.packed_codec()?.encode {
                 Some(f) => f(instant),
                 None => Err(ChronoError::OutOfRange {
                     what: "packed format cannot yet be re-encoded from an instant",
@@ -495,8 +410,8 @@ impl Format {
     /// formats only (OLE, SQLite Julian, Excel, Cocoa double). Errors for
     /// integer / embedded / packed strategies (use [`Format::encode_int`]).
     pub fn encode_float(&self, instant: PosixNs) -> Result<f64, ChronoError> {
-        match self.strategy {
-            Strategy::LinearFloat { epoch_ns, unit } => {
+        match self.meta.encoding {
+            Encoding::LinearFloat { epoch_ns, unit } => {
                 let rel = instant.0 - epoch_ns;
                 Ok(rel as f64 / unit.nanos() as f64)
             }
@@ -510,8 +425,8 @@ impl Format {
     /// Encode an instant to this format's natural value: an integer for linear /
     /// embedded / packed formats, a float for float formats.
     pub fn encode(&self, instant: PosixNs) -> Result<Encoded, ChronoError> {
-        match self.strategy {
-            Strategy::LinearFloat { .. } => self.encode_float(instant).map(Encoded::Float),
+        match self.meta.encoding {
+            Encoding::LinearFloat { .. } => self.encode_float(instant).map(Encoded::Float),
             _ => self.encode_int(instant).map(Encoded::Int),
         }
     }
@@ -545,14 +460,15 @@ pub fn format(id: &str) -> Result<&'static Format, ChronoError> {
 }
 
 /// A deterministic 16-hex-character fingerprint of the format registry — each
-/// entry's `id` and `citation`, in registry order. The provenance anchor for
+/// entry's `id` and `citation`, in catalog order. The provenance anchor for
 /// `--provenance`: the same engine build always yields the same digest, and any
 /// change to a format definition changes it, so a reading is traceable to the
-/// exact method version that produced it. Pure FNV-1a (no dependency).
+/// exact method version that produced it. Pure FNV-1a (no dependency). Iterates
+/// the authoritative forensicnomicon catalog (the source the engine wraps).
 #[must_use]
 pub fn registry_digest() -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a 64-bit offset basis
-    for f in registry::FORMATS {
+    for f in forensicnomicon::temporal_formats::TIME_FORMATS {
         for byte in f.id.bytes().chain(f.citation.bytes()) {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3); // FNV prime

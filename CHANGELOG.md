@@ -6,6 +6,26 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-11
+
+### Changed
+
+- **BREAKING (build): the format catalog is now sourced from `forensicnomicon`.**
+  The authoritative 45-format timestamp catalog (ids, labels, epochs, tick units,
+  tz/leap semantics, packed-layout tags) moved to
+  `forensicnomicon::temporal_formats` (the zero-dependency DFIR knowledge leaf).
+  timeglyph is now the *engine* that consumes it: `registry::FORMATS` is built by
+  wrapping each catalog entry in an engine `Format { meta, packed }`, where the
+  packed calendar codecs stay in timeglyph. `forensicnomicon` is now a **required**
+  dependency (was optional behind `artifact-hints`); requires `forensicnomicon >= 1.3`.
+- **BREAKING (API):** `Unit`, `TzSemantics`, `LeapSemantics`, and the format record
+  are re-exported from `forensicnomicon::temporal_formats`; `Strategy` is renamed
+  `Encoding` (with `Packed` now carrying a `PackedLayout` tag rather than function
+  pointers). `Format` is now a thin wrapper that `Deref`s to the catalog record
+  (`TimeFormat`) and exposes `.meta`; its decode/encode methods are unchanged.
+- The `artifact-hints` feature now only toggles the artifact-hint *behaviour*; the
+  `forensicnomicon` dependency it used to gate is unconditional.
+
 ## [0.3.0] - 2026-06-29
 
 ### Added
