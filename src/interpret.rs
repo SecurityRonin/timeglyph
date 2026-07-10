@@ -704,6 +704,22 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
         };
         out.push((label, interpret_int_with_context(value, &ctx)));
     }
+    // The first 8 bytes reinterpreted as an IEEE-754 double (both byte orders): a
+    // raw `f64` is how Apple Biome/SEGB, binary plists, and CFAbsoluteTime blobs
+    // store time — the integer lanes above miss it. Runs through the LinearFloat
+    // formats; a non-finite or out-of-civil-range double yields no reading
+    // (`interpret_float` rejects it), so this lane is self-gating, not noise.
+    if let Some(eight) = bytes.get(..8).and_then(|s| <[u8; 8]>::try_from(s).ok()) {
+        for (label, v) in [
+            ("f64 LE (IEEE-754 double)", f64::from_le_bytes(eight)),
+            ("f64 BE (IEEE-754 double)", f64::from_be_bytes(eight)),
+        ] {
+            let cands = interpret_float(v);
+            if !cands.is_empty() {
+                out.push((label.to_string(), cands));
+            }
+        }
+    }
     // Packed formats have an ON-DISK byte order distinct from a linear integer,
     // and FAT is doubly ambiguous: the DOS packed convention is date-word then
     // time-word, but a FAT DIRECTORY entry stores time-word then date-word (each

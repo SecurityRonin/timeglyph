@@ -77,6 +77,14 @@ The differential battery below validates a subset against `time-decode`;
 formats without a matching oracle flag are tier-2 (spec worked example) — see the
 note after the table.
 
+## Raw-double hex lane
+
+`identify`/`decode --as hex` also reinterpret the first 8 bytes as an IEEE-754
+**double** (both byte orders) and run it through the float formats (`cocoa_float`,
+`unix_float`, `ole`, `sqlite_julian`) — a raw `f64` is how Apple Biome/SEGB,
+binary plists, and CFAbsoluteTime blobs store time. Non-finite / out-of-range
+doubles yield no reading, so the lane is self-gating.
+
 ## Artifact hints (forensicnomicon linkage)
 
 With the `artifact-hints` feature, the `--artifact` hint consults
