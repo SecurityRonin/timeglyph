@@ -78,3 +78,15 @@ fn gps_week_tow_resolves_leap_correct_utc() {
     let r = timeglyph::compose::gps_week_tow(2000, 0.0);
     assert!(r.utc_rfc3339.starts_with("2018-05-05T23:59:42"), "{r:?}");
 }
+
+#[test]
+fn vmsd_reconstructs_vmware_snapshot_micros() {
+    // VMware .vmsd createTimeHigh/createTimeLow = µs since 1970 split across two
+    // 32-bit fields. high=367368, low(signed)=-1040564224 = 2020-01-01. Oracle:
+    // time-decode --vm.
+    let inst = timeglyph::compose::vmsd(367_368, -1_040_564_224);
+    assert_eq!(
+        inst.render(&timeglyph::RenderZone::Utc).unwrap(),
+        "2020-01-01T00:00:00Z"
+    );
+}

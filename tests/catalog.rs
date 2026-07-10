@@ -199,3 +199,13 @@ fn f64_bit_reinterpret_lane_decodes_a_double_timestamp() {
     let from_big: Vec<_> = big.iter().flat_map(|(_, c)| c.clone()).collect();
     assert_form(&from_big, "cocoa_float", "2025-05-04T15:18:50");
 }
+
+#[test]
+fn jwt_payload_claims_decode_as_unix_seconds() {
+    // A JWT (header.payload.signature, base64url): the payload's iat/exp/nbf are
+    // Unix seconds. iat=1577836800 (2020-01-01). SOC/token-theft triage.
+    let jwt = "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJpYXQiOiAxNTc3ODM2ODAwLCAiZXhwIjogMTU3NzkyMzIwMCwgInN1YiI6ICJ4In0.SIGNATURE";
+    let cands = interpret::interpret_string(jwt);
+    assert_form(&cands, "jwt_iat", "2020-01-01T00:00:00");
+    assert_form(&cands, "jwt_exp", "2020-01-02T00:00:00");
+}

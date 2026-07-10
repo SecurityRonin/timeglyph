@@ -534,3 +534,10 @@ fn decode_syslog_infers_year() {
     assert!(out.contains("2026-01-12T06:30:00"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn decode_vmsd_composite() {
+    let (out, code) = run(&["decode", "vmsd", "367368,-1040564224"]);
+    assert!(out.contains("2020-01-01T00:00:00"), "{out}");
+    assert_eq!(code, 0, "{out}");
+}
