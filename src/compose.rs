@@ -34,6 +34,16 @@ pub fn gps_week_tow(week: u32, tow: f64) -> crate::leap::LeapReading {
     crate::leap::from_gps_seconds(f64::from(week) * 604_800.0 + tow)
 }
 
+/// Reconstruct a VMware snapshot time from a `.vmsd` `createTimeHigh`/
+/// `createTimeLow` pair: microseconds since 1970 split across two 32-bit fields,
+/// the low half stored as a signed `i32`. `us = (high << 32) | (low as u32)`.
+/// Total (fits [`PosixNs`]'s i128).
+#[must_use]
+pub fn vmsd(high: i32, low: i32) -> PosixNs {
+    let us = (i128::from(high) << 32) | i128::from(low.cast_unsigned());
+    PosixNs(us * 1_000)
+}
+
 /// An instant `ticks` × `unit` after an `anchor` — for boot/epoch-relative times
 /// whose stored value is a *duration*, not an absolute instant: Android
 /// `elapsedRealtime` (ms since boot), Apple mach continuous time (ns since boot),

@@ -979,15 +979,88 @@ const STRING_FORMATS: &[StringFormat] = &[
 pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let s = text.trim();
     let mut out = Vec::new();
-    // Dynamic-note formats first (ISO 8601 + ASN.1), then the fixed-note registry.
+    // Dynamic-note formats first (ISO 8601 + ASN.1 + JWT), then the fixed-note registry.
     push_iso8601(s, &mut out);
     push_asn1(s, &mut out);
+    push_jwt(s, &mut out);
     for f in STRING_FORMATS {
         if let Some(instant) = (f.parse)(s) {
             out.push(string_candidate(f.id, f.label, f.spec, instant, f.note));
         }
     }
     out
+}
+
+/// A JWT (`header.payload.signature`, base64url): the payload's `iat`/`exp`/`nbf`
+/// claims are Unix seconds. Pushes one candidate per present claim. Gated on the
+/// three-part shape + a JSON payload, so a bare base64 token is not decoded.
+/// SOC / token-theft triage (stolen tokens in logs, memory, proxy captures).
+fn push_jwt(s: &str, out: &mut Vec<Candidate>) {
+    let mut parts = s.split('.');
+    let (Some(_header), Some(payload), Some(_sig)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return;
+    };
+    if parts.next().is_some() {
+        return; // more than three parts — not a JWT
+    }
+    let Some(bytes) = b64url_decode(payload) else {
+        return;
+    };
+    let Ok(claims) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return;
+    };
+    for (claim, id, label, note) in [
+        (
+            "iat",
+            "jwt_iat",
+            "JWT issued-at (iat)",
+            "JWT `iat` claim — Unix seconds",
+        ),
+        (
+            "exp",
+            "jwt_exp",
+            "JWT expiry (exp)",
+            "JWT `exp` claim — Unix seconds",
+        ),
+        (
+            "nbf",
+            "jwt_nbf",
+            "JWT not-before (nbf)",
+            "JWT `nbf` claim — Unix seconds",
+        ),
+    ] {
+        if let Some(secs) = claims.get(claim).and_then(serde_json::Value::as_i64) {
+            let inst = PosixNs(i128::from(secs) * 1_000_000_000);
+            out.push(string_candidate(
+                id,
+                label,
+                "RFC 7519 (JWT registered claims)",
+                inst,
+                note,
+            ));
+        }
+    }
+}
+
+/// Decode a URL-safe base64 string (`A–Z a–z 0–9 - _`, `=` padding optional) to
+/// bytes. `None` on any non-base64 character.
+fn b64url_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let mut acc: u32 = 0;
+    let mut bits = 0u32;
+    for ch in s.bytes() {
+        if ch == b'=' {
+            break;
+        }
+        acc = (acc << 6) | u32::from(urlsafe_b64_val(ch)?);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((acc >> bits) & 0xFF) as u8);
+        }
+    }
+    Some(out)
 }
 
 /// RFC 3339 / ISO 8601: jiff parses the offset (or `Z`) and normalises to UTC.

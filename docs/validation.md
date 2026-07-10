@@ -43,7 +43,7 @@ independently of any tool, which is why both kinds of check are used together.
 
 timeglyph implements **45 numeric/packed formats** (`src/registry.rs`), plus the
 self-describing string forms in `interpret.rs` (ISO-8601/RFC-3339, RFC-2822,
-HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId, Google `ei=`, Apache CLF, PDF date, DMTF/WMI CIM). `tests/docs_sync.rs` fails the
+HTTP-date, EXIF, ASN.1, ULID, UUIDv1, ObjectId, Google `ei=`, Apache CLF, PDF date, DMTF/WMI CIM, JWT `iat`/`exp`/`nbf`). `tests/docs_sync.rs` fails the
 build if any registry format drifts out of this list, so coverage cannot fall
 silently behind:
 
@@ -63,6 +63,9 @@ silently behind:
   resolved against an anchor): `elapsed_realtime` (Android, ms since boot) and
   `mach_continuous` (Apple, ns since boot) via `decode <id> "<ticks>@<anchor>"`,
   where `<anchor>` is an ISO-8601 instant.
+- **VMware VMSD** (`compose::vmsd`): `decode vmsd "<createTimeHigh>,<createTimeLow>"`
+  reassembles a `.vmsd` snapshot time (µs since 1970 split across two 32-bit
+  fields). Validated against `time-decode --vm`.
 - **Syslog RFC 3164** (`interpret::parse_syslog_with_reference`): `decode
   syslog "<Mon DD HH:MM:SS>@<reference>"` infers the omitted year as the most
   recent one at-or-before the ISO-8601 reference (firewall/router/Linux logs).

@@ -475,8 +475,25 @@ fn decode_composite(
         "elapsed_realtime" => Some((parse_relative(value, timeglyph::Unit::Millis), "unix")),
         "mach_continuous" => Some((parse_relative(value, timeglyph::Unit::Nanos), "unix")),
         "syslog" => Some((parse_syslog(value), "unix")),
+        "vmsd" => Some((parse_vmsd(value), "unix")),
         _ => None,
     }
+}
+
+/// Parse a `"<createTimeHigh>,<createTimeLow>"` VMware `.vmsd` pair (decimal i32s).
+fn parse_vmsd(value: &str) -> Result<timeglyph::PosixNs, String> {
+    let (h, l) = value
+        .split_once([',', ':'])
+        .ok_or_else(|| format!("expected 'high,low', got {value:?}"))?;
+    let high: i32 = h
+        .trim()
+        .parse()
+        .map_err(|_| format!("not a 32-bit createTimeHigh: {h:?}"))?;
+    let low: i32 = l
+        .trim()
+        .parse()
+        .map_err(|_| format!("not a 32-bit createTimeLow: {l:?}"))?;
+    Ok(timeglyph::compose::vmsd(high, low))
 }
 
 /// Parse a `"<Mon DD HH:MM:SS>@<reference>"` RFC 3164 syslog value: the year is

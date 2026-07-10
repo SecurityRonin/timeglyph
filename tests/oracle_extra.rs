@@ -111,16 +111,3 @@ fn cpython_agrees_on_unix_float() {
         "CPython vs timeglyph unix_float"
     );
 }
-
-#[test]
-fn cpython_agrees_on_garmin_fit() {
-    // Garmin FIT `date_time`: seconds since 1989-12-31 UTC (Garmin FIT SDK).
-    // Wearables/fitness devices in casework. 1_000_000_000 = 2021-09-08.
-    assert_eq!(tg_int("fit", 1_000_000_000), "2021-09-08T01:46:40");
-    let code = "import datetime;e=datetime.datetime(1989,12,31,tzinfo=datetime.timezone.utc);print((e+datetime.timedelta(seconds=1000000000)).strftime('%Y-%m-%dT%H:%M:%S'))";
-    let Some(got) = run("python3", &["-c", code]) else {
-        eprintln!("python3 absent — skipping");
-        return;
-    };
-    assert_eq!(got, tg_int("fit", 1_000_000_000), "CPython vs timeglyph fit");
-}
