@@ -184,3 +184,18 @@ fn dmtf_cim_datetime() {
         "2026-07-09T04:34:56",
     );
 }
+
+#[test]
+fn f64_bit_reinterpret_lane_decodes_a_double_timestamp() {
+    // 8 bytes reinterpreted as an IEEE-754 double: 0xec4f086ddee3c641 (LE) is the
+    // double 768064730.064939 = cocoa_float 2025-05-04. A raw double is how Apple
+    // Biome/SEGB, bplist, and CFAbsoluteTime blobs store time — the hex path
+    // decoded only integers before this lane.
+    let le = interpret::interpret_hex("ec4f086ddee3c641").unwrap();
+    let all_le: Vec<_> = le.iter().flat_map(|(_, c)| c.clone()).collect();
+    assert_form(&all_le, "cocoa_float", "2025-05-04T15:18:50");
+    // Big-endian bytes recover it via the BE f64 lane.
+    let be = interpret::interpret_hex("41c6e3de6d084fec").unwrap();
+    let all_be: Vec<_> = be.iter().flat_map(|(_, c)| c.clone()).collect();
+    assert_form(&all_be, "cocoa_float", "2025-05-04T15:18:50");
+}
