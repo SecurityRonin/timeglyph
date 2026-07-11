@@ -15,7 +15,11 @@ crate-type = ["cdylib"]
 [dependencies]
 # The lean engine (no CLI/csv) — same core the WASM binding uses.
 timeglyph = { path = "../..", default-features = false }
-pyo3 = { version = "0.22", features = ["extension-module"] }
+# abi3-py39: build one stable-ABI wheel per platform that runs on CPython 3.9+
+# (matches requires-python). Also lets the extension build against a Python newer
+# than pyo3's max bound — the macOS runner's default 3.14 broke a version-specific
+# build.
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
 
 # pyo3 emits `unsafe` glue, so `forbid` is impossible here; isolated to this thin
 # binding crate so the engine itself keeps `unsafe_code = forbid`.
