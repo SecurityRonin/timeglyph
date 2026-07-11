@@ -6,6 +6,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-11
+
+### Changed
+
+- **Packaging only — no library or CLI behaviour change.** The PyPI page now
+  renders a real project description (a Python-focused `README`, wired into
+  `pyproject` alongside project URLs, authors, and keywords), and the crate gains
+  `homepage`/`documentation` metadata for the crates.io sidebar. Python wheels are
+  now stable-ABI (`abi3`, CPython 3.9+) and publish on the same `v*` release tag as
+  the crate and binaries.
+
 ## [0.4.0] - 2026-07-11
 
 ### Changed
