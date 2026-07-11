@@ -71,9 +71,14 @@ jobs:
       # Linux now (an AT-SPI picker), but the eframe/egui GUI needs system GUI
       # libs and a gnu libc — impossible on this job's musl targets. Linux ships
       # the lens through the gnu-target `deb` job instead (amd64). Separate,
-      # non-workspace crate → explicit --manifest-path.
+      # non-workspace crate → explicit --manifest-path. CARGO_TARGET_DIR forces
+      # its output into the ROOT target dir (a non-workspace crate defaults to
+      # lens/target/), so the Package step below finds timeglyph-lens alongside
+      # the CLI binary.
       - name: Build (lens GUI, macOS/Windows only)
         if: runner.os != 'Linux'
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
 
       # One archive per platform carries the CLI plus (on macOS/Windows) the lens
@@ -206,9 +211,13 @@ jobs:
       # amd64: build the CLI and the lens GUI ourselves, then let cargo-deb only
       # package them (`--no-build`) via the `gui` variant, which appends the
       # pre-built timeglyph-lens as an asset. The lens is a separate, non-workspace
-      # crate → explicit --manifest-path; it shares the same target dir.
+      # crate → explicit --manifest-path. CARGO_TARGET_DIR forces its output into
+      # the ROOT target dir (it defaults to lens/target/) so cargo-deb's gui merge
+      # asset (target/release/timeglyph-lens) resolves.
       - name: Build .deb package (amd64, CLI + lens)
         if: matrix.arch == 'amd64'
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           cargo build --release --target ${{ matrix.target }}
           cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
