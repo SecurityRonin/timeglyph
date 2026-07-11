@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "timeglyph"
-version = "0.3.0"
+version = "0.4.0"
 description = "Decode, encode, and identify forensic timestamps — ranked, scored, cited."
 requires-python = ">=3.9"
 license = "Apache-2.0"
