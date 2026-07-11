@@ -253,6 +253,8 @@ dependencies = [
 [[package]]
 name = "forensicnomicon"
 version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4581afd77c92804bc667efad3864bd21569969741d0c4c209e6e55c6e1428837"
 dependencies = [
  "forensicnomicon-core",
  "forensicnomicon-data",
@@ -261,10 +263,14 @@ dependencies = [
 [[package]]
 name = "forensicnomicon-core"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5d5b96ffd37d1e758a1657839de8b4d5e7bfc024a5500509d07ff7acd7b9461"
 
 [[package]]
 name = "forensicnomicon-data"
-version = "1.0.0"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baed93f34ed002be78fc84397834468b21b95665f776a3062cab1b7509c483ec"
 dependencies = [
  "forensicnomicon-core",
 ]

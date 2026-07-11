@@ -69,13 +69,6 @@ flate2 = { version = "1", optional = true }
 # Lean (no default features — just the zero-dep compile-time constant tables).
 forensicnomicon = { version = "1.3", default-features = false }
 
-# TODO(publish): drop this patch once forensicnomicon 1.3.0 is published to
-# crates.io. It points cargo at the local Phase-A worktree so timeglyph can be
-# built and tested against the unreleased 1.3.0 catalog. Until then CI (which
-# resolves only crates.io) stays red on this crate — a known publish-ordering gate.
-[patch.crates-io]
-forensicnomicon = { path = "../forensicnomicon" }
-
 [features]
 # All on by default: timeglyph is an analyst tool, so the full format coverage
 # ships out of the box. Library consumers wanting a lean build can set
