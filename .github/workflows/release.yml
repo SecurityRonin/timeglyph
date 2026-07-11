@@ -181,6 +181,10 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # softprops creates the GitHub Release
+      id-token: write # OIDC token to mint the SLSA attestation
+      attestations: write # write the build-provenance attestation
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -193,6 +197,17 @@ jobs:
           cd artifacts
           sha256sum * > checksums.txt
           cat checksums.txt
+
+      # SLSA build provenance: proves these artifacts were built by THIS repo's CI
+      # (supply-chain / tamper-evidence). Verify: gh attestation verify <file>
+      # --repo SecurityRonin/timeglyph.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
+        with:
+          subject-path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/checksums.txt
 
       - name: Create release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
