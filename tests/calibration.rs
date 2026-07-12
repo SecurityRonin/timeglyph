@@ -137,3 +137,64 @@ fn calibration_accuracy_meets_floor() {
         p1 * 100.0
     );
 }
+
+/// Per-FAMILY reliability — never one global "0.9 = 90%". A single global top-3
+/// (~92%) HIDES that some families' true *format label* is systematically
+/// out-ranked. This reports each family's top-1/top-3 and gates it: every
+/// well-sampled family (n≥5) must clear an 80% top-3 floor, EXCEPT families
+/// explicitly acknowledged below — where the decoded INSTANT is still correct but
+/// a more-common format sharing that instant/window wins the label
+/// (`active`↔`filetime` are the same FILETIME instant; `dttm`/`sqlserver` share
+/// crowded windows). A NEW family dropping below the floor fails here, forcing a
+/// conscious scoring fix or an explicit acknowledgement — low families are
+/// surfaced, never averaged away.
+#[test]
+fn per_family_reliability_is_reported_and_floored() {
+    use std::collections::{BTreeMap, BTreeSet};
+    use timeglyph::format;
+
+    // Families whose true LABEL sits below the floor because the INSTANT is right
+    // but a more-common same-instant / same-window format out-ranks the label.
+    const ACKNOWLEDGED_LOW: &[&str] = &[];
+
+    let rows = corpus();
+    let mut fam: BTreeMap<&'static str, (usize, usize, usize)> = BTreeMap::new();
+    for r in &rows {
+        let family = format(&r.format).map(|f| f.family).unwrap_or("?");
+        let e = fam.entry(family).or_insert((0, 0, 0));
+        e.0 += 1;
+        match rank_of(&r.value, &r.format) {
+            Some(0) => {
+                e.1 += 1;
+                e.2 += 1;
+            }
+            Some(n) if n < 3 => e.2 += 1,
+            _ => {}
+        }
+    }
+    assert!(
+        fam.len() >= 20,
+        "reliability must be per-family, not global: only {} families measured",
+        fam.len()
+    );
+
+    let ack: BTreeSet<&str> = ACKNOWLEDGED_LOW.iter().copied().collect();
+    println!("{:46} {:>4} {:>6} {:>6}", "family", "n", "top1", "top3");
+    let mut unacknowledged_low = Vec::new();
+    for (f, (n, t1, t3)) in &fam {
+        let p3 = *t3 as f64 / *n as f64;
+        println!(
+            "{f:46} {n:>4} {:>5.0}% {:>5.0}%",
+            *t1 as f64 / *n as f64 * 100.0,
+            p3 * 100.0
+        );
+        if *n >= 5 && p3 < 0.80 && !ack.contains(f) {
+            unacknowledged_low.push(*f);
+        }
+    }
+    assert!(
+        unacknowledged_low.is_empty(),
+        "families below 80% top-3 that are not acknowledged (fix the scoring, or record \
+         why the label is legitimately out-ranked): {unacknowledged_low:?}"
+    );
+}
