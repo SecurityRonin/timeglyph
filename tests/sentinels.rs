@@ -65,3 +65,10 @@ fn sentinel_reason_distinguishes_possible_and_known() {
         .to_lowercase()
         .contains("known"));
 }
+
+#[test]
+fn i64_min_is_flagged_as_a_sentinel() {
+    // 0x8000000000000000 — a common unset/overflow marker in 64-bit fields.
+    let r = interpret::sentinel_reason(i64::MIN).expect("i64::MIN is a sentinel");
+    assert!(r.to_lowercase().contains("min") || r.contains("8000"));
+}
