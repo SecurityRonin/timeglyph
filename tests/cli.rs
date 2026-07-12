@@ -576,3 +576,23 @@ fn explain_unknown_format_errors() {
     let (_out, code) = run(&["explain", "no-such-format"]);
     assert_eq!(code, 1, "an unknown format id must exit 1");
 }
+
+#[test]
+fn localnaive_under_a_named_zone_flags_the_dst_fold() {
+    // FAT 1399262144 = 2021-11-07 01:30:00 (naive) — a DST fall-back fold in NY,
+    // where 01:30 maps to two instants: 05:30Z (EDT) and 06:30Z (EST).
+    let (out, code) = run(&[
+        "identify",
+        "--json",
+        "1399262144",
+        "--tz",
+        "America/New_York",
+    ]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("fall-back fold")
+            && out.contains("2021-11-07T05:30:00Z")
+            && out.contains("2021-11-07T06:30:00Z"),
+        "the fat reading flags the DST fold with both instants: {out}"
+    );
+}
