@@ -184,6 +184,12 @@ enum Commands {
         #[arg(long)]
         imhex: bool,
     },
+    /// Explain a format: a spec card (epoch, tick unit, tz/leap, valid range,
+    /// known sentinels, citation) generated from the registry.
+    Explain {
+        /// Format id (see `list`).
+        format: String,
+    },
     /// List every registered format with its citation.
     List,
     /// Enrich a CSV: add a human-readable column for each timestamp column.
@@ -289,6 +295,7 @@ fn main() -> ExitCode {
             json,
             imhex,
         }) => run_carve(hex.as_deref(), min_score, from, to, json, imhex),
+        Some(Commands::Explain { format }) => run_explain(&format),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
         Some(Commands::Csv {
@@ -1006,6 +1013,17 @@ fn run_list() -> u8 {
         println!("{:<16} {:<48} {}", f.id, f.label, f.citation);
     }
     EXIT_OK
+}
+
+/// `explain` subcommand: print a format's registry-generated spec card.
+fn run_explain(format: &str) -> u8 {
+    if let Some(card) = interpret::explain(format) {
+        println!("{card}");
+        EXIT_OK
+    } else {
+        eprintln!("error: unknown format '{format}' (see `list` for the ids)");
+        EXIT_ERR
+    }
 }
 
 /// `carve` subcommand: hex bytes → bounded carve → text / JSONL / ImHex bookmarks.
