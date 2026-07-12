@@ -56,6 +56,9 @@ pub mod interpret;
 /// Resolve a `LocalNaive` wall-clock value *in* a concrete zone — DST fold/gap
 /// (correctness wave). Pure over the IANA tzdb.
 pub mod localzone;
+/// MCP (Model Context Protocol) stdio JSON-RPC handler — expose the engine as
+/// tools for LLM-driven DFIR (cited readings, not hallucinated epoch math).
+pub mod mcp;
 pub use localzone::{resolve_local, LocalResolution};
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
 /// separate from the POSIX [`PosixNs`] spine (ADR 0003).
