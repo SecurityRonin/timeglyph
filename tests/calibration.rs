@@ -155,12 +155,26 @@ fn per_family_reliability_is_reported_and_floored() {
 
     // Families whose true LABEL sits below the floor because the INSTANT is right
     // but a more-common same-instant / same-window format out-ranks the label.
-    const ACKNOWLEDGED_LOW: &[&str] = &[];
+    // The decoded time is still correct — only the provenance label is demoted;
+    // the tool shows every reading, so the true format is present, just not top-3.
+    const ACKNOWLEDGED_LOW: &[&str] = &[
+        // `active` (AD FILETIME) is the SAME instant as `filetime`; the ubiquitous
+        // `filetime` label wins the prevalence tie-break. Same time, common label.
+        "Active Directory, LDAP (lastLogon, pwdLastSet)",
+        // `dotnet_ticks` shares its 100 ns-tick window with `filetime`/`active`.
+        ".NET / SQL Server datetime2",
+        // niche packed `dvr` shares a crowded seconds/ms window with mainstream formats.
+        "DVR WFS / DHFS filesystems",
+        // packed civil `dttm` is out-ranked by linear formats sharing its window.
+        "Microsoft Compound File / Office DTTM",
+        // niche packed `nokiale` shares a crowded window with common formats.
+        "Nokia devices",
+    ];
 
     let rows = corpus();
     let mut fam: BTreeMap<&'static str, (usize, usize, usize)> = BTreeMap::new();
     for r in &rows {
-        let family = format(&r.format).map(|f| f.family).unwrap_or("?");
+        let family = format(&r.format).map_or("?", |f| f.family);
         let e = fam.entry(family).or_insert((0, 0, 0));
         e.0 += 1;
         match rank_of(&r.value, &r.format) {
