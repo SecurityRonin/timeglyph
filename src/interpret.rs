@@ -1637,10 +1637,12 @@ pub fn explain(id: &str) -> Option<String> {
         | Encoding::Embedded { unit, .. } => format!("{} ns/tick ({unit:?})", unit.nanos()),
         Encoding::Packed(_) => "packed calendar fields (no linear tick)".to_string(),
     };
-    let render = |ns: i128| {
-        PosixNs(ns)
-            .to_rfc3339()
-            .unwrap_or_else(|| format!("{ns} ns"))
+    let render = |ns: i128| match PosixNs(ns).to_rfc3339() {
+        Some(s) => s,
+        // A plausible bound outside jiff's civil range degrades to a raw-ns
+        // display instead of vanishing (no registered format has such a bound
+        // today; the all-formats explain test renders every one).
+        None => format!("{ns} ns"),
     };
     let sentinels: Vec<String> = [0_i64, -1, i64::MAX]
         .into_iter()

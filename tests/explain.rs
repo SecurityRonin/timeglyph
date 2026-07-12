@@ -31,3 +31,14 @@ fn explain_a_seconds_epoch_shows_its_epoch_instant() {
 fn explain_unknown_format_is_none() {
     assert!(explain("no-such-format").is_none());
 }
+
+#[test]
+fn explain_renders_a_card_for_every_registered_format() {
+    // Covers the packed-epoch "n/a" branch (packed formats whose decode_int(0)
+    // is not a valid civil date) across the whole registry, not just linear ones.
+    for f in timeglyph::registry::FORMATS.iter() {
+        let card = explain(f.id).unwrap_or_else(|| panic!("no spec card for {}", f.id));
+        assert!(card.contains(f.id), "card names {}: {card}", f.id);
+        assert!(card.contains("citation:"), "card cites {}", f.id);
+    }
+}
