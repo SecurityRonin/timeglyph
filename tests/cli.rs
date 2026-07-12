@@ -598,3 +598,27 @@ fn localnaive_under_a_named_zone_flags_the_dst_fold() {
         "the fat reading flags the DST fold with both instants: {out}"
     );
 }
+
+#[test]
+fn decode_wave2_byte_formats_via_cli() {
+    // Oracle DATE [120,120,1,1,1,1,1] = 2020-01-01 00:00:00.
+    let (out, code) = run(&["decode", "oracle_date", "78780101010101"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("2020-01-01T00:00:00"), "oracle_date: {out}");
+    // ISO 9660 [120,1,1,0,0,0,0].
+    let (out, _) = run(&["decode", "iso9660", "78010100000000"]);
+    assert!(out.contains("2020-01-01T00:00:00"), "iso9660: {out}");
+    // CP56Time2a [0,0,0,0,1,1,20].
+    let (out, _) = run(&["decode", "cp56time2a", "00000000010114"]);
+    assert!(out.contains("2020-01-01T00:00:00"), "cp56time2a: {out}");
+    // UDF [0x00,0x10,0xE4,0x07,1,1,0,0,0,0,0,0].
+    let (out, _) = run(&["decode", "udf", "0010e4070101000000000000"]);
+    assert!(out.contains("2020-01-01T00:00:00"), "udf: {out}");
+}
+
+#[test]
+fn decode_ext4_extra_via_cli() {
+    let (out, code) = run(&["decode", "ext4_extra", "1577836800,0"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("2020-01-01T00:00:00"), "ext4_extra: {out}");
+}
