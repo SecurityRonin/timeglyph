@@ -136,3 +136,54 @@ pub fn ext4_extra(secs: i64, extra: u32) -> PosixNs {
     let nanos = i128::from(extra >> 2);
     PosixNs((i128::from(secs) + (epoch_bits << 32)) * 1_000_000_000 + nanos)
 }
+
+/// IEC 60870-5 CP56Time2a — a 7-byte SCADA timestamp: `[milliseconds (LE u16,
+/// 0-59999), minute (low 6 bits) + IV/GEN flags, hour (low 5 bits) + SU flag, day
+/// of month (low 5 bits) + day of week, month (low 4 bits), year (low 7 bits,
+/// +2000)]`. The validity / summer-time / day-of-week flag bits are masked off.
+/// IEC 60870-5-101/-104 (the Industroyer/CrashOverride protocol family).
+///
+/// # Errors
+/// [`ChronoError`] if the civil fields are invalid (never panics).
+pub fn cp56time2a(b: [u8; 7]) -> Result<PosixNs, ChronoError> {
+    let ms = u16::from(b[0]) | (u16::from(b[1]) << 8);
+    let sub_ns = i128::from(ms % 1000) * 1_000_000;
+    let inst = civil_utc(
+        2000 + i16::from(b[6] & 0x7F),
+        (b[5] & 0x0F) as i8,
+        (b[4] & 0x1F) as i8,
+        (b[3] & 0x1F) as i8,
+        (b[2] & 0x3F) as i8,
+        (ms / 1000) as i8,
+    )?;
+    Ok(PosixNs(inst.0 + sub_ns))
+}
+
+/// ECMA-167 (UDF) timestamp — 12 bytes: `[TypeAndTimezone (LE u16: low 12 bits =
+/// signed minutes east of UTC, 0x800 = no tz), year (LE i16), month, day, hour,
+/// minute, second, centiseconds, hundreds-of-microseconds, microseconds]`. The
+/// timezone is subtracted so the returned instant is absolute UTC. UDF-media
+/// forensics.
+///
+/// # Errors
+/// [`ChronoError`] if the civil fields are invalid (never panics).
+pub fn udf(b: [u8; 12]) -> Result<PosixNs, ChronoError> {
+    let year = (u16::from(b[2]) | (u16::from(b[3]) << 8)) as i16;
+    let civil = civil_utc(
+        year, b[4] as i8, b[5] as i8, b[6] as i8, b[7] as i8, b[8] as i8,
+    )?;
+    let sub_ns =
+        i128::from(b[9]) * 10_000_000 + i128::from(b[10]) * 100_000 + i128::from(b[11]) * 1_000;
+    let tz12 = (u16::from(b[0]) | (u16::from(b[1]) << 8)) & 0x0FFF;
+    // Sign-extend the 12-bit timezone (minutes east of UTC); 0 and 0x800 = no tz.
+    let tz_min = if tz12 == 0 || tz12 == 0x800 {
+        0
+    } else if tz12 & 0x800 != 0 {
+        i32::from(tz12) - 0x1000
+    } else {
+        i32::from(tz12)
+    };
+    Ok(PosixNs(
+        civil.0 + sub_ns - i128::from(tz_min) * 60 * 1_000_000_000,
+    ))
+}
