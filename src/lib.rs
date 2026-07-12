@@ -50,6 +50,10 @@ pub use datefmt::DateStyle;
 #[cfg(feature = "holiday")]
 pub mod holiday;
 pub mod interpret;
+/// Resolve a `LocalNaive` wall-clock value *in* a concrete zone — DST fold/gap
+/// (correctness wave). Pure over the IANA tzdb.
+pub mod localzone;
+pub use localzone::{resolve_local, LocalResolution};
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
 /// separate from the POSIX [`PosixNs`] spine (ADR 0003).
 #[cfg(feature = "leap")]
