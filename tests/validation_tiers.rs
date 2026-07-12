@@ -140,6 +140,7 @@ fn single_anchor_formats_are_a_tracked_shrinking_allowlist() {
         "sony",
         "sqlserver",
         "unix_ms",
+        "unix_ns",
         "unix_us",
     ];
     let known: BTreeSet<&str> = KNOWN_SINGLE_ANCHOR.iter().copied().collect();
