@@ -499,6 +499,28 @@ fn render_candidate(c: &Candidate, zone: &RenderZone, style: DateStyle) -> Optio
 fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: DateStyle) {
     for c in cands {
         c.rendered = render_candidate(c, zone, style);
+        // Fold/gap: a LocalNaive wall-clock interpreted IN a named zone is
+        // ambiguous at DST transitions. The rendering stays naive (the value
+        // carried no zone); this only NOTES the fold/gap as a lead, framed "if …".
+        if matches!(zone, RenderZone::Named(_))
+            && timeglyph::format(c.format_id)
+                .is_ok_and(|f| matches!(f.tz, timeglyph::TzSemantics::LocalNaive))
+        {
+            match timeglyph::resolve_local(c.instant, zone) {
+                timeglyph::LocalResolution::Fold { earlier, later } => c.assumptions.push(format!(
+                    "if this wall-clock is in the chosen zone: AMBIGUOUS (DST fall-back fold) \
+                     — two instants: {} / {}",
+                    earlier.to_rfc3339().unwrap_or_default(),
+                    later.to_rfc3339().unwrap_or_default()
+                )),
+                timeglyph::LocalResolution::Gap => c.assumptions.push(
+                    "if this wall-clock is in the chosen zone: NONEXISTENT (DST spring-forward \
+                     gap) — a correctly-clocked device in this zone cannot have written it"
+                        .to_string(),
+                ),
+                timeglyph::LocalResolution::Unique(_) => {}
+            }
+        }
     }
 }
 
