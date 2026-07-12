@@ -62,6 +62,28 @@ pub fn from_gps_seconds(seconds: f64) -> LeapReading {
     }
 }
 
+/// IEEE 1588 PTP timestamp (default profile): `seconds` + `nanos` since the epoch
+/// 1970-01-01 on the **TAI** scale. The UTC rendering subtracts TAI−UTC (37 s
+/// since 2017). Precision Time Protocol is pervasive in industrial/telecom
+/// networks. The reading states the profile assumption: a PTP profile using a
+/// different epoch or `ptpTimescale=false` (an arbitrary/UTC timescale) would
+/// differ.
+#[must_use]
+pub fn from_ptp(seconds: u64, nanos: u32) -> LeapReading {
+    let tai_since_1900 = SECS_1900_TO_1970 as f64 + seconds as f64 + f64::from(nanos) / 1e9;
+    LeapReading {
+        scale: "PTP (IEEE 1588)",
+        citation: "IEEE 1588 PTP (default profile: epoch 1970-01-01, TAI scale)",
+        utc_rfc3339: utc_rfc3339(Epoch::from_tai_seconds(tai_since_1900)),
+        assumptions: vec![
+            "consistent with IEEE 1588 PTP time — a reading, not a determination".to_string(),
+            "assumes the DEFAULT profile (epoch 1970 on the TAI scale, ptpTimescale=true); a \
+             profile with a different epoch or timescale would differ"
+                .to_string(),
+        ],
+    }
+}
+
 /// GPS 1024-week rollover siblings. A legacy receiver stores the week number in
 /// 10 bits, so it aliases mod 1024 — the true week is `week + era·1024`. Without a
 /// case/receiver date, every era is a plausible reading (~19.6 years apart, the
