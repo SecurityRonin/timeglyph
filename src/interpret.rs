@@ -319,6 +319,18 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
             );
         }
     }
+    // A leap-second SMEAR note when this reading's instant actually falls within
+    // ±12h of a leap second (instant-based, so it fires only for the reading whose
+    // decoded time is near one) — a cloud-smeared source clock may be off by up to
+    // a second there. Distinct from the general POSIX disclaimer in `assumptions`.
+    #[cfg(feature = "leap")]
+    if crate::leap::within_leap_smear_window((instant.0 / 1_000_000_000) as i64) {
+        assumptions.push(
+            "within ±12h of a leap second — a cloud-smeared clock (Google/AWS/Meta) may \
+             have this reading off by up to 1 s"
+                .to_string(),
+        );
+    }
     Some(Candidate {
         format_id: f.id,
         label: f.label,
