@@ -41,7 +41,9 @@ fn call_tool(params: Option<&Value>) -> Result<Value, (i64, &'static str)> {
     let args = params
         .get("arguments")
         .cloned()
-        .unwrap_or_else(|| json!({}));
+        // Absent arguments → Null; `.get()` on Null is None → a clean
+        // "missing 'x'" error below (no fallback closure to leave uncovered).
+        .unwrap_or_default();
     let str_arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_owned);
     let text = match name {
         "identify" => {
