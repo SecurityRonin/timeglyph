@@ -46,3 +46,22 @@ fn imhex_bookmarks_mark_the_offset_and_width() {
         "an 8-byte bookmark at address 3 (the planted FILETIME)"
     );
 }
+
+#[test]
+fn timesketch_jsonl_carries_the_required_import_fields() {
+    let jsonl = timeglyph::carve::to_timesketch_jsonl(&planted());
+    assert!(!jsonl.is_empty());
+    for line in jsonl.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).expect("valid Timesketch JSONL");
+        // Timesketch requires message + datetime + timestamp_desc.
+        assert!(v.get("message").is_some(), "message");
+        assert!(v.get("datetime").is_some(), "datetime (ISO8601)");
+        assert!(v.get("timestamp_desc").is_some(), "timestamp_desc");
+    }
+    assert!(
+        jsonl
+            .lines()
+            .any(|l| l.contains("2025-05-04") && l.contains("filetime")),
+        "the planted filetime becomes a Timesketch event"
+    );
+}
