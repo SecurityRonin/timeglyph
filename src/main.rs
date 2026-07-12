@@ -190,6 +190,10 @@ enum Commands {
         /// Format id (see `list`).
         format: String,
     },
+    /// Run as an MCP (Model Context Protocol) stdio server — expose identify /
+    /// decode / explain as tools for an LLM-driven DFIR workflow. Reads JSON-RPC
+    /// from stdin, replies on stdout.
+    Mcp,
     /// List every registered format with its citation.
     List,
     /// Enrich a CSV: add a human-readable column for each timestamp column.
@@ -296,6 +300,7 @@ fn main() -> ExitCode {
             imhex,
         }) => run_carve(hex.as_deref(), min_score, from, to, json, imhex),
         Some(Commands::Explain { format }) => run_explain(&format),
+        Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
         Some(Commands::Csv {
@@ -1011,6 +1016,28 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
 fn run_list() -> u8 {
     for f in timeglyph::registry::FORMATS.iter() {
         println!("{:<16} {:<48} {}", f.id, f.label, f.citation);
+    }
+    EXIT_OK
+}
+
+/// `mcp` subcommand: an MCP stdio server. Reads one JSON-RPC message per line
+/// from stdin, hands it to the pure [`timeglyph::mcp::handle`], and writes each
+/// response line to stdout. The loop is the irreducible I/O shell; the protocol
+/// logic is tested in the library.
+fn run_mcp() -> u8 {
+    use std::io::{BufRead, Write};
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    for line in stdin.lock().lines() {
+        let Ok(line) = line else { break };
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(response) = timeglyph::mcp::handle(&line) {
+            if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
+                break;
+            }
+        }
     }
     EXIT_OK
 }
