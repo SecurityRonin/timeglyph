@@ -62,6 +62,42 @@ pub fn from_gps_seconds(seconds: f64) -> LeapReading {
     }
 }
 
+/// GPS 1024-week rollover siblings. A legacy receiver stores the week number in
+/// 10 bits, so it aliases mod 1024 — the true week is `week + era·1024`. Without a
+/// case/receiver date, every era is a plausible reading (~19.6 years apart, the
+/// documented rollovers being 1999-08-22 and 2019-04-07); with `anchor` (a Unix
+/// seconds estimate of the case date), the single matching era is returned. Each
+/// reading states the rollover assumption — a reading, never a determination.
+#[must_use]
+pub fn gps_rollover_eras(week10: u32, tow: f64, anchor: Option<i64>) -> Vec<LeapReading> {
+    const SECS_PER_WEEK: f64 = 604_800.0;
+    const GPS_EPOCH_UNIX: f64 = 315_964_800.0; // 1980-01-06 (coarse era-selection only)
+    const ERAS: u32 = 4; // 1980, 1999, 2019, 2038 — covers GPS's service life
+    let base = week10 % 1024;
+    let reading = |era: u32| -> LeapReading {
+        let full = base + era * 1024;
+        let mut r = from_gps_seconds(f64::from(full) * SECS_PER_WEEK + tow);
+        r.assumptions.push(format!(
+            "10-bit GPS week aliases mod 1024 — era {era} (full week {full}); a legacy \
+             receiver's rollover means the true era depends on the case date"
+        ));
+        r
+    };
+    match anchor {
+        Some(a) => {
+            let best = (0..ERAS)
+                .min_by_key(|&era| {
+                    let approx =
+                        GPS_EPOCH_UNIX + f64::from(base + era * 1024) * SECS_PER_WEEK + tow;
+                    (approx - a as f64).abs() as i64
+                })
+                .unwrap_or(0);
+            vec![reading(best)]
+        }
+        None => (0..ERAS).map(reading).collect(),
+    }
+}
+
 /// Decode a TAI64 external label (`2^62 + s`, where `s` = TAI seconds since
 /// 1970-01-01 00:00:00 TAI; D. J. Bernstein libtai). TAI is leap-aware; the UTC
 /// rendering subtracts the TAI−UTC offset.
