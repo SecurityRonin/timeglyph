@@ -693,8 +693,20 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
             value: bytes.len() as i128,
         });
     }
+    Ok(identify_bytes(&bytes))
+}
+
+/// Sweep raw bytes for timestamps in every width/endian/packed lane — the
+/// byte-native core [`interpret_hex`] wraps (it decodes a hex string, then calls
+/// this). Each returned group is a `(lane label, ranked readings)` pair: 4- and
+/// 8-byte integers in both byte orders, the IEEE-754 `f64` double lane, the
+/// FAT/DOS packed word pair, the 128-bit SYSTEMTIME struct, and the u64 all-ones
+/// sentinel. The caller owns the slice — bound it (this is the bounded-carve /
+/// hex-editor entry point and does not itself cap length).
+#[must_use]
+pub fn identify_bytes(bytes: &[u8]) -> Vec<(String, Vec<Candidate>)> {
     let mut out = Vec::new();
-    for (label, value, width, endian) in byte_ints(&bytes) {
+    for (label, value, width, endian) in byte_ints(bytes) {
         // The hex layer KNOWS the on-disk width and byte order — pass them so the
         // byte_width_match + endian_match components are scored.
         let ctx = InterpretContext {
@@ -765,7 +777,7 @@ pub fn interpret_hex(hex: &str) -> Result<Vec<(String, Vec<Candidate>)>, ChronoE
     {
         out.push(("u64 all-ones".to_string(), vec![all_ones_sentinel()]));
     }
-    Ok(out)
+    out
 }
 
 /// Decode a Microsoft `SYSTEMTIME` struct (16 bytes, 8 little-endian `u16`
