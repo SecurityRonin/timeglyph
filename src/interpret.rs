@@ -1617,3 +1617,56 @@ fn parse_asn1_generalizedtime(s: &str) -> Option<(PosixNs, bool)> {
 fn parse_asn1_utctime(s: &str) -> Option<(PosixNs, bool)> {
     parse_asn1(s, 2)
 }
+
+/// A per-format spec card generated from the registry — epoch, tick unit,
+/// timezone/leap semantics, plausible range, known value sentinels, and the
+/// citation. Registry-derived (a projection of the same [`Format`](crate::Format)
+/// the engine decodes with), so it never drifts from the decoder. `None` for an
+/// unknown format id.
+#[must_use]
+pub fn explain(id: &str) -> Option<String> {
+    let f = crate::format(id).ok()?;
+    let epoch = f
+        .decode_int(0)
+        .ok()
+        .and_then(PosixNs::to_rfc3339)
+        .unwrap_or_else(|| "n/a (packed civil — no linear zero)".to_string());
+    let tick = match f.encoding {
+        Encoding::LinearInt { unit, .. }
+        | Encoding::LinearFloat { unit, .. }
+        | Encoding::Embedded { unit, .. } => format!("{} ns/tick ({unit:?})", unit.nanos()),
+        Encoding::Packed(_) => "packed calendar fields (no linear tick)".to_string(),
+    };
+    let render = |ns: i128| {
+        PosixNs(ns)
+            .to_rfc3339()
+            .unwrap_or_else(|| format!("{ns} ns"))
+    };
+    let sentinels: Vec<String> = [0_i64, -1, i64::MAX]
+        .into_iter()
+        .filter_map(|v| sentinel_reason(v).map(|r| format!("{v} → {r}")))
+        .collect();
+    let sentinels = if sentinels.is_empty() {
+        "none".to_string()
+    } else {
+        sentinels.join("; ")
+    };
+    Some(format!(
+        "{id} — {label}\n  \
+         family:    {family}\n  \
+         epoch:     {epoch}  (value 0)\n  \
+         tick:      {tick}\n  \
+         timezone:  {tz:?}\n  \
+         leap:      {leap:?}\n  \
+         valid:     {lo} .. {hi}\n  \
+         sentinels: {sentinels}\n  \
+         citation:  {citation}",
+        label = f.label,
+        family = f.family,
+        tz = f.tz,
+        leap = f.leap,
+        lo = render(f.plausible.0),
+        hi = render(f.plausible.1),
+        citation = f.citation,
+    ))
+}
