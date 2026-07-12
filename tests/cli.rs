@@ -560,3 +560,19 @@ fn carve_subcommand_finds_a_planted_filetime_as_jsonl() {
         "carve JSONL should report the filetime planted at offset 3; got: {out}"
     );
 }
+
+#[test]
+fn explain_subcommand_prints_a_spec_card() {
+    let (out, code) = run(&["explain", "filetime"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("1601") && out.to_lowercase().contains("epoch"),
+        "explain should print the filetime spec card (epoch 1601); got: {out}"
+    );
+}
+
+#[test]
+fn explain_unknown_format_errors() {
+    let (_out, code) = run(&["explain", "no-such-format"]);
+    assert_eq!(code, 1, "an unknown format id must exit 1");
+}
