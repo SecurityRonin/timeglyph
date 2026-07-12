@@ -39,6 +39,9 @@
 //! break them — lives at <https://securityronin.github.io/timeglyph/>.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+/// Bounded carve: find timestamps at every offset of a raw byte blob
+/// (`identify_bytes` swept over offsets, window + score-thresholded).
+pub mod carve;
 pub mod compose;
 #[cfg(feature = "csv")]
 pub mod csv_enrich;
