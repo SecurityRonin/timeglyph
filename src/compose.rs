@@ -83,6 +83,7 @@ fn civil_utc(
         .map_err(|e| ChronoError::Render(e.to_string()))?;
     let ts = dt
         .to_zoned(jiff::tz::TimeZone::UTC)
+        // cov:unreachable: to_zoned(UTC) of an already-valid civil datetime cannot fail.
         .map_err(|e| ChronoError::Render(e.to_string()))?
         .timestamp();
     Ok(PosixNs(ts.as_nanosecond()))

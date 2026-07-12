@@ -53,7 +53,7 @@ fn cp56time2a_iec60870_decodes() {
     assert_eq!(inst.to_rfc3339().unwrap(), "2020-01-01T00:00:00Z");
     // 2024-07-15 13:30:45.500: ms = 45500 = 0xB1BC → [0xBC,0xB1]; the flag bits in
     // the minute/hour/day/year bytes must be masked off.
-    let inst2 = cp56time2a([0xBC, 0xB1, 0x80 | 30, 0x80 | 13, 0xE0 | 15, 7, 24]).unwrap();
+    let inst2 = cp56time2a([0xBC, 0xB1, 0x80 | 0x1E, 0x80 | 0x0D, 0xE0 | 0x0F, 7, 24]).unwrap();
     assert!(inst2
         .to_rfc3339()
         .unwrap()
@@ -70,4 +70,13 @@ fn udf_ecma167_timestamp_decodes() {
     // tz +120 min (0x078) means wall time is 2h ahead → instant 2h earlier.
     let inst2 = udf([0x78, 0x10, 0xE4, 0x07, 6, 15, 10, 0, 0, 0, 0, 0]).unwrap();
     assert_eq!(inst2.to_rfc3339().unwrap(), "2020-06-15T08:00:00Z");
+}
+
+#[test]
+fn wave2_invalid_civil_fields_error_never_panic() {
+    // Month 13 is invalid: the civil builder must error (robustness), not panic.
+    assert!(oracle_date([120, 120, 13, 1, 1, 1, 1]).is_err());
+    assert!(iso9660([120, 13, 1, 0, 0, 0, 0]).is_err());
+    assert!(cp56time2a([0, 0, 0, 0, 1, 13, 20]).is_err());
+    assert!(udf([0x00, 0x10, 0xE4, 0x07, 13, 1, 0, 0, 0, 0, 0, 0]).is_err());
 }
