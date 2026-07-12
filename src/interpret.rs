@@ -839,6 +839,26 @@ fn byte_ints(b: &[u8]) -> Vec<(String, i64, u8, Endian)> {
             4,
             Endian::Big,
         ));
+        // Y2038 sibling: a 32-bit time_t is SIGNED, so a value past 2^31 reads as
+        // NEGATIVE (pre-1970) — a wrapped post-2038 time. Only when it DIFFERS from
+        // the unsigned reading (the high bit is set) is the signed interpretation a
+        // distinct reading worth surfacing; otherwise it duplicates the u32 lane.
+        if u32::from_le_bytes(four) >= 0x8000_0000 {
+            v.push((
+                format!("i32 LE signed (wrapped time_t){}", suffix(4)),
+                i64::from(i32::from_le_bytes(four)),
+                4,
+                Endian::Little,
+            ));
+        }
+        if u32::from_be_bytes(four) >= 0x8000_0000 {
+            v.push((
+                format!("i32 BE signed (wrapped time_t){}", suffix(4)),
+                i64::from(i32::from_be_bytes(four)),
+                4,
+                Endian::Big,
+            ));
+        }
     }
     if let Some(eight) = b.get(..8).and_then(|s| <[u8; 8]>::try_from(s).ok()) {
         if let Ok(n) = i64::try_from(u64::from_le_bytes(eight)) {
