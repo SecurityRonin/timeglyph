@@ -539,8 +539,66 @@ fn decode_composite(
         "mach_continuous" => Some((parse_relative(value, timeglyph::Unit::Nanos), "unix")),
         "syslog" => Some((parse_syslog(value), "unix")),
         "vmsd" => Some((parse_vmsd(value), "unix")),
+        "oracle_date" => Some((
+            parse_wave2_bytes(value, timeglyph::compose::oracle_date),
+            "unix",
+        )),
+        "iso9660" => Some((
+            parse_wave2_bytes(value, timeglyph::compose::iso9660),
+            "unix",
+        )),
+        "cp56time2a" => Some((
+            parse_wave2_bytes(value, timeglyph::compose::cp56time2a),
+            "unix",
+        )),
+        "udf" => Some((parse_wave2_udf(value), "unix")),
+        "ext4_extra" => Some((parse_ext4_extra(value), "unix")),
         _ => None,
     }
+}
+
+/// Parse a hex string into exactly `N` bytes (whitespace/`:`/`_`/`0x` tolerated).
+fn parse_hex_array<const N: usize>(value: &str) -> Result<[u8; N], String> {
+    let clean: String = value
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ':' && *c != '_')
+        .collect();
+    let clean = clean
+        .strip_prefix("0x")
+        .or_else(|| clean.strip_prefix("0X"))
+        .unwrap_or(&clean);
+    let bytes = hex::decode(clean).map_err(|_| format!("not valid hex: {value:?}"))?;
+    <[u8; N]>::try_from(bytes.as_slice())
+        .map_err(|_| format!("expected {N} bytes, got {}", bytes.len()))
+}
+
+/// Wire a 7-byte wave-2 decoder (Oracle DATE / ISO 9660 / CP56Time2a) from hex.
+fn parse_wave2_bytes(
+    value: &str,
+    decode: fn([u8; 7]) -> Result<timeglyph::PosixNs, timeglyph::ChronoError>,
+) -> Result<timeglyph::PosixNs, String> {
+    decode(parse_hex_array::<7>(value)?).map_err(|e| e.to_string())
+}
+
+/// UDF is 12 bytes rather than 7.
+fn parse_wave2_udf(value: &str) -> Result<timeglyph::PosixNs, String> {
+    timeglyph::compose::udf(parse_hex_array::<12>(value)?).map_err(|e| e.to_string())
+}
+
+/// ext4 extended timestamp from `"<seconds>,<extra>"`.
+fn parse_ext4_extra(value: &str) -> Result<timeglyph::PosixNs, String> {
+    let (s, e) = value
+        .split_once([',', ':'])
+        .ok_or_else(|| format!("expected 'seconds,extra', got {value:?}"))?;
+    let secs: i64 = s
+        .trim()
+        .parse()
+        .map_err(|_| format!("not an i64 seconds: {s:?}"))?;
+    let extra: u32 = e
+        .trim()
+        .parse()
+        .map_err(|_| format!("not a u32 extra field: {e:?}"))?;
+    Ok(timeglyph::compose::ext4_extra(secs, extra))
 }
 
 /// Parse a `"<createTimeHigh>,<createTimeLow>"` VMware `.vmsd` pair (decimal i32s).
