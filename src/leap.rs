@@ -98,6 +98,23 @@ pub fn gps_rollover_eras(week10: u32, tow: f64, anchor: Option<i64>) -> Vec<Leap
     }
 }
 
+/// Whether a leap second falls within ±12h of `unix_seconds` — the window a cloud
+/// clock (Google/AWS) smears a leap second across, so a value here may be off by
+/// up to a second. Authoritative: uses hifitime's IERS leap-second table (a leap
+/// second is in the window iff the cumulative offset changes across it), never a
+/// hardcoded date. `false` before 1972 (no IERS leap data).
+#[must_use]
+pub fn within_leap_smear_window(unix_seconds: i64) -> bool {
+    let offset_at = |s: i64| Epoch::from_unix_seconds(s as f64).leap_seconds(true);
+    match (
+        offset_at(unix_seconds - 43_200),
+        offset_at(unix_seconds + 43_200),
+    ) {
+        (Some(before), Some(after)) => (before - after).abs() > 0.5,
+        _ => false,
+    }
+}
+
 /// Decode a TAI64 external label (`2^62 + s`, where `s` = TAI seconds since
 /// 1970-01-01 00:00:00 TAI; D. J. Bernstein libtai). TAI is leap-aware; the UTC
 /// rendering subtracts the TAI−UTC offset.
