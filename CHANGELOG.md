@@ -6,6 +6,41 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-12
+
+### Added
+
+- **Correctness wave (DST fold/gap, Y2038, GPS rollover).** A `LocalNaive`
+  reading under a named `--tz` now flags a DST fall-back **fold** (both instants)
+  or a spring-forward **gap** (nonexistent wall time) — `resolve_local`,
+  tier-1-validated against IANA tzdb. A 4-byte value with the high bit set surfaces
+  the **signed i32 (wrapped `time_t`)** reading alongside the unsigned one. New
+  `leap::gps_rollover_eras` emits the plausible 1024-week GPS eras (with an optional
+  case-date anchor); `leap::within_leap_smear_window` adds a cloud-smear note when a
+  reading falls within ±12h of a leap second (from hifitime's IERS table).
+- **`explain` — registry-generated spec cards.** `timeglyph explain <format>` prints
+  the epoch, tick unit, tz/leap semantics, valid range, known sentinels, and citation
+  (`interpret::explain`).
+- **`identify_bytes` + bounded carve.** `interpret::identify_bytes(&[u8])` (the byte
+  sweep behind `interpret_hex`) and `carve::carve` (find timestamps at every offset of
+  a bounded blob, window + score-thresholded), with JSONL, ImHex-bookmark, and
+  Timesketch-JSONL exports; `timeglyph carve <hex>` CLI.
+- **`mcp` — Model Context Protocol server.** `timeglyph mcp` speaks JSON-RPC over
+  stdio, exposing `identify`/`decode`/`explain` as tools for LLM-driven DFIR.
+- **Format wave 2.** Oracle 7-byte DATE, ISO 9660 (ECMA-119), ext4 extended
+  timestamp, CP56Time2a (IEC 60870-5), UDF (ECMA-167), and IEEE 1588 PTP — each
+  tier-1-validated against its spec worked example; the first five decode via the
+  CLI (`decode <fmt> <hex|secs,extra>`).
+- `sentinel_reason` now also flags `i64::MIN` (unset/overflow).
+
+### Changed
+
+- **Validation is enforced, not just claimed.** `docs/validation-tiers.tsv` +
+  `tests/validation_tiers.rs` gate that every format is audited, none is tier-3-only,
+  and each tier claim is bound to the oracle file that references it. Reliability is
+  reported **per family** (36 families), never one global number that hides
+  same-instant-collision families.
+
 ## [0.4.1] - 2026-07-11
 
 ### Changed

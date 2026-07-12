@@ -85,21 +85,36 @@ offset, or a DST-correct IANA name); nudge readings toward a source family with
 
 ```bash
 timeglyph decode filetime 132223104000000000
+timeglyph decode oracle_date 78780101010101   # Oracle 7-byte DATE (and iso9660/cp56time2a/udf)
 timeglyph encode unix 2020-01-01T00:00:00Z
-timeglyph list                          # the format registry, with spec citations
+timeglyph explain filetime               # a spec card: epoch, tick, tz/leap, range, sentinels, citation
+timeglyph list                           # the format registry, with spec citations
 ```
 
 ### Mine artifacts at scale
 
 ```bash
 timeglyph scan app.log                  # find & decode every timestamp in text (or stdin)
+timeglyph carve aabbcc… --from 2015 --to 2026 --json   # carve timestamps at every byte offset
 timeglyph csv events.csv                # enrich a CSV with human-readable timestamp columns
 ```
 
 Convert in bulk: enrich a whole CSV of timestamps in one pass instead of pasting
-them into a converter one at a time.
+them into a converter one at a time. `carve` sweeps a raw blob (a config, a
+record, a hex selection) for timestamps at every offset — window- and
+score-thresholded — and exports JSONL, ImHex bookmarks, or Timesketch events.
 
 [CSV enrichment →](docs/csv.md)
+
+### Use it from an LLM / agent
+
+```bash
+timeglyph mcp                           # a Model Context Protocol stdio server
+```
+
+`mcp` exposes `identify` / `decode` / `explain` as MCP tools, so an LLM-driven
+DFIR workflow gets a cited, reproducible reading instead of a hallucinated epoch
+conversion.
 
 ---
 
