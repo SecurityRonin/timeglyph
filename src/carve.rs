@@ -118,3 +118,31 @@ pub fn to_imhex_bookmarks(hits: &[CarveHit]) -> String {
         .collect();
     serde_json::json!({ "bookmarks": bookmarks }).to_string()
 }
+
+/// Serialize carve hits as Timesketch JSONL — one event per hit carrying the
+/// required import fields (`message`, `datetime`, `timestamp_desc`) plus
+/// `data_type` and `offset`. Import via Timesketch's JSONL importer so carve
+/// results drop straight into a timeline. Hits whose reading does not render an
+/// instant are skipped (no valid `datetime`).
+#[must_use]
+pub fn to_timesketch_jsonl(hits: &[CarveHit]) -> String {
+    hits.iter()
+        .filter_map(|h| {
+            let dt = h.reading.rendered.as_deref()?;
+            Some(
+                serde_json::json!({
+                    "datetime": dt,
+                    "message": format!(
+                        "timeglyph carve: {} at offset {} ({}), score {:.2}",
+                        h.reading.format_id, h.offset, h.lane, h.reading.score
+                    ),
+                    "timestamp_desc": h.reading.format_id,
+                    "data_type": "timeglyph:carve:hit",
+                    "offset": h.offset,
+                })
+                .to_string(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
