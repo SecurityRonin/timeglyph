@@ -29,6 +29,7 @@ const ORACLE_FILES: &[(&str, &str)] = &[
     ("floats.rs", include_str!("floats.rs")),
     ("packed.rs", include_str!("packed.rs")),
     ("extra.rs", include_str!("extra.rs")),
+    ("tier1_vectors.rs", include_str!("tier1_vectors.rs")),
 ];
 
 struct Row {
@@ -122,6 +123,9 @@ fn single_anchor_formats_are_a_tracked_shrinking_allowlist() {
     // independent anchor (a spec worked example is tool-independent tier-1)
     // removes a format from this list; a NEW format must not land here silently.
     // This set may only SHRINK.
+    // gsm, sqlserver, exfat were removed here when they gained a second, tool-
+    // independent anchor (tier1_vectors.rs) and rose to tier-1 — the list may only
+    // shrink.
     const KNOWN_SINGLE_ANCHOR: &[&str] = &[
         "bcd",
         "bitdate",
@@ -129,16 +133,13 @@ fn single_anchor_formats_are_a_tracked_shrinking_allowlist() {
         "cocoa",
         "dhcp6",
         "dttm",
-        "exfat",
         "gmsgid",
-        "gsm",
         "hfs",
         "logtime",
         "nokiale",
         "postgres",
         "semioctet",
         "sony",
-        "sqlserver",
         "unix_ms",
         "unix_ns",
         "unix_us",
