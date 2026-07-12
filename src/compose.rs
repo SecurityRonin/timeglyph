@@ -65,3 +65,74 @@ pub fn relative(anchor: PosixNs, ticks: i64, unit: Unit) -> PosixNs {
 pub fn unix_sec_nsec(sec: i64, nsec: u32) -> PosixNs {
     PosixNs(i128::from(sec) * 1_000_000_000 + i128::from(nsec))
 }
+
+// --- Format wave 2 (engine-local decoders for additional encodings) ----------
+
+/// Build an instant from naive UTC civil fields. Invalid fields (month 0, hour
+/// 24, …) surface as an error, never a panic. Shared by the packed wave-2
+/// decoders below.
+fn civil_utc(
+    year: i16,
+    month: i8,
+    day: i8,
+    hour: i8,
+    minute: i8,
+    second: i8,
+) -> Result<PosixNs, ChronoError> {
+    let dt = jiff::civil::DateTime::new(year, month, day, hour, minute, second, 0)
+        .map_err(|e| ChronoError::Render(e.to_string()))?;
+    let ts = dt
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .map_err(|e| ChronoError::Render(e.to_string()))?
+        .timestamp();
+    Ok(PosixNs(ts.as_nanosecond()))
+}
+
+/// Oracle `DATE` — the 7-byte internal format `[century+100, year-of-century+100,
+/// month, day, hour+1, minute+1, second+1]` (excess-100 on the two year bytes,
+/// excess-1 on the time bytes; no timezone). Everywhere in `.dbf`/redo-log and
+/// `.ibd` carving. Reference: Oracle DATE internal representation.
+///
+/// # Errors
+/// [`ChronoError`] if the reconstructed civil datetime is invalid (never panics).
+pub fn oracle_date(b: [u8; 7]) -> Result<PosixNs, ChronoError> {
+    let year = (i16::from(b[0]) - 100) * 100 + (i16::from(b[1]) - 100);
+    let f = |v: u8, off: i16| (i16::from(v) - off) as i8;
+    civil_utc(
+        year,
+        f(b[2], 0),
+        f(b[3], 0),
+        f(b[4], 1),
+        f(b[5], 1),
+        f(b[6], 1),
+    )
+}
+
+/// ISO 9660 / ECMA-119 §9.1.5 recording date — 7 bytes `[years since 1900, month,
+/// day, hour, minute, second, offset from GMT in 15-minute intervals (signed)]`.
+/// The offset is subtracted so the returned instant is absolute UTC. Optical-media
+/// forensics.
+///
+/// # Errors
+/// [`ChronoError`] if the civil fields are invalid (never panics).
+pub fn iso9660(b: [u8; 7]) -> Result<PosixNs, ChronoError> {
+    let year = 1900 + i16::from(b[0]);
+    let civil = civil_utc(
+        year, b[1] as i8, b[2] as i8, b[3] as i8, b[4] as i8, b[5] as i8,
+    )?;
+    // Byte 6: signed count of 15-minute units east of GMT; the instant is the wall
+    // time minus that offset.
+    let offset_ns = i128::from(b[6] as i8) * 15 * 60 * 1_000_000_000;
+    Ok(PosixNs(civil.0 - offset_ns))
+}
+
+/// ext4 extended timestamp — a 32-bit seconds-since-1970 field plus a 32-bit
+/// `extra` field: the low 2 bits extend the epoch by `×2^32` seconds (deferring
+/// Y2038), the high 30 bits are nanoseconds. Linux filesystem forensics.
+/// Reference: the ext4 on-disk inode (`i_[cma]time_extra`).
+#[must_use]
+pub fn ext4_extra(secs: i64, extra: u32) -> PosixNs {
+    let epoch_bits = i128::from(extra & 0x3);
+    let nanos = i128::from(extra >> 2);
+    PosixNs((i128::from(secs) + (epoch_bits << 32)) * 1_000_000_000 + nanos)
+}
