@@ -541,3 +541,22 @@ fn decode_vmsd_composite() {
     assert!(out.contains("2020-01-01T00:00:00"), "{out}");
     assert_eq!(code, 0, "{out}");
 }
+
+#[test]
+fn carve_subcommand_finds_a_planted_filetime_as_jsonl() {
+    // buffer = AAAAAA + 8-byte LE FILETIME(2025-05-04) + BBBBBB; window 2000..2030.
+    let (out, code) = run(&[
+        "carve",
+        "aaaaaaaed19dd607bddb01bbbbbb",
+        "--json",
+        "--from",
+        "2000",
+        "--to",
+        "2030",
+    ]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("\"filetime\"") && out.contains("\"offset\":3"),
+        "carve JSONL should report the filetime planted at offset 3; got: {out}"
+    );
+}
