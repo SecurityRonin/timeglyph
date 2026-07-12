@@ -163,6 +163,27 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Carve raw bytes (hex) for timestamps at every offset — a bounded blob (a
+    /// config, a record, a selection), window + score-thresholded.
+    Carve {
+        /// Hex bytes to carve (e.g. `aabbcc…`); omit or `-` to read hex from stdin.
+        hex: Option<String>,
+        /// Minimum score to report a hit.
+        #[arg(long, default_value_t = 0.5)]
+        min_score: f64,
+        /// Plausibility window lower bound, a year (e.g. 2000).
+        #[arg(long)]
+        from: Option<i16>,
+        /// Plausibility window upper bound, a year (e.g. 2030).
+        #[arg(long)]
+        to: Option<i16>,
+        /// Emit JSONL (one hit per line) instead of text.
+        #[arg(long)]
+        json: bool,
+        /// Emit ImHex bookmarks JSON.
+        #[arg(long)]
+        imhex: bool,
+    },
     /// List every registered format with its citation.
     List,
     /// Enrich a CSV: add a human-readable column for each timestamp column.
@@ -260,6 +281,14 @@ fn main() -> ExitCode {
             top,
             json,
         }) => run_scan(text.as_deref(), min_digits, top, json, &zone, style),
+        Some(Commands::Carve {
+            hex,
+            min_score,
+            from,
+            to,
+            json,
+            imhex,
+        }) => run_carve(hex.as_deref(), min_score, from, to, json, imhex),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
         Some(Commands::Csv {
@@ -975,6 +1004,73 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
 fn run_list() -> u8 {
     for f in timeglyph::registry::FORMATS.iter() {
         println!("{:<16} {:<48} {}", f.id, f.label, f.citation);
+    }
+    EXIT_OK
+}
+
+/// `carve` subcommand: hex bytes → bounded carve → text / JSONL / ImHex bookmarks.
+fn run_carve(
+    hex: Option<&str>,
+    min_score: f64,
+    from: Option<i16>,
+    to: Option<i16>,
+    json: bool,
+    imhex: bool,
+) -> u8 {
+    use std::io::Read;
+    let raw = match hex {
+        Some(h) if h != "-" => h.to_string(),
+        _ => {
+            let mut s = String::new();
+            if std::io::stdin().read_to_string(&mut s).is_err() {
+                eprintln!("error: could not read hex from stdin");
+                return EXIT_ERR;
+            }
+            s
+        }
+    };
+    let clean: String = raw
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '_' && *c != ':')
+        .collect();
+    let clean = clean
+        .strip_prefix("0x")
+        .or_else(|| clean.strip_prefix("0X"))
+        .unwrap_or(&clean);
+    let Ok(bytes) = hex::decode(clean) else {
+        eprintln!("error: input is not valid hex bytes");
+        return EXIT_ERR;
+    };
+    let year_ns = |y: i16| -> Option<i128> {
+        jiff::civil::Date::new(y, 1, 1)
+            .ok()?
+            .at(0, 0, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .ok()
+            .map(|z| z.timestamp().as_nanosecond())
+    };
+    let window = match (from.and_then(year_ns), to.and_then(year_ns)) {
+        (Some(lo), Some(hi)) => Some((lo, hi)),
+        _ => None,
+    };
+    let hits = timeglyph::carve::carve(&bytes, min_score, window);
+    if json {
+        println!("{}", timeglyph::carve::to_jsonl(&hits));
+    } else if imhex {
+        println!("{}", timeglyph::carve::to_imhex_bookmarks(&hits));
+    } else if hits.is_empty() {
+        println!("# no timestamp readings above the score/window threshold");
+    } else {
+        for h in &hits {
+            println!(
+                "  @{:<5} [{:.2}] {:<14} {}  ({})",
+                h.offset,
+                h.reading.score,
+                h.reading.format_id,
+                h.reading.rendered.as_deref().unwrap_or("?"),
+                h.lane
+            );
+        }
     }
     EXIT_OK
 }
