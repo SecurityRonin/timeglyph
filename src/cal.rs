@@ -69,6 +69,32 @@ pub struct ChineseDate {
     pub solar_longitude_deg: f64,
 }
 
+/// The Hebrew calendar date for a day (from ICU4X).
+#[cfg(feature = "altcal")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HebrewDate {
+    /// Anno Mundi year.
+    pub year: i32,
+    /// Month ordinal, 1-based (leap years insert Adar I).
+    pub month: u8,
+    /// Day of month.
+    pub day: u8,
+    /// ICU month code (`M01`..`M12`, `M05L` for a leap month) — unambiguous.
+    pub month_code: String,
+}
+
+/// The Islamic (tabular civil, type II / Friday epoch) date for a day (ICU4X).
+#[cfg(feature = "altcal")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IslamicDate {
+    /// Anno Hegirae year.
+    pub year: i32,
+    /// Month ordinal, 1-based.
+    pub month: u8,
+    /// Day of month.
+    pub day: u8,
+}
+
 /// A DST transition occurring within a calendar day.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DstTransition {
@@ -117,6 +143,12 @@ pub struct CalDay {
     /// Chinese lunisolar date + 干支 pillars, at the day's noon in the render zone.
     #[cfg(feature = "lunisolar")]
     pub alt_chinese: Option<ChineseDate>,
+    /// Hebrew calendar date (civil-date based).
+    #[cfg(feature = "altcal")]
+    pub alt_hebrew: Option<HebrewDate>,
+    /// Islamic (tabular civil) calendar date.
+    #[cfg(feature = "altcal")]
+    pub alt_islamic: Option<IslamicDate>,
     /// Leap seconds inserted (`+1`) / deleted (`-1`) during this UTC day.
     #[cfg(feature = "leap")]
     pub leap_second: i8,
@@ -224,6 +256,36 @@ fn chinese_on(date: Date, zone: &RenderZone) -> Option<ChineseDate> {
     })
 }
 
+/// The Hebrew and Islamic (tabular civil) overlays for `date`, via ICU4X.
+#[cfg(feature = "altcal")]
+fn altcal_on(date: Date) -> (Option<HebrewDate>, Option<IslamicDate>) {
+    let Ok(iso) = icu_calendar::Date::try_new_iso(
+        i32::from(date.year()),
+        date.month() as u8,
+        date.day() as u8,
+    ) else {
+        return (None, None);
+    };
+    let h = iso.to_calendar(icu_calendar::cal::Hebrew);
+    let hebrew = HebrewDate {
+        year: h.era_year().year,
+        month: h.month().ordinal,
+        day: h.day_of_month().0,
+        month_code: h.month().to_input().code().to_string(),
+    };
+    let cal = icu_calendar::cal::Hijri::new_tabular(
+        icu_calendar::cal::HijriTabularLeapYears::TypeII,
+        icu_calendar::cal::HijriTabularEpoch::Friday,
+    );
+    let i = iso.to_calendar(cal);
+    let islamic = IslamicDate {
+        year: i.era_year().year,
+        month: i.month().ordinal,
+        day: i.day_of_month().0,
+    };
+    (Some(hebrew), Some(islamic))
+}
+
 /// Build the civil + timezone facts of `date` in `zone`. Pure; never panics.
 ///
 /// # Errors
@@ -277,6 +339,9 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         })
     });
 
+    #[cfg(feature = "altcal")]
+    let (alt_hebrew, alt_islamic) = altcal_on(date);
+
     Ok(CalDay {
         date: date.to_string(),
         weekday: weekday.to_string(),
@@ -295,6 +360,10 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         artifacts: artifacts_on(date),
         #[cfg(feature = "lunisolar")]
         alt_chinese: chinese_on(date, zone),
+        #[cfg(feature = "altcal")]
+        alt_hebrew,
+        #[cfg(feature = "altcal")]
+        alt_islamic,
         #[cfg(feature = "leap")]
         leap_second: crate::leap::leap_seconds_on_utc_day(unix_utc_midnight),
         #[cfg(feature = "leap")]
