@@ -68,7 +68,10 @@ its scene tile.
     @ @ @ @ @ @ @
       @ @ @ @ @
 
-  chinese   甲辰年 · lunar 12/16 · 小寒 · 甲申 pillar
+  chinese   lunar 十二月十六日 · 小寒
+            甲丁甲庚
+            辰丑申午
+            年月日時
   hebrew    15 Tevet 5785
   islamic   15 Rajab 1446
   season    winter (N. hemisphere; solar longitude 295.6deg)
@@ -112,7 +115,10 @@ season timeline of astronomically-exact equinox/solstice dates.
 
 ## Alternative calendars
 
-With the default build, each day also carries the Chinese lunisolar date and 干支
-pillars (via the stem-branch ephemeris, meridian = the render zone) and, behind
-the `altcal` feature, the Hebrew and Islamic (tabular civil) dates via ICU4X. All
-appear in the `--json` record.
+With the default build, each day also carries the Chinese lunisolar date (in
+Chinese, e.g. `正月廿二日`) and the four 干支 pillars — year, month, day, and hour
+(年月日時) — via the stem-branch ephemeris at the render-zone meridian. The day
+card stacks them as stems over branches over labels. The **hour pillar (時柱) is
+computed at the day's noon** (午時), since a calendar day has no single hour; its
+branch is therefore always 午. Behind the `altcal` feature, the Hebrew and Islamic
+(tabular civil) dates come from ICU4X. All values appear in the `--json` record.

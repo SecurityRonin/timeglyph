@@ -97,6 +97,70 @@ fn season_name(solar_longitude_deg: f64) -> &'static str {
     crate::cal::season_for(solar_longitude_deg, crate::cal::Hemisphere::North)
 }
 
+/// The Chinese lunar month name (`正月`..`十二月`, `閏`-prefixed for a leap month).
+#[cfg(feature = "lunisolar")]
+fn lunar_month_cn(month: u8, is_leap: bool) -> String {
+    const M: [&str; 12] = [
+        "正月",
+        "二月",
+        "三月",
+        "四月",
+        "五月",
+        "六月",
+        "七月",
+        "八月",
+        "九月",
+        "十月",
+        "十一月",
+        "十二月",
+    ];
+    let name = M
+        .get((month as usize).wrapping_sub(1))
+        .copied()
+        .unwrap_or("?月");
+    if is_leap {
+        format!("閏{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+/// The Chinese lunar day name (`初一`..`三十`).
+#[cfg(feature = "lunisolar")]
+fn lunar_day_cn(day: u8) -> String {
+    const D: [&str; 11] = [
+        "", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
+    ];
+    match day {
+        1..=10 => format!("初{}", D[day as usize]),
+        11..=19 => format!("十{}", D[(day - 10) as usize]),
+        20 => "二十".to_string(),
+        21..=29 => format!("廿{}", D[(day - 20) as usize]),
+        30 => "三十".to_string(),
+        _ => day.to_string(),
+    }
+}
+
+/// The three lines of the four-pillar (四柱) block: heavenly stems, earthly
+/// branches, and the `年月日時` labels — each pillar's stem over its branch.
+#[cfg(feature = "lunisolar")]
+fn four_pillar_rows(c: &crate::cal::ChineseDate) -> [String; 3] {
+    let pillars = [
+        &c.year_pillar,
+        &c.month_pillar,
+        &c.day_pillar,
+        &c.hour_pillar,
+    ];
+    let mut stems = String::new();
+    let mut branches = String::new();
+    for p in pillars {
+        let mut ch = p.chars();
+        stems.push(ch.next().unwrap_or('?'));
+        branches.push(ch.next().unwrap_or('?'));
+    }
+    [stems, branches, "年月日時".to_string()]
+}
+
 /// Render a month as a monospace grid: a title line, an ISO-week gutter, weekday
 /// headers, and one `%2d` day + marker per cell, followed by a legend.
 #[must_use]
@@ -188,12 +252,17 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
     use std::fmt::Write as _;
     out.push('\n');
     if let Some(c) = &d.alt_chinese {
-        let leap = if c.is_leap_month { " (leap)" } else { "" };
         let _ = writeln!(
             out,
-            "  chinese   {}年 · lunar {}/{}{} · {} · {} pillar",
-            c.year_pillar, c.lunar_month, c.lunar_day, leap, c.solar_term, c.day_pillar
+            "  chinese   lunar {}{}日 · {}",
+            lunar_month_cn(c.lunar_month, c.is_leap_month),
+            lunar_day_cn(c.lunar_day),
+            c.solar_term
         );
+        // The four-pillar (四柱) block: stems over branches over 年月日時 labels.
+        for row in four_pillar_rows(c) {
+            let _ = writeln!(out, "            {row}");
+        }
     }
     #[cfg(feature = "altcal")]
     if let Some(h) = &d.alt_hebrew {

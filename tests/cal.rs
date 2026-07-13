@@ -440,9 +440,13 @@ fn season_tiles_are_five_lines_each() {
 fn day_card_shows_all_alternative_calendars_and_season() {
     use timeglyph::cal::build_day;
     use timeglyph::cal_render::render_day_text;
-    // 2024-09-18: Chinese 甲辰 / 白露, Hebrew 15 Elul 5784, Islamic Rabi 1446.
+    // 2024-09-18: Chinese 白露 + four-pillar block, Hebrew 15 Elul 5784, Islamic
+    // Rabi 1446.
     let card = render_day_text(&build_day(date(2024, 9, 18), &RenderZone::Utc).unwrap());
-    assert!(card.contains("甲辰"), "chinese pillar missing:\n{card}");
+    assert!(
+        card.contains("年月日時"),
+        "four-pillar block missing:\n{card}"
+    );
     assert!(card.contains("白露"), "solar term missing:\n{card}");
     assert!(card.contains("5784"), "hebrew year missing:\n{card}");
     assert!(card.contains("Elul"), "hebrew month name missing:\n{card}");
@@ -492,7 +496,10 @@ fn day_card_shows_lunar_chinese_date_and_four_pillars() {
     use timeglyph::cal_render::render_day_text;
     // 2025-02-19: lunar 正月廿二日 · 雨水; 四柱 年乙巳 月戊寅 日己未 時庚午.
     let card = render_day_text(&build_day(date(2025, 2, 19), &RenderZone::Utc).unwrap());
-    assert!(card.contains("正月廿二"), "lunar Chinese date missing:\n{card}");
+    assert!(
+        card.contains("正月廿二"),
+        "lunar Chinese date missing:\n{card}"
+    );
     assert!(card.contains("雨水"), "solar term missing:\n{card}");
     // Four-pillar block: stems / branches / 年月日時 labels (時 at noon = 午).
     assert!(card.contains("乙戊己庚"), "stems row missing:\n{card}");
