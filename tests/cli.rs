@@ -622,3 +622,41 @@ fn decode_ext4_extra_via_cli() {
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("2020-01-01T00:00:00"), "ext4_extra: {out}");
 }
+
+// --- cal subcommand -----------------------------------------------------------
+
+#[test]
+fn cal_month_renders_grid() {
+    let (out, code) = run(&["cal", "2026-07"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("July 2026"), "{out}");
+    assert!(out.contains("W27"), "{out}");
+}
+
+#[test]
+fn cal_year_renders_twelve_months() {
+    let (out, code) = run(&["cal", "2026"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("January 2026") && out.contains("December 2026"), "{out}");
+}
+
+#[test]
+fn cal_json_is_machine_readable() {
+    let (out, code) = run(&["cal", "2026-07", "--json"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("\"jdn\"") && out.contains("\"iso_week\""), "{out}");
+}
+
+#[test]
+fn cal_bad_when_errors_with_the_value() {
+    let (out, code) = run(&["cal", "notadate"]);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("notadate"), "{out}");
+}
+
+#[test]
+fn cal_no_args_is_current_month() {
+    let (out, code) = run(&["cal"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("Mo") && out.contains("Su"), "{out}");
+}
