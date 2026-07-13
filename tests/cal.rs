@@ -59,3 +59,29 @@ fn day_of_year_weekday_and_iso_string() {
     assert_eq!(n.weekday, "sunday");
     assert_eq!(n.date, "2026-11-01");
 }
+
+// --- Cycle 2: leap-second days + GPS week (tier-1, hifitime IERS table) --------
+
+#[cfg(feature = "leap")]
+mod leapday {
+    use timeglyph::leap::{gps_week, leap_seconds_on_utc_day};
+
+    #[test]
+    fn leap_second_days_from_iers_table() {
+        // 2016-12-31 (unix midnight 1_483_142_400) and 2015-06-30 (1_435_622_400)
+        // each carry an inserted leap second (IERS Bulletin C): cumulative TAI−UTC
+        // rises by 1 across the UTC day (36→37, 35→36).
+        assert_eq!(leap_seconds_on_utc_day(1_483_142_400), 1);
+        assert_eq!(leap_seconds_on_utc_day(1_435_622_400), 1);
+        // Ordinary days: no change.
+        assert_eq!(leap_seconds_on_utc_day(1_483_056_000), 0); // 2016-12-30
+        assert_eq!(leap_seconds_on_utc_day(1_483_228_800), 0); // 2017-01-01
+    }
+
+    #[test]
+    fn gps_week_anchors() {
+        assert_eq!(gps_week(315_964_800), 0); // 1980-01-06, GPS week 0
+        assert_eq!(gps_week(1_554_595_200), 2048); // 2019-04-07 (post-rollover)
+        assert_eq!(gps_week(1_793_491_200), 2443); // 2026-11-01
+    }
+}
