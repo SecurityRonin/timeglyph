@@ -141,3 +141,40 @@ const SEASON_TILE: [[&str; 5]; 4] = [
 pub fn season_tile(season_index: u8) -> &'static [&'static str; 5] {
     &SEASON_TILE[(season_index as usize) % 4]
 }
+
+use crate::cal::{season_for, Hemisphere, SeasonMarker};
+
+/// The astronomical-event → hemisphere season name for a cardinal boundary, and
+/// its title-cased form for the strip header.
+fn season_title(solar_longitude_deg: f64, hemisphere: Hemisphere) -> &'static str {
+    match season_for(solar_longitude_deg, hemisphere) {
+        "spring" => "Spring",
+        "summer" => "Summer",
+        "autumn" => "Autumn",
+        _ => "Winter",
+    }
+}
+
+/// A year-long season timeline: the four astronomically-exact equinox/solstice
+/// boundaries, each labelled with the season it opens (hemisphere-aware) and its
+/// UTC date. Pure; spaces only (no box-drawing).
+#[must_use]
+pub fn season_strip(year: i16, markers: &[SeasonMarker], hemisphere: Hemisphere) -> String {
+    use std::fmt::Write as _;
+    let hemi = match hemisphere {
+        Hemisphere::North => "N. hemisphere",
+        Hemisphere::South => "S. hemisphere",
+    };
+    let mut out = format!("{year}  {hemi}\n");
+    for m in markers {
+        // "2026-06-21T08:24:30Z" -> date only.
+        let date = m.instant_utc.split('T').next().unwrap_or(&m.instant_utc);
+        let season = season_title(m.solar_longitude_deg, hemisphere);
+        let _ = writeln!(
+            out,
+            "  {season:<7} opens {date}  ({} {:.0}deg)",
+            m.term_name, m.solar_longitude_deg
+        );
+    }
+    out
+}
