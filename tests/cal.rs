@@ -432,3 +432,33 @@ fn season_tiles_are_five_lines_each() {
     }
     assert!(season_tile(3).iter().any(|l| l.contains('*'))); // winter snowman
 }
+
+// --- Cycle 11: surface the overlays in the human text views -------------------
+
+#[cfg(all(feature = "lunisolar", feature = "altcal"))]
+#[test]
+fn day_card_shows_all_alternative_calendars_and_season() {
+    use timeglyph::cal::build_day;
+    use timeglyph::cal_render::render_day_text;
+    // 2024-09-18: Chinese 甲辰 / 白露, Hebrew 15 Elul 5784, Islamic Rabi 1446,
+    // northern-hemisphere autumn (solar longitude ~176°).
+    let card = render_day_text(&build_day(date(2024, 9, 18), &RenderZone::Utc).unwrap());
+    assert!(card.contains("甲辰"), "chinese pillar missing:\n{card}");
+    assert!(card.contains("白露"), "solar term missing:\n{card}");
+    assert!(card.contains("5784"), "hebrew year missing:\n{card}");
+    assert!(card.contains("Elul"), "hebrew month name missing:\n{card}");
+    assert!(card.contains("1446"), "islamic year missing:\n{card}");
+    assert!(card.contains("autumn"), "season missing:\n{card}");
+}
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn month_view_has_an_overlay_footer() {
+    use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_render::render_month_text;
+    let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
+    let s = render_month_text(&m, None);
+    // A neofetch-style info panel: the month's Chinese year + season at least.
+    assert!(s.contains("年"), "chinese year pillar missing from month footer:\n{s}");
+    assert!(s.contains("summer"), "season missing from month footer:\n{s}");
+}
