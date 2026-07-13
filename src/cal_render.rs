@@ -111,15 +111,35 @@ pub fn render_day_text(d: &CalDay) -> String {
     }
     #[cfg(feature = "lunisolar")]
     if let Some(mo) = &d.moon {
-        let _ = writeln!(
-            out,
-            "  moon {} ({:.0}% illuminated)",
-            mo.phase_name,
-            mo.illuminated_fraction * 100.0
-        );
+        out.push('\n');
+        let disc = crate::cal_art::moon_art(mo.phase_index);
+        for (i, line) in disc.iter().enumerate() {
+            match i {
+                0 => {
+                    let _ = writeln!(out, "  {line:<18} {}", mo.phase_name);
+                }
+                1 => {
+                    let _ = writeln!(
+                        out,
+                        "  {line:<18} {:.0}% illuminated",
+                        mo.illuminated_fraction * 100.0
+                    );
+                }
+                2 => {
+                    let _ = writeln!(out, "  {line:<18} elongation {:.1}deg", mo.elongation_deg);
+                }
+                _ => {
+                    let _ = writeln!(out, "  {line}");
+                }
+            }
+        }
     }
     for a in &d.artifacts {
-        let _ = writeln!(out, "  {} {} @ {} ({})", a.kind, a.name, a.at_utc, a.citation);
+        let _ = writeln!(
+            out,
+            "  {} {} @ {} ({})",
+            a.kind, a.name, a.at_utc, a.citation
+        );
     }
     out
 }
