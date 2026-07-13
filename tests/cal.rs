@@ -373,3 +373,20 @@ mod art {
         assert!(card.contains('@'), "full-moon day card should show a lit disc:\n{card}");
     }
 }
+
+// --- Cycle 10: season strip (year timeline) -----------------------------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn season_strip_shows_boundaries_and_seasons() {
+    use timeglyph::cal::{season_markers, Hemisphere};
+    use timeglyph::cal_art::season_strip;
+    let s = season_strip(2026, &season_markers(2026), Hemisphere::North);
+    // Names the four seasons and the boundary months, no box-drawing.
+    assert!(s.contains("Spring") && s.contains("Summer") && s.contains("Winter"), "{s}");
+    assert!(s.contains("2026"), "{s}");
+    assert!(!s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)), "box-drawing");
+    // Southern hemisphere flips: the December solstice opens summer.
+    let south = season_strip(2026, &season_markers(2026), Hemisphere::South);
+    assert!(south.contains("Summer"), "{south}");
+}
