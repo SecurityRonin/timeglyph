@@ -150,3 +150,32 @@ fn leap_and_gps_fold_into_calday() {
     assert_eq!(n.utc_day_seconds, 86_400);
     assert!(!n.in_leap_smear_window);
 }
+
+// --- Cycle 4: artifact ranges (registry epoch days + cited rollovers) ---------
+
+fn has_artifact(d: &CalDay, kind: &str, name: &str) -> bool {
+    d.artifacts.iter().any(|a| a.kind == kind && a.name == name)
+}
+
+#[test]
+fn epoch_days_come_from_the_registry() {
+    // Epoch instants are spec facts cited in forensicnomicon (tier-1).
+    assert!(has_artifact(&day(1601, 1, 1), "epoch", "filetime"));
+    assert!(has_artifact(&day(1601, 1, 1), "epoch", "webkit"));
+    assert!(has_artifact(&day(1970, 1, 1), "epoch", "unix"));
+    assert!(has_artifact(&day(1899, 12, 30), "epoch", "ole"));
+    assert!(has_artifact(&day(1904, 1, 1), "epoch", "hfsplus"));
+    assert!(has_artifact(&day(2001, 1, 1), "epoch", "cocoa"));
+}
+
+#[test]
+fn rollovers_are_derived_from_structural_limits() {
+    // 2038-01-19T03:14:07Z = i32::MAX seconds; 2106-02-07 = u32::MAX.
+    assert!(has_artifact(&day(2038, 1, 19), "rollover", "unix_i32"));
+    assert!(has_artifact(&day(2106, 2, 7), "rollover", "unix_u32"));
+}
+
+#[test]
+fn ordinary_day_has_no_artifacts() {
+    assert!(day(2026, 7, 1).artifacts.is_empty());
+}
