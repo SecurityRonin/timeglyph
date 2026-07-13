@@ -218,3 +218,19 @@ fn hebrew_and_islamic_overlays() {
     let i = d.alt_islamic.expect("islamic overlay");
     assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
 }
+
+// --- Cycle 6a: moon phase overlay (stem-branch, feature=lunisolar) ------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn moon_phase_overlay() {
+    // 2024-09-18 was a full moon (02:34 UTC); at noon it is still ~full.
+    let full = day(2024, 9, 18).moon.expect("moon overlay");
+    assert_eq!(full.phase_index, 4);
+    assert_eq!(full.phase_name, "Full Moon");
+    assert!(full.illuminated_fraction > 0.98, "illum {}", full.illuminated_fraction);
+    // 2024-04-08 was a new moon (eclipse, 18:21 UTC); near-zero illumination.
+    let new = day(2024, 4, 8).moon.expect("moon overlay");
+    assert_eq!(new.phase_index, 0);
+    assert!(new.illuminated_fraction < 0.02, "illum {}", new.illuminated_fraction);
+}
