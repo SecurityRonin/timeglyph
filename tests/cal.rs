@@ -234,3 +234,46 @@ fn moon_phase_overlay() {
     assert_eq!(new.phase_index, 0);
     assert!(new.illuminated_fraction < 0.02, "illum {}", new.illuminated_fraction);
 }
+
+// --- Cycle 6b: season markers + hemisphere (stem-branch solar terms) ----------
+
+#[cfg(feature = "lunisolar")]
+mod seasons {
+    use timeglyph::cal::{season_for, season_markers, Hemisphere};
+
+    #[test]
+    fn markers_land_on_the_known_solstice_equinox_dates_2026() {
+        // Independently-known 2026 dates (almanac/USNO): Mar 20, Jun 21, Sep 23,
+        // Dec 21. Longitudes 0/90/180/270; terms 春分/夏至/秋分/冬至.
+        let m = season_markers(2026);
+        assert_eq!(m[0].solar_longitude_deg, 0.0);
+        assert!(m[0].instant_utc.starts_with("2026-03-20"), "{}", m[0].instant_utc);
+        assert_eq!(m[0].term_name, "春分");
+        assert!(m[1].instant_utc.starts_with("2026-06-21"), "{}", m[1].instant_utc);
+        assert_eq!(m[1].term_name, "夏至");
+        assert!(m[2].instant_utc.starts_with("2026-09-23"), "{}", m[2].instant_utc);
+        assert!(m[3].instant_utc.starts_with("2026-12-21"), "{}", m[3].instant_utc);
+        assert_eq!(m[3].term_name, "冬至");
+    }
+
+    #[test]
+    fn hemisphere_maps_events_to_opposite_seasons() {
+        // 0° opens spring in the north, autumn in the south; the December solstice
+        // (270°) opens winter (north) / summer (south) — an austral beach.
+        assert_eq!(season_for(0.0, Hemisphere::North), "spring");
+        assert_eq!(season_for(0.0, Hemisphere::South), "autumn");
+        assert_eq!(season_for(90.0, Hemisphere::North), "summer");
+        assert_eq!(season_for(270.0, Hemisphere::North), "winter");
+        assert_eq!(season_for(270.0, Hemisphere::South), "summer");
+    }
+
+    #[test]
+    fn calday_carries_hemisphere_neutral_solar_longitude() {
+        // Near the spring equinox the Sun's longitude is ~0°.
+        use timeglyph::cal::build_day;
+        use timeglyph::RenderZone;
+        let d = build_day(jiff::civil::date(2026, 3, 20), &RenderZone::Utc).unwrap();
+        let lon = d.solar_longitude_deg.expect("solar longitude");
+        assert!(lon < 1.0 || lon > 359.0, "lon {lon}");
+    }
+}
