@@ -370,7 +370,10 @@ mod art {
         use timeglyph::RenderZone;
         let d = build_day(jiff::civil::date(2024, 9, 18), &RenderZone::Utc).unwrap();
         let card = render_day_text(&d);
-        assert!(card.contains('@'), "full-moon day card should show a lit disc:\n{card}");
+        assert!(
+            card.contains('@'),
+            "full-moon day card should show a lit disc:\n{card}"
+        );
     }
 }
 
@@ -383,10 +386,49 @@ fn season_strip_shows_boundaries_and_seasons() {
     use timeglyph::cal_art::season_strip;
     let s = season_strip(2026, &season_markers(2026), Hemisphere::North);
     // Names the four seasons and the boundary months, no box-drawing.
-    assert!(s.contains("Spring") && s.contains("Summer") && s.contains("Winter"), "{s}");
+    assert!(
+        s.contains("Spring") && s.contains("Summer") && s.contains("Winter"),
+        "{s}"
+    );
     assert!(s.contains("2026"), "{s}");
-    assert!(!s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)), "box-drawing");
+    assert!(
+        !s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)),
+        "box-drawing"
+    );
     // Southern hemisphere flips: the December solstice opens summer.
     let south = season_strip(2026, &season_markers(2026), Hemisphere::South);
     assert!(south.contains("Summer"), "{south}");
+}
+
+// --- Coverage: exercise marker branches, season tiles, and error paths --------
+
+#[test]
+fn grid_markers_for_epoch_and_rollover_days() {
+    use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_render::render_month_text;
+    // 1601-01 contains the FILETIME epoch → an 'e' marker.
+    let jan1601 = build_month(1601, 1, &RenderZone::Utc, WeekStart::Sunday).unwrap();
+    assert!(render_month_text(&jan1601, None).contains('e'));
+    // 2038-01 contains the unix_i32 rollover → a '~' marker.
+    let jan2038 = build_month(2038, 1, &RenderZone::Utc, WeekStart::Monday).unwrap();
+    assert!(render_month_text(&jan2038, None).contains('~'));
+    // Today marker lands when today is in view.
+    let d = jiff::civil::date(2038, 1, 19);
+    assert!(render_month_text(&jan2038, Some(d)).contains('*'));
+}
+
+#[test]
+fn build_month_rejects_an_invalid_month() {
+    use timeglyph::cal::{build_month, WeekStart};
+    assert!(build_month(2026, 13, &RenderZone::Utc, WeekStart::Monday).is_err());
+}
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn season_tiles_are_five_lines_each() {
+    use timeglyph::cal_art::season_tile;
+    for idx in 0u8..4 {
+        assert_eq!(season_tile(idx).len(), 5, "season {idx}");
+    }
+    assert!(season_tile(3).iter().any(|l| l.contains('*'))); // winter snowman
 }

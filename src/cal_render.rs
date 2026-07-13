@@ -60,10 +60,12 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>) -> String {
 
     for week in &m.weeks {
         // ISO week gutter: from the first real day in the row.
-        let wk = week.iter().flatten().next().map_or_else(
-            || "   ".to_string(),
-            |&i| format!("W{:02}", m.days[i].iso_week),
-        );
+        let wk = match week.iter().flatten().next() {
+            Some(&i) => format!("W{:02}", m.days[i].iso_week),
+            // cov:unreachable: build_month never emits an all-None week (each row
+            // has at least one real day), so the empty-gutter arm is dead.
+            None => "   ".to_string(),
+        };
         let _ = write!(out, "{wk} ");
         for cell in week {
             match cell {

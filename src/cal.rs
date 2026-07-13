@@ -306,13 +306,6 @@ fn zone_to_tz(zone: &RenderZone) -> jiff::tz::TimeZone {
     }
 }
 
-/// The civil UTC date of a nanosecond-since-Unix instant, if representable.
-fn utc_date_of_ns(epoch_ns: i128) -> Option<Date> {
-    jiff::Timestamp::from_nanosecond(epoch_ns)
-        .ok()
-        .map(|ts| ts.to_zoned(jiff::tz::TimeZone::UTC).date())
-}
-
 /// Forensic markers falling on `date`: every registry format whose epoch lands on
 /// this day (derived from the catalog, so a new format appears for free), plus any
 /// cited fixed-width rollover.
@@ -325,16 +318,18 @@ fn artifacts_on(date: Date) -> Vec<Artifact> {
             | Encoding::Embedded { epoch_ns, .. } => epoch_ns,
             Encoding::Packed(_) => continue, // packed civil formats have no epoch
         };
-        if let Some(ed) = utc_date_of_ns(epoch_ns) {
-            if ed == date {
-                out.push(Artifact {
-                    kind: "epoch".to_string(),
-                    name: f.id.to_string(),
-                    at_utc: jiff::Timestamp::from_nanosecond(epoch_ns)
-                        .map_or_else(|_| String::new(), |ts| ts.to_string()),
-                    citation: f.citation.to_string(),
-                });
-            }
+        // Skip epochs outside the representable range up front, so the timestamp
+        // below is always valid (no dead error arm).
+        let Ok(ts) = jiff::Timestamp::from_nanosecond(epoch_ns) else {
+            continue;
+        };
+        if ts.to_zoned(jiff::tz::TimeZone::UTC).date() == date {
+            out.push(Artifact {
+                kind: "epoch".to_string(),
+                name: f.id.to_string(),
+                at_utc: ts.to_string(),
+                citation: f.citation.to_string(),
+            });
         }
     }
     for r in ROLLOVERS {
@@ -359,6 +354,8 @@ fn first_instant(date: Date, tz: &jiff::tz::TimeZone) -> Result<jiff::Timestamp,
     date.at(0, 0, 0, 0)
         .to_zoned(tz.clone())
         .map(|z| z.timestamp())
+        // cov:unreachable: to_zoned uses compatible disambiguation, so midnight of
+        // a valid civil date always resolves (a gap moves forward, never errors).
         .map_err(|e| ChronoError::Render(e.to_string()))
 }
 
@@ -582,6 +579,8 @@ pub fn build_month(
     let n = first.days_in_month();
     let mut days = Vec::with_capacity(n as usize);
     for d in 1..=n {
+        // cov:unreachable: d ranges over days_in_month of a validated month, so
+        // every Date::new here is in range (the first-of-month check already ran).
         let date = Date::new(year, month, d).map_err(|e| ChronoError::Render(e.to_string()))?;
         days.push(build_day(date, zone)?);
     }
