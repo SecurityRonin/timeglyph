@@ -6,9 +6,15 @@
 
 use jiff::civil::date;
 use timeglyph::cal::{build_day, CalDay};
+use timeglyph::RenderZone;
 
 fn day(y: i16, m: i8, d: i8) -> CalDay {
-    build_day(date(y, m, d)).unwrap()
+    build_day(date(y, m, d), &RenderZone::Utc).unwrap()
+}
+
+fn zoned(y: i16, m: i8, d: i8, tz: &str) -> CalDay {
+    let zone = RenderZone::parse(tz).unwrap();
+    build_day(date(y, m, d), &zone).unwrap()
 }
 
 #[test]
@@ -84,4 +90,63 @@ mod leapday {
         assert_eq!(gps_week(1_554_595_200), 2048); // 2019-04-07 (post-rollover)
         assert_eq!(gps_week(1_793_491_200), 2443); // 2026-11-01
     }
+}
+
+// --- Cycle 3: TZ / DST overlay (tier-1 vs zdump / IANA tzdb) -------------------
+
+#[test]
+fn dst_fold_day_new_york() {
+    // America/New_York 2026-11-01: fall-back FOLD at 06:00Z, -04:00 EDT -> -05:00
+    // EST; the wall day is 25 h (90000 s). (zdump -v America/New_York)
+    let d = zoned(2026, 11, 1, "America/New_York");
+    assert_eq!(d.offset_start_seconds, -14400);
+    assert_eq!(d.offset_end_seconds, -18000);
+    assert_eq!(d.wall_day_seconds, 90_000);
+    let t = d.dst_transition.expect("a transition on the fold day");
+    assert_eq!(t.kind, "fold");
+    assert_eq!(t.at_utc, "2026-11-01T06:00:00Z");
+}
+
+#[test]
+fn dst_gap_day_new_york() {
+    // 2026-03-08: spring-forward GAP at 07:00Z, -05:00 -> -04:00; wall day 23 h
+    // (82800 s), 02:00-02:59 local never exists.
+    let d = zoned(2026, 3, 8, "America/New_York");
+    assert_eq!(d.offset_start_seconds, -18000);
+    assert_eq!(d.offset_end_seconds, -14400);
+    assert_eq!(d.wall_day_seconds, 82_800);
+    assert_eq!(d.dst_transition.expect("gap").kind, "gap");
+}
+
+#[test]
+fn dst_thirty_minute_fold_lord_howe() {
+    // Australia/Lord_Howe 2026-04-05: 30-minute fall-back fold; wall day 24 h 30 m
+    // (88200 s). (zdump -v Australia/Lord_Howe)
+    let d = zoned(2026, 4, 5, "Australia/Lord_Howe");
+    assert_eq!(d.wall_day_seconds, 88_200);
+    assert_eq!(d.dst_transition.expect("fold").kind, "fold");
+}
+
+#[test]
+fn ordinary_day_has_no_transition_and_full_wall_day() {
+    let d = zoned(2026, 7, 1, "America/New_York");
+    assert_eq!(d.wall_day_seconds, 86_400);
+    assert!(d.dst_transition.is_none());
+    assert_eq!(d.offset_start_seconds, -14400); // EDT
+    // UTC day is always 86400 s except on a leap-second day.
+    assert_eq!(day(2026, 7, 1).wall_day_seconds, 86_400);
+}
+
+#[cfg(feature = "leap")]
+#[test]
+fn leap_and_gps_fold_into_calday() {
+    let c = day(2016, 12, 31);
+    assert_eq!(c.leap_second, 1);
+    assert_eq!(c.utc_day_seconds, 86_401);
+    assert!(c.in_leap_smear_window);
+    assert_eq!(c.gps_week, 1929);
+    let n = day(2026, 7, 1);
+    assert_eq!(n.leap_second, 0);
+    assert_eq!(n.utc_day_seconds, 86_400);
+    assert!(!n.in_leap_smear_window);
 }
