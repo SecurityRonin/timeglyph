@@ -50,19 +50,38 @@ ASCII, so a piped or colourless view loses no information.
 
 ## The day detail card
 
-A single date prints every field, with the moon rendered as a shaded disc:
+A single date prints every field: the week/epoch systems, timezone, leap/GPS, the
+moon as a shaded disc, the Chinese / Hebrew / Islamic dates, and the season with
+its scene tile.
 
 ```
-2024-09-18  wednesday
-  iso 2024-W38-3   doy 262/366   jdn 2460572   mjd 60571
-  unix midnight 1726617600   offset 0s .. 0s   wall day 86400s
-  leap 0 (UTC day 86400s)   gps week 2332
+2025-01-15  wednesday
+  iso 2025-W03-3   doy 15/365   jdn 2460691   mjd 60690
+  unix midnight 1736899200   offset 0s .. 0s   wall day 86400s
+  leap 0 (UTC day 86400s)   gps week 2349
 
       @ @ @ @ @      Full Moon
-    @ @ @ @ @ @ @    100% illuminated
-   @ @ @ @ @ @ @ @   elongation 185.6deg
-   ...
+    @ @ @ @ @ @ @    97% illuminated
+   @ @ @ @ @ @ @ @   elongation 199.1deg
+   @ @ @ @ @ @ @ @
+   @ @ @ @ @ @ @ @
+    @ @ @ @ @ @ @
+      @ @ @ @ @
+
+  chinese   甲辰年 · lunar 12/16 · 小寒 · 甲申 pillar
+  hebrew    15 Tevet 5785
+  islamic   15 Rajab 1446
+  season    winter (N. hemisphere; solar longitude 295.6deg)
+       _===_
+      (.o.o.)
+      ( >^< )
+     (( : : ))
+    *  *  *  *  *
 ```
+
+The month view closes with an info panel (Chinese year + solar term, season, the
+mid-month moon, and the Hebrew / Islamic spans), and the year view opens with the
+season timeline of astronomically-exact equinox/solstice dates.
 
 ## Definitions and conventions
 

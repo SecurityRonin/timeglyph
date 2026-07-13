@@ -101,7 +101,7 @@ pub fn moon_art(phase_index: u8) -> &'static [&'static str; 7] {
 }
 
 /// Four seasonal scene tiles, indexed 0=spring 1=summer 2=autumn 3=winter.
-const SEASON_TILE: [[&str; 5]; 4] = [
+const SEASON_TILE: [[&str; 6]; 4] = [
     // spring: blossom
     [
         "   *  .  *",
@@ -109,6 +109,7 @@ const SEASON_TILE: [[&str; 5]; 4] = [
         " *---- o ----*",
         "  .  /|\\  .",
         "   *  '  *",
+        "   blossom",
     ],
     // summer: beach (sun + umbrella + waves)
     [
@@ -116,7 +117,8 @@ const SEASON_TILE: [[&str; 5]; 4] = [
         " -- O --   /___\\",
         "  / | \\      |",
         " ~~~~~~~~~~~~|~~~",
-        "     beach",
+        "            |",
+        "   beach",
     ],
     // autumn: falling leaves
     [
@@ -125,6 +127,7 @@ const SEASON_TILE: [[&str; 5]; 4] = [
         " ,  &   ,   &",
         "   &   ,  &",
         "  ~~~~~~~~~~~",
+        "   leaves",
     ],
     // winter: snowman
     [
@@ -133,12 +136,14 @@ const SEASON_TILE: [[&str; 5]; 4] = [
         "    ( >^< )",
         "   (( : : ))",
         "  *  *  *  *  *",
+        "   snowman",
     ],
 ];
 
-/// The five-line scene tile for a season index (`0..=3`, clamped).
+/// The six-line scene tile for a season index (`0..=3`, clamped) — the last line
+/// names the scene (blossom / beach / leaves / snowman).
 #[must_use]
-pub fn season_tile(season_index: u8) -> &'static [&'static str; 5] {
+pub fn season_tile(season_index: u8) -> &'static [&'static str; 6] {
     &SEASON_TILE[(season_index as usize) % 4]
 }
 
