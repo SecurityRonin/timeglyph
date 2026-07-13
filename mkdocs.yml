@@ -79,6 +79,7 @@ nav:
       - Unix, web & databases: formats/unix-web-db.md
       - Identifiers (Snowflake, UUID, ULID…): formats/identifiers.md
       - String forms (ISO, RFC, ASN.1): formats/strings.md
+  - Forensic calendar: cal.md
   - CSV enrichment: csv.md
   - The lens overlay: lens.md
   - Public holidays: holidays.md

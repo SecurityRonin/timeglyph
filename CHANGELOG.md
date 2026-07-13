@@ -6,7 +6,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-07-12
+### Added
+
+- **`cal` — a forensics-grade calendar.** `timeglyph cal` renders a day, month, or
+  year with the temporal detail an examiner reasons about: per-day UTC offset and
+  DST fold/gap days (flagged, with wall-day length), leap-second days and GPS week
+  (from hifitime's IERS table), ISO week / day-of-year / Julian Day / Modified JD /
+  Unix midnight, timestamp-format epoch and rollover markers (derived from the
+  registry), the Chinese lunisolar date + 干支, Hebrew and Islamic dates (behind the
+  new `altcal` feature, via ICU4X), and the moon's phase as a shaded ASCII disc.
+  The year view carries an astronomically-exact season timeline (equinox/solstice
+  instants from the stem-branch ephemeris, hemisphere-aware via `--south`). A
+  faithful `--json` record carries every field per day. Every computed value is
+  validated against an independent oracle (`date`, `zdump`, USNO, IERS, JPL/Meeus).
+  Requires `stem-branch >= 0.8` (for the new `moon_phase` API).
 
 ### Added
 

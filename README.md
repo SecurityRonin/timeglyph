@@ -112,6 +112,23 @@ score-thresholded — and exports JSONL, ImHex bookmarks, or Timesketch events.
 
 [CSV enrichment →](docs/csv.md)
 
+### See time itself — the forensic calendar
+
+```bash
+timeglyph cal                     # this month, with DST/leap/epoch markers
+timeglyph cal 2026-11 --tz America/New_York   # DST fold/gap days flagged
+timeglyph cal 2026-09-18          # one day in full: week/epoch systems + a moon disc
+timeglyph cal 2026 --json         # a whole year, faithful per-day records
+```
+
+`cal` is a calendar built for temporal analysis: per-day UTC offset and DST
+fold/gap days, leap-second days and GPS week, ISO week / Julian Day / Unix,
+timestamp-format epoch and rollover markers, the Chinese / Hebrew / Islamic dates,
+and the moon's phase — every value computed and oracle-validated (`date`, `zdump`,
+USNO, IERS, JPL).
+
+[The forensic calendar →](docs/cal.md)
+
 ### Use it from an LLM / agent
 
 ```bash
