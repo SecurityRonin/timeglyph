@@ -41,6 +41,9 @@
 
 /// Bounded carve: find timestamps at every offset of a raw byte blob
 /// (`identify_bytes` swept over offsets, window + score-thresholded).
+/// Forensic calendar: civil facts of a date (ISO week, day-of-year, JDN/MJD,
+/// Unix midnight, weekday), the base of the `cal` subcommand.
+pub mod cal;
 pub mod carve;
 pub mod compose;
 #[cfg(feature = "csv")]

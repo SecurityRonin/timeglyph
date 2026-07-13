@@ -26,10 +26,10 @@ fn jdn_mjd_unix_anchors() {
     let u = day(1970, 1, 1);
     assert_eq!(u.jdn, 2_440_588);
     assert_eq!(u.unix_utc_midnight, 0);
-    // 2016-12-31: JDN 2457753.
+    // 2016-12-31: JDN 2457754 (= USNO JDN 2000-01-01 [2451545] + 6209 days).
     let c = day(2016, 12, 31);
-    assert_eq!(c.jdn, 2_457_753);
-    assert_eq!(c.mjd, 57_752);
+    assert_eq!(c.jdn, 2_457_754);
+    assert_eq!(c.mjd, 57_753);
     assert_eq!(c.unix_utc_midnight, 1_483_142_400);
 }
 
