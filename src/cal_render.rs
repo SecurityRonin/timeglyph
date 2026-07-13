@@ -80,3 +80,46 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>) -> String {
     out.push_str("\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover\n");
     out
 }
+
+/// Render a single day's facts as a detail card (week/epoch systems, timezone,
+/// and — where compiled in — leap/GPS and the alt-calendar/moon overlays).
+#[must_use]
+pub fn render_day_text(d: &CalDay) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "{}  {}", d.date, d.weekday);
+    let _ = writeln!(
+        out,
+        "  iso {}-W{:02}-{}   doy {}/{}   jdn {}   mjd {}",
+        d.iso_year, d.iso_week, d.iso_weekday, d.day_of_year, d.days_in_year, d.jdn, d.mjd
+    );
+    let _ = writeln!(
+        out,
+        "  unix midnight {}   offset {}s .. {}s   wall day {}s",
+        d.unix_utc_midnight, d.offset_start_seconds, d.offset_end_seconds, d.wall_day_seconds
+    );
+    if let Some(t) = &d.dst_transition {
+        let _ = writeln!(out, "  DST {} at {}", t.kind, t.at_utc);
+    }
+    #[cfg(feature = "leap")]
+    {
+        let _ = writeln!(
+            out,
+            "  leap {} (UTC day {}s)   gps week {}",
+            d.leap_second, d.utc_day_seconds, d.gps_week
+        );
+    }
+    #[cfg(feature = "lunisolar")]
+    if let Some(mo) = &d.moon {
+        let _ = writeln!(
+            out,
+            "  moon {} ({:.0}% illuminated)",
+            mo.phase_name,
+            mo.illuminated_fraction * 100.0
+        );
+    }
+    for a in &d.artifacts {
+        let _ = writeln!(out, "  {} {} @ {} ({})", a.kind, a.name, a.at_utc, a.citation);
+    }
+    out
+}

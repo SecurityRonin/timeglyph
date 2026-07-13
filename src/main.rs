@@ -224,6 +224,20 @@ enum Commands {
         #[arg(long, allow_hyphen_values = true)]
         longitude: Option<f64>,
     },
+    /// Forensic calendar: per-day UTC offset & DST folds/gaps, leap-second days,
+    /// ISO week / day-of-year / JDN / GPS week / Unix, alt-calendar overlays,
+    /// moon phase, and timestamp-format epoch markers. Honors `--tz`.
+    Cal {
+        /// `YYYY` (year), `YYYY-MM` (month), or `YYYY-MM-DD` (single-day detail);
+        /// omitted = the current month.
+        when: Option<String>,
+        /// First day of the week: `monday` (ISO, default) or `sunday`.
+        #[arg(long, value_name = "DAY", default_value = "monday")]
+        week_start: String,
+        /// Emit the calendar as JSON (faithful, one record per day).
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Install a tracing subscriber gated by `RUST_LOG` (silent by default), writing
@@ -300,6 +314,11 @@ fn main() -> ExitCode {
             imhex,
         }) => run_carve(hex.as_deref(), min_score, from, to, json, imhex),
         Some(Commands::Explain { format }) => run_explain(&format),
+        Some(Commands::Cal {
+            when,
+            week_start,
+            json,
+        }) => run_cal(when.as_deref(), &week_start, json, &zone),
         Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
@@ -1130,6 +1149,139 @@ fn run_explain(format: &str) -> u8 {
     } else {
         eprintln!("error: unknown format '{format}' (see `list` for the ids)");
         EXIT_ERR
+    }
+}
+
+/// What `cal`'s `WHEN` argument selects.
+enum CalWhen {
+    Year(i16),
+    Month(i16, i8),
+    Day(jiff::civil::Date),
+}
+
+/// Parse `YYYY` / `YYYY-MM` / `YYYY-MM-DD`, or default to the current month in
+/// `zone`. Returns the offending string on a parse error.
+fn parse_cal_when(when: Option<&str>, zone: &RenderZone) -> Result<CalWhen, String> {
+    let Some(w) = when else {
+        let now = today_in(zone);
+        return Ok(CalWhen::Month(now.year(), now.month()));
+    };
+    let parts: Vec<&str> = w.split('-').collect();
+    let bad = || format!("error: expected YYYY, YYYY-MM, or YYYY-MM-DD, got \"{w}\"");
+    match parts.as_slice() {
+        [y] => y.parse::<i16>().map(CalWhen::Year).map_err(|_| bad()),
+        [y, m] => {
+            let (y, m) = (
+                y.parse::<i16>().map_err(|_| bad())?,
+                m.parse::<i8>().map_err(|_| bad())?,
+            );
+            Ok(CalWhen::Month(y, m))
+        }
+        [y, m, d] => {
+            let (y, m, d) = (
+                y.parse::<i16>().map_err(|_| bad())?,
+                m.parse::<i8>().map_err(|_| bad())?,
+                d.parse::<i8>().map_err(|_| bad())?,
+            );
+            jiff::civil::Date::new(y, m, d)
+                .map(CalWhen::Day)
+                .map_err(|_| bad())
+        }
+        _ => Err(bad()),
+    }
+}
+
+/// The current date in the render zone (the clock read lives in the shell).
+fn today_in(zone: &RenderZone) -> jiff::civil::Date {
+    let ts = jiff::Timestamp::now();
+    let tz = match zone {
+        RenderZone::Utc => jiff::tz::TimeZone::UTC,
+        RenderZone::Fixed(o) => o.to_time_zone(),
+        RenderZone::Named(t) => t.clone(),
+    };
+    ts.to_zoned(tz).date()
+}
+
+/// `cal` subcommand: render a forensic calendar (year / month / single day).
+fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) -> u8 {
+    use timeglyph::cal::{build_day, build_month, WeekStart};
+    let ws = match week_start.to_ascii_lowercase().as_str() {
+        "monday" | "mon" => WeekStart::Monday,
+        "sunday" | "sun" => WeekStart::Sunday,
+        other => {
+            eprintln!("error: --week-start must be monday or sunday, got \"{other}\"");
+            return EXIT_ERR;
+        }
+    };
+    let target = match parse_cal_when(when, zone) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return EXIT_ERR;
+        }
+    };
+    let today = today_in(zone);
+
+    match target {
+        CalWhen::Day(date) => {
+            let Ok(day) = build_day(date, zone) else {
+                eprintln!("error: {date} is out of the representable range");
+                return EXIT_ERR;
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&day).unwrap_or_default());
+            } else {
+                println!("{}", timeglyph::cal_render::render_day_text(&day));
+            }
+            EXIT_OK
+        }
+        CalWhen::Month(y, m) => match build_month(y, m, zone, ws) {
+            Ok(month) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&month).unwrap_or_default()
+                    );
+                } else {
+                    print!(
+                        "{}",
+                        timeglyph::cal_render::render_month_text(&month, Some(today))
+                    );
+                }
+                EXIT_OK
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                EXIT_ERR
+            }
+        },
+        CalWhen::Year(y) => {
+            let mut months = Vec::new();
+            for m in 1..=12 {
+                match build_month(y, m, zone, ws) {
+                    Ok(month) => months.push(month),
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return EXIT_ERR;
+                    }
+                }
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&months).unwrap_or_default()
+                );
+            } else {
+                for month in &months {
+                    print!(
+                        "{}",
+                        timeglyph::cal_render::render_month_text(month, Some(today))
+                    );
+                    println!();
+                }
+            }
+            EXIT_OK
+        }
     }
 }
 

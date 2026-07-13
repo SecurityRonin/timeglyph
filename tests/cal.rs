@@ -2,7 +2,13 @@
 //! is independently verifiable: ISO-8601 week dates and day-of-year cross-checked
 //! against GNU/BSD `date +%G-W%V-%u`/`+%j` and Python `isocalendar()`; Julian Day
 //! Numbers from USNO; the MJD epoch from IAU; Unix midnights arithmetic.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::items_after_statements,
+    clippy::many_single_char_names,
+    clippy::float_cmp
+)]
 
 use jiff::civil::date;
 use timeglyph::cal::{build_day, CalDay};
@@ -133,7 +139,7 @@ fn ordinary_day_has_no_transition_and_full_wall_day() {
     assert_eq!(d.wall_day_seconds, 86_400);
     assert!(d.dst_transition.is_none());
     assert_eq!(d.offset_start_seconds, -14400); // EDT
-    // UTC day is always 86400 s except on a leap-second day.
+                                                // UTC day is always 86400 s except on a leap-second day.
     assert_eq!(day(2026, 7, 1).wall_day_seconds, 86_400);
 }
 
@@ -228,11 +234,19 @@ fn moon_phase_overlay() {
     let full = day(2024, 9, 18).moon.expect("moon overlay");
     assert_eq!(full.phase_index, 4);
     assert_eq!(full.phase_name, "Full Moon");
-    assert!(full.illuminated_fraction > 0.98, "illum {}", full.illuminated_fraction);
+    assert!(
+        full.illuminated_fraction > 0.98,
+        "illum {}",
+        full.illuminated_fraction
+    );
     // 2024-04-08 was a new moon (eclipse, 18:21 UTC); near-zero illumination.
     let new = day(2024, 4, 8).moon.expect("moon overlay");
     assert_eq!(new.phase_index, 0);
-    assert!(new.illuminated_fraction < 0.02, "illum {}", new.illuminated_fraction);
+    assert!(
+        new.illuminated_fraction < 0.02,
+        "illum {}",
+        new.illuminated_fraction
+    );
 }
 
 // --- Cycle 6b: season markers + hemisphere (stem-branch solar terms) ----------
@@ -247,12 +261,28 @@ mod seasons {
         // Dec 21. Longitudes 0/90/180/270; terms 春分/夏至/秋分/冬至.
         let m = season_markers(2026);
         assert_eq!(m[0].solar_longitude_deg, 0.0);
-        assert!(m[0].instant_utc.starts_with("2026-03-20"), "{}", m[0].instant_utc);
+        assert!(
+            m[0].instant_utc.starts_with("2026-03-20"),
+            "{}",
+            m[0].instant_utc
+        );
         assert_eq!(m[0].term_name, "春分");
-        assert!(m[1].instant_utc.starts_with("2026-06-21"), "{}", m[1].instant_utc);
+        assert!(
+            m[1].instant_utc.starts_with("2026-06-21"),
+            "{}",
+            m[1].instant_utc
+        );
         assert_eq!(m[1].term_name, "夏至");
-        assert!(m[2].instant_utc.starts_with("2026-09-23"), "{}", m[2].instant_utc);
-        assert!(m[3].instant_utc.starts_with("2026-12-21"), "{}", m[3].instant_utc);
+        assert!(
+            m[2].instant_utc.starts_with("2026-09-23"),
+            "{}",
+            m[2].instant_utc
+        );
+        assert!(
+            m[3].instant_utc.starts_with("2026-12-21"),
+            "{}",
+            m[3].instant_utc
+        );
         assert_eq!(m[3].term_name, "冬至");
     }
 
@@ -274,7 +304,7 @@ mod seasons {
         use timeglyph::RenderZone;
         let d = build_day(jiff::civil::date(2026, 3, 20), &RenderZone::Utc).unwrap();
         let lon = d.solar_longitude_deg.expect("solar longitude");
-        assert!(lon < 1.0 || lon > 359.0, "lon {lon}");
+        assert!(!(1.0..=359.0).contains(&lon), "lon {lon}");
     }
 }
 
@@ -301,8 +331,11 @@ fn render_month_text_shows_header_gutter_and_markers() {
     assert!(s.contains("July 2026"), "{s}");
     assert!(s.contains("Mo") && s.contains("Su"));
     assert!(s.contains("W27")); // ISO week gutter
-    // No box-drawing characters (the alignment discipline).
-    assert!(!s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)), "box-drawing found");
+                                // No box-drawing characters (the alignment discipline).
+    assert!(
+        !s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)),
+        "box-drawing found"
+    );
     // A leap-second day is flagged in the grid.
     #[cfg(feature = "leap")]
     {
