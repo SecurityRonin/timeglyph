@@ -637,14 +637,20 @@ fn cal_month_renders_grid() {
 fn cal_year_renders_twelve_months() {
     let (out, code) = run(&["cal", "2026"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("January 2026") && out.contains("December 2026"), "{out}");
+    assert!(
+        out.contains("January 2026") && out.contains("December 2026"),
+        "{out}"
+    );
 }
 
 #[test]
 fn cal_json_is_machine_readable() {
     let (out, code) = run(&["cal", "2026-07", "--json"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("\"jdn\"") && out.contains("\"iso_week\""), "{out}");
+    assert!(
+        out.contains("\"jdn\"") && out.contains("\"iso_week\""),
+        "{out}"
+    );
 }
 
 #[test]
