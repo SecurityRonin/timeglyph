@@ -482,3 +482,20 @@ fn month_view_has_an_overlay_footer() {
         "season missing from month footer:\n{s}"
     );
 }
+
+// --- Cycle 12: lunar Chinese date + four-pillar (四柱) block -------------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn day_card_shows_lunar_chinese_date_and_four_pillars() {
+    use timeglyph::cal::build_day;
+    use timeglyph::cal_render::render_day_text;
+    // 2025-02-19: lunar 正月廿二日 · 雨水; 四柱 年乙巳 月戊寅 日己未 時庚午.
+    let card = render_day_text(&build_day(date(2025, 2, 19), &RenderZone::Utc).unwrap());
+    assert!(card.contains("正月廿二"), "lunar Chinese date missing:\n{card}");
+    assert!(card.contains("雨水"), "solar term missing:\n{card}");
+    // Four-pillar block: stems / branches / 年月日時 labels (時 at noon = 午).
+    assert!(card.contains("乙戊己庚"), "stems row missing:\n{card}");
+    assert!(card.contains("巳寅未午"), "branches row missing:\n{card}");
+    assert!(card.contains("年月日時"), "pillar labels missing:\n{card}");
+}

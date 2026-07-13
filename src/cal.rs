@@ -86,8 +86,12 @@ pub struct ChineseDate {
     pub is_leap_month: bool,
     /// Year pillar (年柱), e.g. `庚子`.
     pub year_pillar: String,
+    /// Month pillar (月柱).
+    pub month_pillar: String,
     /// Day pillar (日柱).
     pub day_pillar: String,
+    /// Hour pillar (時柱), computed at the day's noon (午時).
+    pub hour_pillar: String,
     /// The solar term (節氣) in effect.
     pub solar_term: String,
     /// The Sun's apparent ecliptic longitude (degrees) at the reference instant.
@@ -376,7 +380,9 @@ fn chinese_on(date: Date, zone: &RenderZone) -> Option<ChineseDate> {
         lunar_day: r.lunar_day,
         is_leap_month: r.is_leap_month,
         year_pillar: r.year_pillar,
+        month_pillar: r.month_pillar,
         day_pillar: r.day_pillar,
+        hour_pillar: r.hour_pillar,
         solar_term: r.solar_term,
         solar_longitude_deg: r.solar_longitude_deg,
     })
