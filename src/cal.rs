@@ -6,8 +6,45 @@
 //! Alternative calendars, the moon/season visual layer, rendering, and the CLI
 //! live in sibling modules built on top of this.
 
-use crate::{ChronoError, RenderZone};
+use crate::{ChronoError, Encoding, RenderZone};
 use jiff::civil::Date;
+
+/// A forensically-significant marker falling on a calendar day: a timestamp
+/// format's epoch, or a rollover of a fixed-width time representation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Artifact {
+    /// `"epoch"` (a format's zero point) or `"rollover"` (a width limit).
+    pub kind: String,
+    /// The format / rollover identifier (e.g. `filetime`, `unix_i32`).
+    pub name: String,
+    /// The exact UTC instant, RFC 3339.
+    pub at_utc: String,
+    /// The primary-source citation for the epoch/limit.
+    pub citation: String,
+}
+
+/// A rollover of a fixed-width time representation. The instant is *derived* from
+/// the structural limit (e.g. `i32::MAX` seconds), never a hardcoded date.
+struct Rollover {
+    name: &'static str,
+    unix_second: i64,
+    citation: &'static str,
+}
+
+/// Genuine domain discontinuities not derivable from a format's epoch — each the
+/// documented limit of a fixed-width representation, cited to its spec.
+const ROLLOVERS: &[Rollover] = &[
+    Rollover {
+        name: "unix_i32",
+        unix_second: i32::MAX as i64,
+        citation: "POSIX time_t, 32-bit signed (Year 2038)",
+    },
+    Rollover {
+        name: "unix_u32",
+        unix_second: u32::MAX as i64,
+        citation: "time_t, 32-bit unsigned",
+    },
+];
 
 /// A DST transition occurring within a calendar day.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -52,6 +89,8 @@ pub struct CalDay {
     pub wall_day_seconds: i64,
     /// The DST transition within the day, if any.
     pub dst_transition: Option<DstTransition>,
+    /// Forensically-significant markers on this day (format epochs, rollovers).
+    pub artifacts: Vec<Artifact>,
     /// Leap seconds inserted (`+1`) / deleted (`-1`) during this UTC day.
     #[cfg(feature = "leap")]
     pub leap_second: i8,
@@ -78,6 +117,53 @@ fn zone_to_tz(zone: &RenderZone) -> jiff::tz::TimeZone {
         RenderZone::Fixed(offset) => offset.to_time_zone(),
         RenderZone::Named(tz) => tz.clone(),
     }
+}
+
+/// The civil UTC date of a nanosecond-since-Unix instant, if representable.
+fn utc_date_of_ns(epoch_ns: i128) -> Option<Date> {
+    jiff::Timestamp::from_nanosecond(epoch_ns)
+        .ok()
+        .map(|ts| ts.to_zoned(jiff::tz::TimeZone::UTC).date())
+}
+
+/// Forensic markers falling on `date`: every registry format whose epoch lands on
+/// this day (derived from the catalog, so a new format appears for free), plus any
+/// cited fixed-width rollover.
+fn artifacts_on(date: Date) -> Vec<Artifact> {
+    let mut out = Vec::new();
+    for f in crate::registry::FORMATS.iter() {
+        let epoch_ns = match f.encoding {
+            Encoding::LinearInt { epoch_ns, .. }
+            | Encoding::LinearFloat { epoch_ns, .. }
+            | Encoding::Embedded { epoch_ns, .. } => epoch_ns,
+            Encoding::Packed(_) => continue, // packed civil formats have no epoch
+        };
+        if let Some(ed) = utc_date_of_ns(epoch_ns) {
+            if ed == date {
+                out.push(Artifact {
+                    kind: "epoch".to_string(),
+                    name: f.id.to_string(),
+                    at_utc: jiff::Timestamp::from_nanosecond(epoch_ns)
+                        .map_or_else(|_| String::new(), |ts| ts.to_string()),
+                    citation: f.citation.to_string(),
+                });
+            }
+        }
+    }
+    for r in ROLLOVERS {
+        let ts = jiff::Timestamp::from_second(r.unix_second);
+        if let Ok(ts) = ts {
+            if ts.to_zoned(jiff::tz::TimeZone::UTC).date() == date {
+                out.push(Artifact {
+                    kind: "rollover".to_string(),
+                    name: r.name.to_string(),
+                    at_utc: ts.to_string(),
+                    citation: r.citation.to_string(),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// The first instant of `date` in `tz` (handles a midnight DST gap by moving to
@@ -157,6 +243,7 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         offset_end_seconds,
         wall_day_seconds,
         dst_transition,
+        artifacts: artifacts_on(date),
         #[cfg(feature = "leap")]
         leap_second: crate::leap::leap_seconds_on_utc_day(unix_utc_midnight),
         #[cfg(feature = "leap")]
