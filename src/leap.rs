@@ -137,6 +137,30 @@ pub fn within_leap_smear_window(unix_seconds: i64) -> bool {
     }
 }
 
+/// The number of leap seconds inserted (`+1`) or deleted (`-1`) during the UTC
+/// day beginning at `unix_midnight`, from hifitime's IERS table. `0` for an
+/// ordinary day. Derived as the change in the cumulative TAI−UTC offset across
+/// the day (`leap_seconds(true)`), never a hardcoded date — so a UTC day carrying
+/// a leap second is `86400 + result` seconds long. `0` before 1972.
+#[must_use]
+pub fn leap_seconds_on_utc_day(unix_midnight: i64) -> i8 {
+    let offset_at = |s: i64| Epoch::from_unix_seconds(s as f64).leap_seconds(true);
+    match (offset_at(unix_midnight), offset_at(unix_midnight + 86_400)) {
+        (Some(start), Some(end)) => (end - start).round() as i8,
+        _ => 0,
+    }
+}
+
+/// The GPS week number containing the instant `unix_seconds` (GPS week 0 begins
+/// 1980-01-06). Continuous (not the 10-bit rollover value); GPST leads UTC by the
+/// current leap-second count, so a Sunday-00:00Z instant already falls in the new
+/// week. Computed via hifitime's GPST scale.
+#[must_use]
+pub fn gps_week(unix_seconds: i64) -> i64 {
+    let gpst = Epoch::from_unix_seconds(unix_seconds as f64).to_gpst_seconds();
+    (gpst / 604_800.0).floor() as i64
+}
+
 /// Decode a TAI64 external label (`2^62 + s`, where `s` = TAI seconds since
 /// 1970-01-01 00:00:00 TAI; D. J. Bernstein libtai). TAI is leap-aware; the UTC
 /// rendering subtracts the TAI−UTC offset.
