@@ -63,6 +63,12 @@ cargo install timeglyph
 On macOS and Windows this also installs the
 [`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data) overlay.
 
+### Code signing
+
+Free code signing for `timeglyph`'s Windows binaries is provided by
+[SignPath.io](https://about.signpath.io/), using a code-signing certificate
+from the [SignPath Foundation](https://signpath.org/).
+
 ---
 
 ## What you do with it
