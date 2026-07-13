@@ -204,3 +204,17 @@ fn chinese_overlay_matches_lunisolar() {
     assert_eq!(c.lunar_day, r.lunar_day);
     assert_eq!(c.solar_term, r.solar_term);
 }
+
+// --- Cycle 5b: Hebrew + Islamic overlays (icu_calendar, feature=altcal) --------
+
+#[cfg(feature = "altcal")]
+#[test]
+fn hebrew_and_islamic_overlays() {
+    // 2007-09-13: Rosh Hashanah 5768 = 1 Tishrei 5768 (Hebrew); 1 Ramadan 1428
+    // (Islamic tabular civil). Both independently verifiable (Hebcal / almanac).
+    let d = day(2007, 9, 13);
+    let h = d.alt_hebrew.expect("hebrew overlay");
+    assert_eq!((h.year, h.month, h.day), (5768, 1, 1));
+    let i = d.alt_islamic.expect("islamic overlay");
+    assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
+}

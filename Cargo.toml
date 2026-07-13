@@ -58,7 +58,7 @@ hifitime = { version = "4.3", optional = true }
 # astronomy, ΔT, and Julian-day math are SOLVED — reuse, don't reinvent. The
 # meridian and the optional true-solar-time longitude correction are applied in
 # timeglyph (the convention-relative layer). Apache-2.0.
-stem-branch = { version = "0.4", optional = true }
+stem-branch = { version = "0.8", optional = true }
 # Whole-world public-holiday lookup (the `holiday` feature): an embedded, gzipped
 # python-holidays export (1980–2100). flate2 inflates it; serde_json (already a
 # core dep) parses it. Off by default — the ~1.5 MB blob and its parse cost are
@@ -70,12 +70,17 @@ flate2 = { version = "1", optional = true }
 # registry (`registry::FORMATS`) is now sourced from `temporal_formats::TIME_FORMATS`.
 # Lean (no default features — just the zero-dep compile-time constant tables).
 forensicnomicon = { version = "1.3", default-features = false }
+# Hebrew + Islamic (tabular civil) calendars for the `cal` overlay, behind the
+# `altcal` feature. ICU4X is the mature, Unicode-maintained calendar library — the
+# ONE place we do NOT hand-roll calendar arithmetic. Unicode-3.0 (allowed in
+# deny.toml). compiled_data embeds the needed calendar data (no runtime load).
+icu_calendar = { version = "2.2", optional = true, default-features = false, features = ["compiled_data"] }
 
 [features]
 # All on by default: timeglyph is an analyst tool, so the full format coverage
 # ships out of the box. Library consumers wanting a lean build can set
 # `default-features = false` and opt back in per feature.
-default = ["cli", "csv", "leap", "lunisolar", "holiday"]
+default = ["cli", "csv", "leap", "lunisolar", "holiday", "altcal"]
 # CLI-only deps (clap + tracing-subscriber). The [[bin]] target requires this
 # feature; the library is fully usable without it.
 cli = ["dep:clap", "dep:tracing-subscriber", "csv"]
@@ -87,6 +92,8 @@ leap = ["dep:hifitime"]
 lunisolar = ["dep:stem-branch"]
 # The whole-world public-holiday dataset (~1.5 MB gzipped); pulls flate2.
 holiday = ["dep:flate2"]
+# Hebrew + Islamic (tabular civil) calendar overlays for `cal`; pulls icu_calendar.
+altcal = ["dep:icu_calendar"]
 # Artifact→format pinning from forensicnomicon: `--artifact "ntfs mft"` pins the
 # format that artifact actually stores (filetime) over heuristic guesses. The
 # forensicnomicon dep is now unconditional (it carries the format registry), so
