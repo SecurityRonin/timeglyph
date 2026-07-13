@@ -11,15 +11,17 @@
 [![Release](https://github.com/SecurityRonin/timeglyph/actions/workflows/release.yml/badge.svg)](https://github.com/SecurityRonin/timeglyph/releases)
 [![Sponsor](https://img.shields.io/badge/sponsor-h4x0r-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/h4x0r)
 
-**Decode any timestamp. Identify the unknown ones.**
+**Decode any timestamp. Identify the unknown ones. See time itself.**
 
 Every examination throws raw timestamps at you — a `133801920000000000` buried in
 an artifact — that you need in human-readable time. `timeglyph` reads that value
 every way a system might have written it and reports the results **ranked, scored,
 and cited** — honest about the ambiguity instead of guessing one answer. Convert
-in bulk from a CSV, or hover the number on screen and read the time live. No more
-copying each one into a converter app. One static Rust binary, plus a live overlay
-that decodes whatever is under your cursor.
+in bulk from a CSV, hover the number on screen and read the time live, or lay a
+month out as a **forensic calendar** — DST fold/gap days, leap seconds, GPS week,
+format epochs, and the moon's phase, all flagged. No more copying each value into a
+converter app. One static Rust binary, plus a live overlay that decodes whatever is
+under your cursor.
 
 **[Try it in your browser →](https://securityronin.github.io/timeglyph/playground.html)** · **[Full documentation →](https://securityronin.github.io/timeglyph/)**
 

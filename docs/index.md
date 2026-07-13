@@ -3,7 +3,8 @@ title: "timeglyph — forensic timestamp decipherment"
 description: >-
   The authoritative, cited reference for decoding timestamps in digital forensics:
   every epoch, encoding, calendar, leap second, and rollover, with primary-source
-  citations. FILETIME, Unix, Cocoa, Snowflake, GPS, TAI64, NTP and more.
+  citations. FILETIME, Unix, Cocoa, Snowflake, GPS, TAI64, NTP — plus a forensic
+  calendar with DST, leap seconds, GPS week, format epochs, and moon phase.
 ---
 
 # timeglyph
@@ -51,6 +52,9 @@ standards body), collected on the [References](references.md) page.
   rollover, Year 2106, and the epoch + width + signedness model behind them all.
 - **[Format reference](formats/index.md)** — every supported format with its epoch,
   layout, citation, evolution, and forensic gotchas.
+- **[Forensic calendar](cal.md)** — `cal` lays a day, month, or year out with DST
+  fold/gap days, leap seconds, GPS week, ISO/Julian-Day numbering, format epochs,
+  alternative calendars, and the moon's phase — every value oracle-validated.
 - **[Validation](validation.md)** — the tier-1 differential battery: every format
   cross-checked against an independent third-party oracle, with provenance.
 
@@ -81,6 +85,7 @@ $ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
 $ timeglyph hex 0060947C58B2D501              # raw bytes (LE/BE + packed on-disk)
 $ timeglyph string 20200101000000Z           # ASN.1 / ISO / RFC string forms
 $ timeglyph scan app.log                     # find & decode every timestamp in text/stdin
+$ timeglyph cal 2026-11 --tz America/New_York  # forensic calendar (DST/leap/epoch markers + moon)
 $ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
 $ timeglyph lunisolar 2020-01-25 --tz Asia/Shanghai  # Chinese calendar + 干支 (--features lunisolar)
 $ timeglyph csv events.csv                   # enrich a CSV (human-readable timestamp columns)
@@ -103,6 +108,10 @@ Optional, feature-gated layers extend the engine past raw instant↔instant mapp
   holiday in a given country? 248 countries, 1980–2100, generated from the MIT
   `python-holidays` project (names in each country's own locale). Framed as
   *consistent with a public holiday*, an annotation rather than proof.
+- **Forensic calendar** (`cal`) — a day, month, or year rendered with the temporal
+  detail an examiner reasons about: per-day UTC offset and DST fold/gap days, leap
+  seconds and GPS week, ISO/Julian-Day numbering, timestamp-format epoch markers,
+  the Chinese / Hebrew / Islamic dates, and the moon's phase. See [the calendar](cal.md).
 
 ## timeglyph-lens — the cursor overlay
 

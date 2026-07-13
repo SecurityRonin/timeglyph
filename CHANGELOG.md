@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-13
+
 ### Added
 
 - **`cal` — a forensics-grade calendar.** `timeglyph cal` renders a day, month, or
