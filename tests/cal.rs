@@ -277,3 +277,36 @@ mod seasons {
         assert!(lon < 1.0 || lon > 359.0, "lon {lon}");
     }
 }
+
+// --- Cycle 7: month grid + text/JSON rendering --------------------------------
+
+#[test]
+fn build_month_lays_out_the_grid() {
+    use timeglyph::cal::{build_month, WeekStart};
+    let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
+    assert_eq!(m.days.len(), 31);
+    // 2026-07-01 is a Wednesday → Monday-first, day 1 sits in column index 2.
+    assert_eq!(m.weeks[0][0], None);
+    assert_eq!(m.weeks[0][1], None);
+    assert_eq!(m.weeks[0][2], Some(0)); // day 1 → days[0]
+    assert_eq!(m.weeks[0][6], Some(4)); // Sunday July 5 → days[4]
+}
+
+#[test]
+fn render_month_text_shows_header_gutter_and_markers() {
+    use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_render::render_month_text;
+    let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
+    let s = render_month_text(&m, None);
+    assert!(s.contains("July 2026"), "{s}");
+    assert!(s.contains("Mo") && s.contains("Su"));
+    assert!(s.contains("W27")); // ISO week gutter
+    // No box-drawing characters (the alignment discipline).
+    assert!(!s.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)), "box-drawing found");
+    // A leap-second day is flagged in the grid.
+    #[cfg(feature = "leap")]
+    {
+        let dec = build_month(2016, 12, &RenderZone::Utc, WeekStart::Monday).unwrap();
+        assert!(render_month_text(&dec, None).contains('+'));
+    }
+}
