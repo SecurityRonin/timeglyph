@@ -46,6 +46,29 @@ const ROLLOVERS: &[Rollover] = &[
     },
 ];
 
+/// The Chinese lunisolar date and 干支 pillars for a day (from the `lunisolar`
+/// module's stem-branch ephemeris), computed at the day's noon in the render zone.
+#[cfg(feature = "lunisolar")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChineseDate {
+    /// Chinese lunar year.
+    pub lunar_year: i32,
+    /// Lunar month, 1..=12.
+    pub lunar_month: u8,
+    /// Day of the lunar month, 1..=30.
+    pub lunar_day: u8,
+    /// Whether this is the leap (intercalary) instance of the month.
+    pub is_leap_month: bool,
+    /// Year pillar (年柱), e.g. `庚子`.
+    pub year_pillar: String,
+    /// Day pillar (日柱).
+    pub day_pillar: String,
+    /// The solar term (節氣) in effect.
+    pub solar_term: String,
+    /// The Sun's apparent ecliptic longitude (degrees) at the reference instant.
+    pub solar_longitude_deg: f64,
+}
+
 /// A DST transition occurring within a calendar day.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DstTransition {
@@ -91,6 +114,9 @@ pub struct CalDay {
     pub dst_transition: Option<DstTransition>,
     /// Forensically-significant markers on this day (format epochs, rollovers).
     pub artifacts: Vec<Artifact>,
+    /// Chinese lunisolar date + 干支 pillars, at the day's noon in the render zone.
+    #[cfg(feature = "lunisolar")]
+    pub alt_chinese: Option<ChineseDate>,
     /// Leap seconds inserted (`+1`) / deleted (`-1`) during this UTC day.
     #[cfg(feature = "leap")]
     pub leap_second: i8,
@@ -175,6 +201,29 @@ fn first_instant(date: Date, tz: &jiff::tz::TimeZone) -> Result<jiff::Timestamp,
         .map_err(|e| ChronoError::Render(e.to_string()))
 }
 
+/// The Chinese lunisolar overlay for `date`, computed at the day's noon in `zone`.
+#[cfg(feature = "lunisolar")]
+fn chinese_on(date: Date, zone: &RenderZone) -> Option<ChineseDate> {
+    let tz = zone_to_tz(zone);
+    let noon = date
+        .at(12, 0, 0, 0)
+        .to_zoned(tz)
+        .ok()?
+        .timestamp()
+        .as_nanosecond();
+    let r = crate::lunisolar::render(crate::PosixNs(noon), zone, None).ok()?;
+    Some(ChineseDate {
+        lunar_year: r.lunar_year,
+        lunar_month: r.lunar_month,
+        lunar_day: r.lunar_day,
+        is_leap_month: r.is_leap_month,
+        year_pillar: r.year_pillar,
+        day_pillar: r.day_pillar,
+        solar_term: r.solar_term,
+        solar_longitude_deg: r.solar_longitude_deg,
+    })
+}
+
 /// Build the civil + timezone facts of `date` in `zone`. Pure; never panics.
 ///
 /// # Errors
@@ -244,6 +293,8 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         wall_day_seconds,
         dst_transition,
         artifacts: artifacts_on(date),
+        #[cfg(feature = "lunisolar")]
+        alt_chinese: chinese_on(date, zone),
         #[cfg(feature = "leap")]
         leap_second: crate::leap::leap_seconds_on_utc_day(unix_utc_midnight),
         #[cfg(feature = "leap")]
