@@ -179,3 +179,28 @@ fn rollovers_are_derived_from_structural_limits() {
 fn ordinary_day_has_no_artifacts() {
     assert!(day(2026, 7, 1).artifacts.is_empty());
 }
+
+// --- Cycle 5a: Chinese/干支 overlay (reuse lunisolar; tier-1 vs cnlunar) -------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn chinese_overlay_matches_lunisolar() {
+    // Any 2020 date after 立春 is year pillar 庚子; May is lunar month 4.
+    let d = zoned(2020, 5, 31, "+08:00");
+    let c = d.alt_chinese.expect("chinese overlay under lunisolar");
+    assert_eq!(c.year_pillar, "庚子");
+    assert_eq!(c.lunar_month, 4);
+    // The overlay is exactly lunisolar::render at the day's noon in the zone.
+    use timeglyph::{lunisolar, PosixNs, RenderZone};
+    let zone = RenderZone::parse("+08:00").unwrap();
+    let noon = jiff::civil::date(2020, 5, 31)
+        .at(12, 0, 0, 0)
+        .to_zoned(jiff::tz::TimeZone::fixed(jiff::tz::offset(8)))
+        .unwrap()
+        .timestamp()
+        .as_nanosecond();
+    let r = lunisolar::render(PosixNs(noon), &zone, None).unwrap();
+    assert_eq!(c.lunar_year, r.lunar_year);
+    assert_eq!(c.lunar_day, r.lunar_day);
+    assert_eq!(c.solar_term, r.solar_term);
+}
