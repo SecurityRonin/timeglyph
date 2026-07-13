@@ -506,3 +506,58 @@ fn day_card_shows_lunar_chinese_date_and_four_pillars() {
     assert!(card.contains("巳寅未午"), "branches row missing:\n{card}");
     assert!(card.contains("年月日時"), "pillar labels missing:\n{card}");
 }
+
+// --- Cycle 13: solar term as a period phrase (雨水後第X日) ----------------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn day_card_shows_solar_term_days_into_term() {
+    use timeglyph::cal::build_day;
+    use timeglyph::cal_render::render_day_text;
+    // 2025-02-25 is 7 days into 雨水 → "雨水後第七日" (matching the lens phrasing).
+    let card = render_day_text(&build_day(date(2025, 2, 25), &RenderZone::Utc).unwrap());
+    assert!(
+        card.contains("雨水後第七日"),
+        "term-phrase missing:\n{card}"
+    );
+    // On the term's own day (days_into_term == 0) it is the bare term.
+    // 2024-12-21 is 冬至's own day (day 0).
+    let d0 = render_day_text(&build_day(date(2024, 12, 21), &RenderZone::Utc).unwrap());
+    assert!(
+        d0.contains("冬至") && !d0.contains("冬至後"),
+        "bare term missing:\n{d0}"
+    );
+}
+
+// --- Cycle 14: datetime input → the 時柱 reflects the real hour ----------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn build_day_at_moves_only_the_hour_pillar() {
+    use jiff::civil::datetime;
+    use timeglyph::cal::build_day_at;
+    let zone = RenderZone::parse("+08:00").unwrap();
+    // Same civil date, four different hours (子/卯/未/亥時): the year/month/day
+    // pillars are fixed; only the 時柱 changes (五鼠遁).
+    let at = |h, m| {
+        build_day_at(datetime(2025, 2, 19, h, m, 0, 0), &zone)
+            .unwrap()
+            .alt_chinese
+            .unwrap()
+    };
+    let midnight = at(0, 30); // 子時
+    let afternoon = at(14, 30); // 未時
+    assert_eq!(
+        midnight.day_pillar, afternoon.day_pillar,
+        "day pillar must not move"
+    );
+    assert_eq!(midnight.hour_pillar, "甲子", "子時 hour pillar");
+    assert_eq!(afternoon.hour_pillar, "辛未", "未時 hour pillar");
+    // The default (noon) build agrees with an explicit noon instant.
+    let noon = build_day_at(datetime(2025, 2, 19, 12, 0, 0, 0), &zone).unwrap();
+    let default = build_day(date(2025, 2, 19), &zone).unwrap();
+    assert_eq!(
+        noon.alt_chinese.unwrap().hour_pillar,
+        default.alt_chinese.unwrap().hour_pillar
+    );
+}

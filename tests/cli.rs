@@ -666,3 +666,13 @@ fn cal_no_args_is_current_month() {
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("Mo") && out.contains("Su"), "{out}");
 }
+
+#[test]
+fn cal_datetime_input_shows_hour_pillar() {
+    let (out, code) = run(&["cal", "2025-02-19T14:30:00", "--tz", "+08:00"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("年月日時"),
+        "four-pillar block missing:\n{out}"
+    );
+}

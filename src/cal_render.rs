@@ -125,6 +125,34 @@ fn lunar_month_cn(month: u8, is_leap: bool) -> String {
     }
 }
 
+/// A Chinese numeral for a small count (1..=30): `一`…`十`, `十一`…`廿九`, `三十`
+/// (no `初` prefix — for the days-into-term phrase).
+#[cfg(feature = "lunisolar")]
+fn cn_numeral(n: u32) -> String {
+    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    match n {
+        1..=9 => D[n as usize].to_string(),
+        10 => "十".to_string(),
+        11..=19 => format!("十{}", D[(n - 10) as usize]),
+        20 => "二十".to_string(),
+        21..=29 => format!("廿{}", D[(n - 20) as usize]),
+        30 => "三十".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// The solar term as a period phrase: the bare term on its own day, else
+/// `<term>後第<N>日` (matching the lens), so a day well past the term is not
+/// misread as the term's exact day.
+#[cfg(feature = "lunisolar")]
+fn solar_term_phrase(term: &str, days_into_term: u32) -> String {
+    if days_into_term == 0 {
+        term.to_string()
+    } else {
+        format!("{term}後第{}日", cn_numeral(days_into_term))
+    }
+}
+
 /// The Chinese lunar day name (`初一`..`三十`).
 #[cfg(feature = "lunisolar")]
 fn lunar_day_cn(day: u8) -> String {
@@ -257,7 +285,7 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             "  chinese   lunar {}{}日 · {}",
             lunar_month_cn(c.lunar_month, c.is_leap_month),
             lunar_day_cn(c.lunar_day),
-            c.solar_term
+            solar_term_phrase(&c.solar_term, c.days_into_term)
         );
         // The four-pillar (四柱) block: stems over branches over 年月日時 labels.
         for row in four_pillar_rows(c) {

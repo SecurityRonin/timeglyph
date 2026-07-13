@@ -94,6 +94,8 @@ pub struct ChineseDate {
     pub hour_pillar: String,
     /// The solar term (節氣) in effect.
     pub solar_term: String,
+    /// Calendar days since the solar term began (`0` = the term's own day).
+    pub days_into_term: u32,
     /// The Sun's apparent ecliptic longitude (degrees) at the reference instant.
     pub solar_longitude_deg: f64,
 }
@@ -363,17 +365,11 @@ fn first_instant(date: Date, tz: &jiff::tz::TimeZone) -> Result<jiff::Timestamp,
         .map_err(|e| ChronoError::Render(e.to_string()))
 }
 
-/// The Chinese lunisolar overlay for `date`, computed at the day's noon in `zone`.
+/// The Chinese lunisolar overlay at reference instant `ref_ns` (ns since Unix),
+/// at the `zone` meridian.
 #[cfg(feature = "lunisolar")]
-fn chinese_on(date: Date, zone: &RenderZone) -> Option<ChineseDate> {
-    let tz = zone_to_tz(zone);
-    let noon = date
-        .at(12, 0, 0, 0)
-        .to_zoned(tz)
-        .ok()?
-        .timestamp()
-        .as_nanosecond();
-    let r = crate::lunisolar::render(crate::PosixNs(noon), zone, None).ok()?;
+fn chinese_at(ref_ns: i128, zone: &RenderZone) -> Option<ChineseDate> {
+    let r = crate::lunisolar::render(crate::PosixNs(ref_ns), zone, None).ok()?;
     Some(ChineseDate {
         lunar_year: r.lunar_year,
         lunar_month: r.lunar_month,
@@ -384,6 +380,7 @@ fn chinese_on(date: Date, zone: &RenderZone) -> Option<ChineseDate> {
         day_pillar: r.day_pillar,
         hour_pillar: r.hour_pillar,
         solar_term: r.solar_term,
+        days_into_term: r.days_into_term,
         solar_longitude_deg: r.solar_longitude_deg,
     })
 }
@@ -418,50 +415,36 @@ fn altcal_on(date: Date) -> (Option<HebrewDate>, Option<IslamicDate>) {
     (Some(hebrew), Some(islamic))
 }
 
-/// The moon phase overlay for `date`, computed at the day's noon in `zone`.
+/// The Julian Ephemeris Day (TT) for a reference instant `ref_ns` (ns since Unix).
 #[cfg(feature = "lunisolar")]
-fn moon_on(date: Date, zone: &RenderZone) -> Option<MoonInfo> {
-    let tz = zone_to_tz(zone);
-    let noon_ns = date
-        .at(12, 0, 0, 0)
-        .to_zoned(tz)
-        .ok()?
-        .timestamp()
-        .as_nanosecond();
+fn jde_tt_of(ref_ns: i128, year: i16) -> f64 {
     #[allow(clippy::cast_precision_loss)]
-    let jd_ut = noon_ns as f64 / 1e9 / 86_400.0 + 2_440_587.5;
-    let jde_tt = jd_ut + stem_branch::delta_t_for_year(f64::from(date.year())) / 86_400.0;
-    let p = stem_branch::moon_phase(jde_tt);
+    let jd_ut = ref_ns as f64 / 1e9 / 86_400.0 + 2_440_587.5;
+    jd_ut + stem_branch::delta_t_for_year(f64::from(year)) / 86_400.0
+}
+
+/// The moon phase overlay at reference instant `ref_ns` (ns since Unix).
+#[cfg(feature = "lunisolar")]
+fn moon_at(ref_ns: i128, year: i16) -> MoonInfo {
+    let p = stem_branch::moon_phase(jde_tt_of(ref_ns, year));
     // 8 buckets centred on the cardinal phases: [-22.5°, +22.5°) around each.
     let phase_index = (((p.elongation_deg + 22.5) / 45.0).floor() as i64).rem_euclid(8) as u8;
-    Some(MoonInfo {
+    MoonInfo {
         phase_index,
         phase_name: PHASE_NAMES[phase_index as usize].to_string(),
         elongation_deg: p.elongation_deg,
         phase_angle_deg: p.phase_angle_deg,
         illuminated_fraction: p.illuminated_fraction,
         waxing: p.waxing,
-    })
+    }
 }
 
-/// The Sun's apparent ecliptic longitude at `date`'s noon in `zone` (degrees).
+/// The Sun's apparent ecliptic longitude (degrees) at reference instant `ref_ns`.
 #[cfg(feature = "lunisolar")]
-fn solar_longitude_on(date: Date, zone: &RenderZone) -> Option<f64> {
-    let tz = zone_to_tz(zone);
-    let noon_ns = date
-        .at(12, 0, 0, 0)
-        .to_zoned(tz)
-        .ok()?
-        .timestamp()
-        .as_nanosecond();
-    #[allow(clippy::cast_precision_loss)]
-    let jd_ut = noon_ns as f64 / 1e9 / 86_400.0 + 2_440_587.5;
-    let jde_tt = jd_ut + stem_branch::delta_t_for_year(f64::from(date.year())) / 86_400.0;
-    Some(
-        stem_branch::solar_ecliptic_state(jde_tt)
-            .apparent_longitude_degrees
-            .rem_euclid(360.0),
-    )
+fn solar_longitude_at(ref_ns: i128, year: i16) -> f64 {
+    stem_branch::solar_ecliptic_state(jde_tt_of(ref_ns, year))
+        .apparent_longitude_degrees
+        .rem_euclid(360.0)
 }
 
 /// Build the civil + timezone facts of `date` in `zone`. Pure; never panics.
@@ -470,6 +453,18 @@ fn solar_longitude_on(date: Date, zone: &RenderZone) -> Option<f64> {
 /// Returns [`ChronoError`] only if the date is at the edge of the representable
 /// range (never for an ordinary calendar date).
 pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
+    build_day_at(date.at(12, 0, 0, 0), zone)
+}
+
+/// Build a day card with the alternative-calendar / moon / solar overlays computed
+/// at the specific civil datetime `dt` (so the 時柱 hour pillar and moon reflect the
+/// actual time), not the day's noon. The civil/timezone/leap facts are still those
+/// of `dt.date()`. Pure; never panics.
+///
+/// # Errors
+/// Returns [`ChronoError`] only at the edge of the representable range.
+pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalDay, ChronoError> {
+    let date = dt.date();
     let unix_utc_midnight = date
         .at(0, 0, 0, 0)
         .to_zoned(jiff::tz::TimeZone::UTC)
@@ -520,6 +515,15 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
     #[cfg(feature = "altcal")]
     let (alt_hebrew, alt_islamic) = altcal_on(date);
 
+    // The reference instant for the astronomical/Chinese overlays (the given time
+    // in the zone; compatible disambiguation resolves a DST gap, never errors).
+    #[cfg(feature = "lunisolar")]
+    let ref_ns: i128 = dt.to_zoned(tz.clone()).map_or_else(
+        // cov:unreachable: compatible disambiguation resolves any wall time in range.
+        |_| i128::from(unix_utc_midnight + 43_200) * 1_000_000_000,
+        |z| z.timestamp().as_nanosecond(),
+    );
+
     Ok(CalDay {
         date: date.to_string(),
         weekday: weekday.to_string(),
@@ -537,11 +541,11 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         dst_transition,
         artifacts: artifacts_on(date),
         #[cfg(feature = "lunisolar")]
-        alt_chinese: chinese_on(date, zone),
+        alt_chinese: chinese_at(ref_ns, zone),
         #[cfg(feature = "lunisolar")]
-        moon: moon_on(date, zone),
+        moon: Some(moon_at(ref_ns, date.year())),
         #[cfg(feature = "lunisolar")]
-        solar_longitude_deg: solar_longitude_on(date, zone),
+        solar_longitude_deg: Some(solar_longitude_at(ref_ns, date.year())),
         #[cfg(feature = "altcal")]
         alt_hebrew,
         #[cfg(feature = "altcal")]

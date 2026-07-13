@@ -1161,17 +1161,30 @@ enum CalWhen {
     Year(i16),
     Month(i16, i8),
     Day(jiff::civil::Date),
+    Instant(jiff::civil::DateTime),
 }
 
-/// Parse `YYYY` / `YYYY-MM` / `YYYY-MM-DD`, or default to the current month in
-/// `zone`. Returns the offending string on a parse error.
+/// Parse `YYYY` / `YYYY-MM` / `YYYY-MM-DD` / `YYYY-MM-DDThh:mm[:ss[.frac]]`, or
+/// default to the current month in `zone`. A time component gives a single-day
+/// detail view with the 干支 hour pillar and moon computed at that instant.
+/// Returns the offending string on a parse error.
 fn parse_cal_when(when: Option<&str>, zone: &RenderZone) -> Result<CalWhen, String> {
     let Some(w) = when else {
         let now = today_in(zone);
         return Ok(CalWhen::Month(now.year(), now.month()));
     };
+    let bad = || {
+        format!("error: expected YYYY, YYYY-MM, YYYY-MM-DD, or YYYY-MM-DDThh:mm[:ss], got \"{w}\"")
+    };
+    // A time component (`T` or a space) → a specific instant.
+    if w.contains('T') || w.contains(' ') {
+        let iso = w.replacen(' ', "T", 1);
+        return iso
+            .parse::<jiff::civil::DateTime>()
+            .map(CalWhen::Instant)
+            .map_err(|_| bad());
+    }
     let parts: Vec<&str> = w.split('-').collect();
-    let bad = || format!("error: expected YYYY, YYYY-MM, or YYYY-MM-DD, got \"{w}\"");
     match parts.as_slice() {
         [y] => y.parse::<i16>().map(CalWhen::Year).map_err(|_| bad()),
         [y, m] => {
@@ -1206,6 +1219,16 @@ fn today_in(zone: &RenderZone) -> jiff::civil::Date {
     ts.to_zoned(tz).date()
 }
 
+/// Print a single day as JSON or the text detail card.
+fn emit_day(day: &timeglyph::cal::CalDay, json: bool) -> u8 {
+    if json {
+        println!("{}", serde_json::to_string_pretty(day).unwrap_or_default());
+    } else {
+        println!("{}", timeglyph::cal_render::render_day_text(day));
+    }
+    EXIT_OK
+}
+
 /// `cal` subcommand: render a forensic calendar (year / month / single day).
 #[cfg_attr(not(feature = "lunisolar"), allow(unused_variables))]
 fn run_cal(when: Option<&str>, week_start: &str, south: bool, json: bool, zone: &RenderZone) -> u8 {
@@ -1233,12 +1256,14 @@ fn run_cal(when: Option<&str>, week_start: &str, south: bool, json: bool, zone: 
                 eprintln!("error: {date} is out of the representable range");
                 return EXIT_ERR;
             };
-            if json {
-                println!("{}", serde_json::to_string_pretty(&day).unwrap_or_default());
-            } else {
-                println!("{}", timeglyph::cal_render::render_day_text(&day));
-            }
-            EXIT_OK
+            emit_day(&day, json)
+        }
+        CalWhen::Instant(dt) => {
+            let Ok(day) = timeglyph::cal::build_day_at(dt, zone) else {
+                eprintln!("error: {dt} is out of the representable range");
+                return EXIT_ERR;
+            };
+            emit_day(&day, json)
         }
         CalWhen::Month(y, m) => match build_month(y, m, zone, ws) {
             Ok(month) => {

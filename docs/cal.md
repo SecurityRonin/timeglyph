@@ -19,6 +19,7 @@ timeglyph cal                     # the current month, in UTC
 timeglyph cal 2026-07             # a specific month
 timeglyph cal 2026                # a whole year (with the season timeline)
 timeglyph cal 2026-11-01          # one day, in full detail (with a moon disc)
+timeglyph cal 2025-02-19T14:30    # a specific instant → the 時柱 for that hour
 timeglyph cal 2026-11 --tz America/New_York   # zone-aware: DST folds/gaps flagged
 timeglyph cal 2026 --south        # southern-hemisphere seasons
 timeglyph cal 2026-07 --json      # faithful, one record per day, for pipes
@@ -118,7 +119,10 @@ season timeline of astronomically-exact equinox/solstice dates.
 With the default build, each day also carries the Chinese lunisolar date (in
 Chinese, e.g. `正月廿二日`) and the four 干支 pillars — year, month, day, and hour
 (年月日時) — via the stem-branch ephemeris at the render-zone meridian. The day
-card stacks them as stems over branches over labels. The **hour pillar (時柱) is
-computed at the day's noon** (午時), since a calendar day has no single hour; its
-branch is therefore always 午. Behind the `altcal` feature, the Hebrew and Islamic
-(tabular civil) dates come from ICU4X. All values appear in the `--json` record.
+card stacks them as stems over branches over labels. For a bare date the **hour
+pillar (時柱) is computed at the day's noon** (午時); pass a time —
+`cal 2025-02-19T14:30` — to get the 時柱 for that actual hour (the year/month/day
+pillars are unchanged). The solar term is shown as a period phrase — the bare term
+on its own day, else `<term>後第<N>日` (e.g. `雨水後第七日`) — so a day well past the
+term is not misread as its exact day. Behind the `altcal` feature, the Hebrew and
+Islamic (tabular civil) dates come from ICU4X. All values appear in `--json`.
