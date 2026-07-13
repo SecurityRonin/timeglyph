@@ -95,6 +95,71 @@ pub struct IslamicDate {
     pub day: u8,
 }
 
+/// Hemisphere for mapping a solar longitude to a season name.
+#[cfg(feature = "lunisolar")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hemisphere {
+    /// Northern hemisphere (the March equinox opens spring).
+    North,
+    /// Southern hemisphere (the March equinox opens autumn).
+    South,
+}
+
+/// The season a solar longitude falls in, for the given hemisphere. The Sun's
+/// apparent longitude names the astronomical *event* (0° = March equinox); which
+/// *season* that opens depends on hemisphere — a December solstice is austral
+/// summer.
+#[cfg(feature = "lunisolar")]
+#[must_use]
+pub fn season_for(solar_longitude_deg: f64, hemisphere: Hemisphere) -> &'static str {
+    // North: [0,90)=spring [90,180)=summer [180,270)=autumn [270,360)=winter.
+    let north = ["spring", "summer", "autumn", "winter"];
+    let idx = (solar_longitude_deg.rem_euclid(360.0) / 90.0).floor() as usize % 4;
+    match hemisphere {
+        Hemisphere::North => north[idx],
+        Hemisphere::South => north[(idx + 2) % 4],
+    }
+}
+
+/// An astronomical season boundary — the instant the Sun's apparent longitude
+/// reaches a cardinal value (0/90/180/270°).
+#[cfg(feature = "lunisolar")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SeasonMarker {
+    /// The Sun's apparent ecliptic longitude at the boundary (0/90/180/270).
+    pub solar_longitude_deg: f64,
+    /// The UTC instant of the boundary, RFC 3339.
+    pub instant_utc: String,
+    /// The Chinese solar term (節氣) naming this boundary (春分/夏至/秋分/冬至).
+    pub term_name: String,
+}
+
+/// The four astronomical season boundaries of `year` (March equinox → December
+/// solstice), from the stem-branch solar-term solver (JPL-validated upstream).
+/// Any boundary the solver cannot locate is omitted.
+#[cfg(feature = "lunisolar")]
+#[must_use]
+pub fn season_markers(year: i16) -> Vec<SeasonMarker> {
+    // (longitude, month to start the search in).
+    const CARDINALS: [(f64, u32); 4] = [(0.0, 2), (90.0, 5), (180.0, 8), (270.0, 11)];
+    let mut out = Vec::with_capacity(4);
+    for (lon, start_month) in CARDINALS {
+        if let Some(jd_ut) = stem_branch::find_solar_term_moment(lon, i32::from(year), start_month)
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            let unix = ((jd_ut - 2_440_587.5) * 86_400.0).round() as i64;
+            if let Ok(ts) = jiff::Timestamp::from_second(unix) {
+                out.push(SeasonMarker {
+                    solar_longitude_deg: lon,
+                    instant_utc: ts.to_string(),
+                    term_name: stem_branch::solar_term_for_longitude(lon).to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// The eight moon-phase names, indexed by [`MoonInfo::phase_index`].
 #[cfg(feature = "lunisolar")]
 pub const PHASE_NAMES: [&str; 8] = [
@@ -178,6 +243,10 @@ pub struct CalDay {
     /// Moon phase geometry at the day's noon in the render zone.
     #[cfg(feature = "lunisolar")]
     pub moon: Option<MoonInfo>,
+    /// The Sun's apparent ecliptic longitude (degrees, `[0, 360)`) at the day's
+    /// noon — the hemisphere-neutral season fact ([`season_for`] maps it to a name).
+    #[cfg(feature = "lunisolar")]
+    pub solar_longitude_deg: Option<f64>,
     /// Hebrew calendar date (civil-date based).
     #[cfg(feature = "altcal")]
     pub alt_hebrew: Option<HebrewDate>,
@@ -347,6 +416,26 @@ fn moon_on(date: Date, zone: &RenderZone) -> Option<MoonInfo> {
     })
 }
 
+/// The Sun's apparent ecliptic longitude at `date`'s noon in `zone` (degrees).
+#[cfg(feature = "lunisolar")]
+fn solar_longitude_on(date: Date, zone: &RenderZone) -> Option<f64> {
+    let tz = zone_to_tz(zone);
+    let noon_ns = date
+        .at(12, 0, 0, 0)
+        .to_zoned(tz)
+        .ok()?
+        .timestamp()
+        .as_nanosecond();
+    #[allow(clippy::cast_precision_loss)]
+    let jd_ut = noon_ns as f64 / 1e9 / 86_400.0 + 2_440_587.5;
+    let jde_tt = jd_ut + stem_branch::delta_t_for_year(f64::from(date.year())) / 86_400.0;
+    Some(
+        stem_branch::solar_ecliptic_state(jde_tt)
+            .apparent_longitude_degrees
+            .rem_euclid(360.0),
+    )
+}
+
 /// Build the civil + timezone facts of `date` in `zone`. Pure; never panics.
 ///
 /// # Errors
@@ -423,6 +512,8 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         alt_chinese: chinese_on(date, zone),
         #[cfg(feature = "lunisolar")]
         moon: moon_on(date, zone),
+        #[cfg(feature = "lunisolar")]
+        solar_longitude_deg: solar_longitude_on(date, zone),
         #[cfg(feature = "altcal")]
         alt_hebrew,
         #[cfg(feature = "altcal")]
