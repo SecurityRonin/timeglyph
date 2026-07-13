@@ -9,6 +9,31 @@
 use crate::{ChronoError, Encoding, RenderZone};
 use jiff::civil::Date;
 
+/// Which day a week grid starts on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeekStart {
+    /// ISO default: Monday-first.
+    Monday,
+    /// Sunday-first (US convention).
+    Sunday,
+}
+
+/// A month laid out as a grid of weeks over its [`CalDay`]s.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CalMonth {
+    /// Calendar year.
+    pub year: i16,
+    /// Calendar month, 1–12.
+    pub month: i8,
+    /// The render zone, as a display label.
+    pub zone_label: String,
+    /// Rows of 7 cells; each cell is an index into [`days`](Self::days) or `None`
+    /// for padding before/after the month.
+    pub weeks: Vec<Vec<Option<usize>>>,
+    /// The days of the month, in order (day N is `days[N-1]`).
+    pub days: Vec<CalDay>,
+}
+
 /// A forensically-significant marker falling on a calendar day: a timestamp
 /// format's epoch, or a rollover of a fixed-width time representation.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -530,5 +555,54 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         in_leap_smear_window: crate::leap::within_leap_smear_window(unix_utc_midnight + 43_200),
         #[cfg(feature = "leap")]
         gps_week: crate::leap::gps_week(unix_utc_midnight),
+    })
+}
+
+/// A display label for a render zone (`UTC`, a fixed offset, or an IANA name).
+fn zone_label(zone: &RenderZone) -> String {
+    match zone {
+        RenderZone::Utc => "UTC".to_string(),
+        RenderZone::Fixed(o) => o.to_string(),
+        RenderZone::Named(tz) => tz.iana_name().unwrap_or("local").to_string(),
+    }
+}
+
+/// Build a whole month as a week grid over its days. Pure; never panics.
+///
+/// # Errors
+/// Returns [`ChronoError`] if `year`/`month` is not a valid month or a day is at
+/// the edge of the representable range.
+pub fn build_month(
+    year: i16,
+    month: i8,
+    zone: &RenderZone,
+    week_start: WeekStart,
+) -> Result<CalMonth, ChronoError> {
+    let first = Date::new(year, month, 1).map_err(|e| ChronoError::Render(e.to_string()))?;
+    let n = first.days_in_month();
+    let mut days = Vec::with_capacity(n as usize);
+    for d in 1..=n {
+        let date = Date::new(year, month, d).map_err(|e| ChronoError::Render(e.to_string()))?;
+        days.push(build_day(date, zone)?);
+    }
+
+    // Leading pad: how many blank cells before day 1, given the week start.
+    let lead = match week_start {
+        WeekStart::Monday => i32::from(first.weekday().to_monday_zero_offset()),
+        WeekStart::Sunday => i32::from(first.weekday().to_sunday_zero_offset()),
+    };
+    let mut cells: Vec<Option<usize>> = (0..lead).map(|_| None).collect();
+    cells.extend((0..days.len()).map(Some));
+    while !cells.len().is_multiple_of(7) {
+        cells.push(None);
+    }
+    let weeks: Vec<Vec<Option<usize>>> = cells.chunks(7).map(<[_]>::to_vec).collect();
+
+    Ok(CalMonth {
+        year,
+        month,
+        zone_label: zone_label(zone),
+        weeks,
+        days,
     })
 }

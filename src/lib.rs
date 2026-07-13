@@ -44,6 +44,8 @@
 /// Forensic calendar: civil facts of a date (ISO week, day-of-year, JDN/MJD,
 /// Unix midnight, weekday), the base of the `cal` subcommand.
 pub mod cal;
+/// Pure text renderers for the `cal` month grid.
+pub mod cal_render;
 pub mod carve;
 pub mod compose;
 #[cfg(feature = "csv")]
