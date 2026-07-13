@@ -343,3 +343,33 @@ fn render_month_text_shows_header_gutter_and_markers() {
         assert!(render_month_text(&dec, None).contains('+'));
     }
 }
+
+// --- Cycle 9: moon ASCII art (cal_art) ----------------------------------------
+
+#[cfg(feature = "lunisolar")]
+mod art {
+    use timeglyph::cal_art::{moon_art, PHASE_GLYPH};
+
+    #[test]
+    fn moon_art_has_eight_discs_of_equal_height() {
+        for idx in 0u8..8 {
+            let a = moon_art(idx);
+            assert_eq!(a.len(), 7, "phase {idx} art height");
+        }
+        // Full moon (index 4) is a fully lit disc; new moon (0) is dark.
+        assert!(moon_art(4).iter().any(|l| l.contains('@')));
+        assert!(!moon_art(0).iter().any(|l| l.contains('@')));
+        // A single-width glyph per phase for the compact views.
+        assert_eq!(PHASE_GLYPH.len(), 8);
+    }
+
+    #[test]
+    fn day_card_shows_the_moon_disc_on_a_full_moon() {
+        use timeglyph::cal::build_day;
+        use timeglyph::cal_render::render_day_text;
+        use timeglyph::RenderZone;
+        let d = build_day(jiff::civil::date(2024, 9, 18), &RenderZone::Utc).unwrap();
+        let card = render_day_text(&d);
+        assert!(card.contains('@'), "full-moon day card should show a lit disc:\n{card}");
+    }
+}
