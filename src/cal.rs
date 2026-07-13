@@ -95,6 +95,38 @@ pub struct IslamicDate {
     pub day: u8,
 }
 
+/// The eight moon-phase names, indexed by [`MoonInfo::phase_index`].
+#[cfg(feature = "lunisolar")]
+pub const PHASE_NAMES: [&str; 8] = [
+    "New Moon",
+    "Waxing Crescent",
+    "First Quarter",
+    "Waxing Gibbous",
+    "Full Moon",
+    "Waning Gibbous",
+    "Last Quarter",
+    "Waning Crescent",
+];
+
+/// The moon's phase geometry for a day (from the stem-branch ephemeris, Meeus
+/// ch. 48), computed at the day's noon in the render zone.
+#[cfg(feature = "lunisolar")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MoonInfo {
+    /// 8-phase bucket, 0 = new .. 4 = full .. 7 = waning crescent.
+    pub phase_index: u8,
+    /// Human phase name (see [`PHASE_NAMES`]).
+    pub phase_name: String,
+    /// Sun→Moon elongation, degrees `[0, 360)` (0 = new, 180 = full).
+    pub elongation_deg: f64,
+    /// Phase angle *i* (Sun–Moon–Earth), degrees `[0, 180]`.
+    pub phase_angle_deg: f64,
+    /// Illuminated fraction of the disc, `0.0`–`1.0`.
+    pub illuminated_fraction: f64,
+    /// `true` while waxing (new → full).
+    pub waxing: bool,
+}
+
 /// A DST transition occurring within a calendar day.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DstTransition {
@@ -143,6 +175,9 @@ pub struct CalDay {
     /// Chinese lunisolar date + 干支 pillars, at the day's noon in the render zone.
     #[cfg(feature = "lunisolar")]
     pub alt_chinese: Option<ChineseDate>,
+    /// Moon phase geometry at the day's noon in the render zone.
+    #[cfg(feature = "lunisolar")]
+    pub moon: Option<MoonInfo>,
     /// Hebrew calendar date (civil-date based).
     #[cfg(feature = "altcal")]
     pub alt_hebrew: Option<HebrewDate>,
@@ -286,6 +321,32 @@ fn altcal_on(date: Date) -> (Option<HebrewDate>, Option<IslamicDate>) {
     (Some(hebrew), Some(islamic))
 }
 
+/// The moon phase overlay for `date`, computed at the day's noon in `zone`.
+#[cfg(feature = "lunisolar")]
+fn moon_on(date: Date, zone: &RenderZone) -> Option<MoonInfo> {
+    let tz = zone_to_tz(zone);
+    let noon_ns = date
+        .at(12, 0, 0, 0)
+        .to_zoned(tz)
+        .ok()?
+        .timestamp()
+        .as_nanosecond();
+    #[allow(clippy::cast_precision_loss)]
+    let jd_ut = noon_ns as f64 / 1e9 / 86_400.0 + 2_440_587.5;
+    let jde_tt = jd_ut + stem_branch::delta_t_for_year(f64::from(date.year())) / 86_400.0;
+    let p = stem_branch::moon_phase(jde_tt);
+    // 8 buckets centred on the cardinal phases: [-22.5°, +22.5°) around each.
+    let phase_index = (((p.elongation_deg + 22.5) / 45.0).floor() as i64).rem_euclid(8) as u8;
+    Some(MoonInfo {
+        phase_index,
+        phase_name: PHASE_NAMES[phase_index as usize].to_string(),
+        elongation_deg: p.elongation_deg,
+        phase_angle_deg: p.phase_angle_deg,
+        illuminated_fraction: p.illuminated_fraction,
+        waxing: p.waxing,
+    })
+}
+
 /// Build the civil + timezone facts of `date` in `zone`. Pure; never panics.
 ///
 /// # Errors
@@ -360,6 +421,8 @@ pub fn build_day(date: Date, zone: &RenderZone) -> Result<CalDay, ChronoError> {
         artifacts: artifacts_on(date),
         #[cfg(feature = "lunisolar")]
         alt_chinese: chinese_on(date, zone),
+        #[cfg(feature = "lunisolar")]
+        moon: moon_on(date, zone),
         #[cfg(feature = "altcal")]
         alt_hebrew,
         #[cfg(feature = "altcal")]
