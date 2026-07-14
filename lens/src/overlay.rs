@@ -1319,19 +1319,28 @@ fn altcal_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, pal: Pale
         ui.label("");
         return;
     };
-    let extras: String = v
-        .extras
-        .iter()
-        .map(|(n, f)| format!("  ·  {n} {f}"))
-        .collect();
-    ui.label(
-        RichText::new(format!(
-            "Hebrew {}  ·  Islamic {}{extras}",
-            v.hebrew, v.islamic
-        ))
-        .font(FontId::proportional(10.5))
-        .color(pal.faint),
-    );
+    // Two grouped lines so five calendars stay readable in the narrow overlay:
+    // the two lunar/religious calendars, then the Persian/Buddhist/Japanese trio.
+    let line = |ui: &mut egui::Ui, text: String| {
+        ui.label(
+            RichText::new(text)
+                .font(FontId::proportional(10.5))
+                .color(pal.faint),
+        );
+    };
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 1.0;
+        line(ui, format!("Hebrew {}  ·  Islamic {}", v.hebrew, v.islamic));
+        if !v.extras.is_empty() {
+            let trio = v
+                .extras
+                .iter()
+                .map(|(n, f)| format!("{n} {f}"))
+                .collect::<Vec<_>>()
+                .join("  ·  ");
+            line(ui, trio);
+        }
+    });
 }
 
 /// A calm centred placeholder instead of a debug string.

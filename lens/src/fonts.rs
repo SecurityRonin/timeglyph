@@ -8,10 +8,16 @@
 //! shows as a missing-glyph box (tofu) — `tests/fonts.rs` asserts exactly that
 //! against the loaded fonts' cmaps.
 
-/// Non-ASCII glyphs the overlay's own chrome renders. Each must have a glyph in
-/// some font [`fallback_fonts`] loads, or it renders as tofu. (Arial Unicode MS,
-/// the usual CJK face, lacks ◷ U+25F7 and ⚠ U+26A0 — hence the symbol face.)
-pub const UI_SYMBOLS: &[char] = &['◷', '🌐', '⚙', '☀', '●', '→', '…', '—', '·', '°'];
+/// Non-ASCII glyphs the overlay renders — its own chrome plus the CJK the
+/// calendar expansion always shows (the 年月日時 pillar labels and the Japanese
+/// era names). Each must have a glyph in some font [`fallback_fonts`] loads, or it
+/// renders as tofu. (Arial Unicode MS, the usual CJK face, lacks ◷ U+25F7 and ⚠
+/// U+26A0 — hence the symbol face.)
+pub const UI_SYMBOLS: &[char] = &[
+    '◷', '🌐', '⚙', '☀', '●', '→', '…', '—', '·', '°', // chrome
+    '年', '月', '日', '時', // 干支 pillar labels
+    '令', '和', '平', '成', '昭', '大', '正', '明', '治', // Japanese era kanji
+];
 
 /// CJK-capable faces, most-preferred first. A `.ttc` collection loads face 0.
 pub const CJK_FONTS: &[&str] = &[
