@@ -2,7 +2,11 @@
 //! expansion. Pure over the (feature-gated) engine; the egui disclosure is the
 //! shell. Requires the `timeglyph` `lunisolar` feature (enabled in Cargo.toml).
 
-use timeglyph::{lunisolar, PosixNs, RenderZone};
+use timeglyph::{calfmt, lunisolar, PosixNs, RenderZone};
+
+// The 五行 (Five Element) assignment lives in the shared library formatter so the
+// lens and the `cal` subcommand never drift; re-exported here for the overlay.
+pub use timeglyph::calfmt::{five_element, Element};
 
 /// A 干支 / lunisolar view of one instant, ready to render as rows.
 #[derive(Debug, Clone)]
@@ -36,29 +40,7 @@ impl GanzhiView {
     /// term is not misread as the term's day.
     #[must_use]
     pub fn solar_term_phrase(&self) -> String {
-        if self.days_into_term == 0 {
-            self.solar_term.clone()
-        } else {
-            format!(
-                "{}後第{}日",
-                self.solar_term,
-                cn_numeral(self.days_into_term)
-            )
-        }
-    }
-}
-
-/// A Chinese numeral for a small count (1..=30): `一`…`十`, `十一`…`廿九`, `三十`.
-fn cn_numeral(n: u32) -> String {
-    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-    match n {
-        1..=9 => D[n as usize].to_string(),
-        10 => "十".to_string(),
-        11..=19 => format!("十{}", D[(n - 10) as usize]),
-        20 => "二十".to_string(),
-        21..=29 => format!("廿{}", D[(n - 20) as usize]),
-        30 => "三十".to_string(),
-        other => other.to_string(),
+        calfmt::solar_term_phrase(&self.solar_term, self.days_into_term)
     }
 }
 
@@ -83,8 +65,8 @@ pub fn ganzhi_view(
         lunar_date: format!(
             "{}年 {}{}",
             r.lunar_year,
-            lunar_month_name(r.lunar_month, r.is_leap_month),
-            lunar_day_name(r.lunar_day)
+            calfmt::lunar_month_cn(r.lunar_month, r.is_leap_month),
+            calfmt::lunar_day_cn(r.lunar_day)
         ),
         solar_term: r.solar_term,
         solar_longitude_deg: r.solar_longitude_deg,
@@ -93,71 +75,10 @@ pub fn ganzhi_view(
     })
 }
 
-/// The Chinese lunar month name (`正月`, `二月`…`十二月`; leap months prefixed
-/// `閏`), unambiguously a lunar month — not a Gregorian numeral.
-fn lunar_month_name(month: u8, leap: bool) -> String {
-    const NAMES: [&str; 12] = [
-        "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二",
-    ];
-    let base = NAMES
-        .get((month as usize).wrapping_sub(1))
-        .copied()
-        .unwrap_or("?");
-    format!("{}{base}月", if leap { "閏" } else { "" })
-}
-
-/// The Chinese lunar day name (`初一`…`初十`, `十一`…`二十`, `廿一`…`三十`).
-fn lunar_day_name(day: u8) -> String {
-    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-    match day {
-        1..=9 => format!("初{}", D[day as usize]),
-        10 => "初十".to_string(),
-        11..=19 => format!("十{}", D[(day - 10) as usize]),
-        20 => "二十".to_string(),
-        21..=29 => format!("廿{}", D[(day - 20) as usize]),
-        30 => "三十".to_string(),
-        other => other.to_string(),
-    }
-}
-
 /// Parse a longitude entry (°E, east positive) for the hour-pillar correction.
 /// Empty, non-numeric, or out-of-range (beyond ±180) → `None` (no correction).
 #[must_use]
 pub fn parse_longitude(s: &str) -> Option<f64> {
     let v: f64 = s.trim().parse().ok()?;
     (v.is_finite() && v.abs() <= 180.0).then_some(v)
-}
-
-/// The 五行 (Five Element) a 天干 / 地支 character belongs to — the fixed,
-/// definitional assignment used to spot-colour the pillars.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Element {
-    Wood,
-    Fire,
-    Earth,
-    Metal,
-    Water,
-}
-
-/// The Five Element of a stem or branch character (甲乙→Wood, 丙丁→Fire, …；
-/// 寅卯→Wood, 巳午→Fire, 申酉→Metal, 亥子→Water, 辰戌丑未→Earth). `None` for a
-/// non-干支 character.
-#[must_use]
-pub fn five_element(ch: char) -> Option<Element> {
-    use Element::{Earth, Fire, Metal, Water, Wood};
-    Some(match ch {
-        // 天干 (Heavenly Stems)
-        '甲' | '乙' => Wood,
-        '丙' | '丁' => Fire,
-        '戊' | '己' => Earth,
-        '庚' | '辛' => Metal,
-        '壬' | '癸' => Water,
-        // 地支 (Earthly Branches)
-        '寅' | '卯' => Wood,
-        '巳' | '午' => Fire,
-        '申' | '酉' => Metal,
-        '亥' | '子' => Water,
-        '辰' | '戌' | '丑' | '未' => Earth,
-        _ => return None,
-    })
 }

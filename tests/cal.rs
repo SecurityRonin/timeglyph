@@ -494,11 +494,16 @@ fn month_view_has_an_overlay_footer() {
 fn day_card_shows_lunar_chinese_date_and_four_pillars() {
     use timeglyph::cal::build_day;
     use timeglyph::cal_render::render_day_text;
-    // 2025-02-19: lunar 正月廿二日 · 雨水; 四柱 年乙巳 月戊寅 日己未 時庚午.
+    // 2025-02-19: 正月廿二日 · 雨水; 四柱 年乙巳 月戊寅 日己未 時庚午.
     let card = render_day_text(&build_day(date(2025, 2, 19), &RenderZone::Utc).unwrap());
     assert!(
-        card.contains("正月廿二"),
+        card.contains("正月廿二日"),
         "lunar Chinese date missing:\n{card}"
+    );
+    // The English "lunar" prefix was dropped — the Chinese date stands alone.
+    assert!(
+        !card.contains("lunar"),
+        "the 'lunar' word should be gone:\n{card}"
     );
     assert!(card.contains("雨水"), "solar term missing:\n{card}");
     // Four-pillar block: stems / branches / 年月日時 labels (時 at noon = 午).

@@ -49,6 +49,9 @@ pub mod cal;
 pub mod cal_art;
 /// Pure text renderers for the `cal` month grid.
 pub mod cal_render;
+/// Shared calendar-display formatters (Chinese lunar date / 干支 / solar term,
+/// Hebrew & Islamic month names, 五行) — the DRY source for `cal` and the lens.
+pub mod calfmt;
 pub mod carve;
 pub mod compose;
 #[cfg(feature = "csv")]

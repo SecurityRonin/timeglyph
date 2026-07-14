@@ -48,141 +48,6 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-/// Islamic month name for a 1-based ordinal.
-#[cfg(feature = "altcal")]
-fn islamic_month(ordinal: u8) -> &'static str {
-    const M: [&str; 12] = [
-        "Muharram",
-        "Safar",
-        "Rabi I",
-        "Rabi II",
-        "Jumada I",
-        "Jumada II",
-        "Rajab",
-        "Shaban",
-        "Ramadan",
-        "Shawwal",
-        "Dhu al-Qidah",
-        "Dhu al-Hijjah",
-    ];
-    M.get((ordinal as usize).wrapping_sub(1))
-        .copied()
-        .unwrap_or("?")
-}
-
-/// Hebrew month name for an ICU month code (`M01`..`M12`, `M05L` = Adar I).
-#[cfg(feature = "altcal")]
-fn hebrew_month(code: &str) -> &'static str {
-    match code {
-        "M01" => "Tishrei",
-        "M02" => "Heshvan",
-        "M03" => "Kislev",
-        "M04" => "Tevet",
-        "M05" => "Shevat",
-        "M05L" => "Adar I",
-        "M06" => "Adar",
-        "M07" => "Nisan",
-        "M08" => "Iyar",
-        "M09" => "Sivan",
-        "M10" => "Tammuz",
-        "M11" => "Av",
-        "M12" => "Elul",
-        _ => "?",
-    }
-}
-
-/// The Chinese lunar month name (`正月`..`十二月`, `閏`-prefixed for a leap month).
-#[cfg(feature = "lunisolar")]
-fn lunar_month_cn(month: u8, is_leap: bool) -> String {
-    const M: [&str; 12] = [
-        "正月",
-        "二月",
-        "三月",
-        "四月",
-        "五月",
-        "六月",
-        "七月",
-        "八月",
-        "九月",
-        "十月",
-        "十一月",
-        "十二月",
-    ];
-    let name = M
-        .get((month as usize).wrapping_sub(1))
-        .copied()
-        .unwrap_or("?月");
-    if is_leap {
-        format!("閏{name}")
-    } else {
-        name.to_string()
-    }
-}
-
-/// A Chinese numeral for a small count (1..=30): `一`…`十`, `十一`…`廿九`, `三十`
-/// (no `初` prefix — for the days-into-term phrase).
-#[cfg(feature = "lunisolar")]
-fn cn_numeral(n: u32) -> String {
-    const D: [&str; 10] = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-    match n {
-        1..=9 => D[n as usize].to_string(),
-        10 => "十".to_string(),
-        11..=19 => format!("十{}", D[(n - 10) as usize]),
-        20 => "二十".to_string(),
-        21..=29 => format!("廿{}", D[(n - 20) as usize]),
-        30 => "三十".to_string(),
-        other => other.to_string(),
-    }
-}
-
-/// The solar term as a period phrase: the bare term on its own day, else
-/// `<term>後第<N>日` (matching the lens), so a day well past the term is not
-/// misread as the term's exact day.
-#[cfg(feature = "lunisolar")]
-fn solar_term_phrase(term: &str, days_into_term: u32) -> String {
-    if days_into_term == 0 {
-        term.to_string()
-    } else {
-        format!("{term}後第{}日", cn_numeral(days_into_term))
-    }
-}
-
-/// The Chinese lunar day name (`初一`..`三十`).
-#[cfg(feature = "lunisolar")]
-fn lunar_day_cn(day: u8) -> String {
-    const D: [&str; 11] = [
-        "", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-    ];
-    match day {
-        1..=10 => format!("初{}", D[day as usize]),
-        11..=19 => format!("十{}", D[(day - 10) as usize]),
-        20 => "二十".to_string(),
-        21..=29 => format!("廿{}", D[(day - 20) as usize]),
-        30 => "三十".to_string(),
-        _ => day.to_string(),
-    }
-}
-
-/// The three lines of the four-pillar (四柱) block: heavenly stems, earthly
-/// branches, and the `年月日時` labels — each pillar's stem over its branch.
-#[cfg(feature = "lunisolar")]
-fn four_pillar_rows(c: &crate::cal::ChineseDate) -> [String; 3] {
-    let pillars = [
-        &c.year_pillar,
-        &c.month_pillar,
-        &c.day_pillar,
-        &c.hour_pillar,
-    ];
-    let mut stems = String::new();
-    let mut branches = String::new();
-    for p in pillars {
-        let mut ch = p.chars();
-        stems.push(ch.next().unwrap_or('?'));
-        branches.push(ch.next().unwrap_or('?'));
-    }
-    [stems, branches, "年月日時".to_string()]
-}
-
 /// Render a month as a monospace grid: a title line, an ISO-week gutter, weekday
 /// headers, and one `%2d` day + marker per cell, followed by a legend.
 #[must_use]
@@ -247,8 +112,8 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>) -> String {
                     let _ = writeln!(
                         out,
                         "  hebrew {}–{} {}",
-                        hebrew_month(&hf.month_code),
-                        hebrew_month(&hl.month_code),
+                        crate::calfmt::hebrew_month(&hf.month_code),
+                        crate::calfmt::hebrew_month(&hl.month_code),
                         hl.year
                     );
                 }
@@ -256,8 +121,8 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>) -> String {
                     let _ = writeln!(
                         out,
                         "  islamic {}–{} {}",
-                        islamic_month(isf.month),
-                        islamic_month(isl.month),
+                        crate::calfmt::islamic_month(isf.month),
+                        crate::calfmt::islamic_month(isl.month),
                         isl.year
                     );
                 }
@@ -274,15 +139,22 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
     use std::fmt::Write as _;
     out.push('\n');
     if let Some(c) = &d.alt_chinese {
+        use crate::calfmt;
         let _ = writeln!(
             out,
-            "  chinese   lunar {}{}日 · {}",
-            lunar_month_cn(c.lunar_month, c.is_leap_month),
-            lunar_day_cn(c.lunar_day),
-            solar_term_phrase(&c.solar_term, c.days_into_term)
+            "  chinese   {} · {}",
+            calfmt::lunar_date_cn(c.lunar_month, c.lunar_day, c.is_leap_month),
+            calfmt::solar_term_phrase(&c.solar_term, c.days_into_term)
         );
-        // The four-pillar (四柱) block: stems over branches over 年月日時 labels.
-        for row in four_pillar_rows(c) {
+        // A blank line, then the four-pillar (四柱) block: stems over branches
+        // over 年月日時 labels.
+        out.push('\n');
+        for row in calfmt::four_pillar_rows(
+            &c.year_pillar,
+            &c.month_pillar,
+            &c.day_pillar,
+            &c.hour_pillar,
+        ) {
             let _ = writeln!(out, "            {row}");
         }
     }
@@ -292,7 +164,7 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             out,
             "  hebrew    {} {} {}",
             h.day,
-            hebrew_month(&h.month_code),
+            crate::calfmt::hebrew_month(&h.month_code),
             h.year
         );
     }
@@ -302,7 +174,7 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             out,
             "  islamic   {} {} {}",
             i.day,
-            islamic_month(i.month),
+            crate::calfmt::islamic_month(i.month),
             i.year
         );
     }
