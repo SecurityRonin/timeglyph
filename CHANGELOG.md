@@ -6,6 +6,40 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-14
+
+### Added
+
+- **`cal` Chinese overlay: the four 干支 pillars + a proper lunar date.** The day
+  card now shows the lunar date in Chinese (`正月廿二日`) and the full year/month/
+  day/hour pillars stacked as a 四柱 block (stems over branches over `年月日時`).
+  `ChineseDate` gains `month_pillar`, `hour_pillar`, and `days_into_term`.
+- **Solar term as a period phrase.** `雨水後第七日` when past the term's own day
+  (bare term on day 0), matching the lens.
+- **Datetime input for `cal`.** `cal 2025-02-19T14:30` computes the 干支 hour pillar
+  (時柱) and the moon at that instant, not the day's noon; a bare date still uses
+  noon. `cal::build_day_at` exposes this in the library.
+- **Season hemisphere is derived from `--tz`.** A named IANA zone south of the
+  equator (`Australia/Sydney`, `Pacific/Auckland`, `America/Santiago`) now yields
+  austral seasons automatically — December is summer, with the beach scene tile —
+  from the tzdb `zone1970.tab` latitudes (`cal::hemisphere_for`). UTC and fixed
+  offsets carry no latitude and default to the northern hemisphere. `CalDay` gains
+  `season` and `southern_hemisphere`.
+
+### Changed
+
+- **BREAKING (CLI): the `cal --south` flag is removed.** The hemisphere is now
+  derived from the zone, so no flag is needed; render under a southern-hemisphere
+  `--tz` instead.
+- **BREAKING (API): `CalDay` and `ChineseDate` gained fields** (see Added); code
+  that constructs or exhaustively matches them must be updated.
+
+### Fixed
+
+- The `cal` day card and month footer were hardcoded to the northern hemisphere
+  (the old `--south` reached only the year-view season strip). Every view now uses
+  the zone-derived hemisphere.
+
 ## [0.6.0] - 2026-07-13
 
 ### Added
