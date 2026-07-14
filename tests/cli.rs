@@ -676,3 +676,14 @@ fn cal_datetime_input_shows_hour_pillar() {
         "four-pillar block missing:\n{out}"
     );
 }
+
+#[test]
+fn cal_color_is_pipe_safe() {
+    // --color always emits ANSI; never / json never do (the machine-view contract).
+    let (always, _) = run(&["cal", "2016-12", "--color", "always"]);
+    assert!(always.contains('\x1b'), "expected ANSI with --color always");
+    let (never, _) = run(&["cal", "2016-12", "--color", "never"]);
+    assert!(!never.contains('\x1b'), "no ANSI with --color never");
+    let (json, _) = run(&["cal", "2016-12", "--json"]);
+    assert!(!json.contains('\x1b'), "no ANSI in --json");
+}

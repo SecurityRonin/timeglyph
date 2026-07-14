@@ -234,6 +234,9 @@ enum Commands {
         /// First day of the week: `monday` (ISO, default) or `sunday`.
         #[arg(long, value_name = "DAY", default_value = "monday")]
         week_start: String,
+        /// Colour: `auto` (TTY-detect, honours NO_COLOR), `always`, or `never`.
+        #[arg(long, value_name = "WHEN", default_value = "auto")]
+        color: String,
         /// Emit the calendar as JSON (faithful, one record per day).
         #[arg(long)]
         json: bool,
@@ -317,8 +320,9 @@ fn main() -> ExitCode {
         Some(Commands::Cal {
             when,
             week_start,
+            color,
             json,
-        }) => run_cal(when.as_deref(), &week_start, json, &zone),
+        }) => run_cal(when.as_deref(), &week_start, &color, json, &zone),
         Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
@@ -1216,17 +1220,46 @@ fn today_in(zone: &RenderZone) -> jiff::civil::Date {
 }
 
 /// Print a single day as JSON or the text detail card.
-fn emit_day(day: &timeglyph::cal::CalDay, json: bool) -> u8 {
+fn emit_day(
+    day: &timeglyph::cal::CalDay,
+    json: bool,
+    color: timeglyph::cal_color::ColorMode,
+) -> u8 {
     if json {
         println!("{}", serde_json::to_string_pretty(day).unwrap_or_default());
     } else {
-        println!("{}", timeglyph::cal_render::render_day_text(day));
+        println!(
+            "{}",
+            timeglyph::cal_render::render_day_text_with(day, color)
+        );
     }
     EXIT_OK
 }
 
+/// Resolve the `cal` colour mode: JSON never gets ANSI; otherwise the shell reads
+/// the env + TTY state and hands them to the pure detector.
+fn resolve_cal_color(color_arg: &str, json: bool) -> timeglyph::cal_color::ColorMode {
+    use std::io::IsTerminal as _;
+    if json {
+        return timeglyph::cal_color::ColorMode::Mono;
+    }
+    timeglyph::cal_color::detect(
+        color_arg,
+        std::env::var_os("NO_COLOR").is_some(),
+        std::io::stdout().is_terminal(),
+        std::env::var("COLORTERM").ok().as_deref(),
+        std::env::var("TERM").ok().as_deref(),
+    )
+}
+
 /// `cal` subcommand: render a forensic calendar (year / month / single day).
-fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) -> u8 {
+fn run_cal(
+    when: Option<&str>,
+    week_start: &str,
+    color_arg: &str,
+    json: bool,
+    zone: &RenderZone,
+) -> u8 {
     use timeglyph::cal::{build_day, build_month, WeekStart};
     let ws = match week_start.to_ascii_lowercase().as_str() {
         "monday" | "mon" => WeekStart::Monday,
@@ -1236,6 +1269,7 @@ fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) 
             return EXIT_ERR;
         }
     };
+    let color = resolve_cal_color(color_arg, json);
     let target = match parse_cal_when(when, zone) {
         Ok(t) => t,
         Err(e) => {
@@ -1251,14 +1285,14 @@ fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) 
                 eprintln!("error: {date} is out of the representable range");
                 return EXIT_ERR;
             };
-            emit_day(&day, json)
+            emit_day(&day, json, color)
         }
         CalWhen::Instant(dt) => {
             let Ok(day) = timeglyph::cal::build_day_at(dt, zone) else {
                 eprintln!("error: {dt} is out of the representable range");
                 return EXIT_ERR;
             };
-            emit_day(&day, json)
+            emit_day(&day, json, color)
         }
         CalWhen::Month(y, m) => match build_month(y, m, zone, ws) {
             Ok(month) => {
@@ -1270,7 +1304,7 @@ fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) 
                 } else {
                     print!(
                         "{}",
-                        timeglyph::cal_render::render_month_text(&month, Some(today))
+                        timeglyph::cal_render::render_month_text(&month, Some(today), color)
                     );
                 }
                 EXIT_OK
@@ -1313,7 +1347,7 @@ fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) 
                 for month in &months {
                     print!(
                         "{}",
-                        timeglyph::cal_render::render_month_text(month, Some(today))
+                        timeglyph::cal_render::render_month_text(month, Some(today), color)
                     );
                     println!();
                 }

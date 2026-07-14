@@ -325,9 +325,10 @@ fn build_month_lays_out_the_grid() {
 #[test]
 fn render_month_text_shows_header_gutter_and_markers() {
     use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_color::ColorMode;
     use timeglyph::cal_render::render_month_text;
     let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
-    let s = render_month_text(&m, None);
+    let s = render_month_text(&m, None, ColorMode::Mono);
     assert!(s.contains("July 2026"), "{s}");
     assert!(s.contains("Mo") && s.contains("Su"));
     assert!(s.contains("W27")); // ISO week gutter
@@ -340,7 +341,7 @@ fn render_month_text_shows_header_gutter_and_markers() {
     #[cfg(feature = "leap")]
     {
         let dec = build_month(2016, 12, &RenderZone::Utc, WeekStart::Monday).unwrap();
-        assert!(render_month_text(&dec, None).contains('+'));
+        assert!(render_month_text(&dec, None, ColorMode::Mono).contains('+'));
     }
 }
 
@@ -405,16 +406,17 @@ fn season_strip_shows_boundaries_and_seasons() {
 #[test]
 fn grid_markers_for_epoch_and_rollover_days() {
     use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_color::ColorMode;
     use timeglyph::cal_render::render_month_text;
     // 1601-01 contains the FILETIME epoch → an 'e' marker.
     let jan1601 = build_month(1601, 1, &RenderZone::Utc, WeekStart::Sunday).unwrap();
-    assert!(render_month_text(&jan1601, None).contains('e'));
+    assert!(render_month_text(&jan1601, None, ColorMode::Mono).contains('e'));
     // 2038-01 contains the unix_i32 rollover → a '~' marker.
     let jan2038 = build_month(2038, 1, &RenderZone::Utc, WeekStart::Monday).unwrap();
-    assert!(render_month_text(&jan2038, None).contains('~'));
+    assert!(render_month_text(&jan2038, None, ColorMode::Mono).contains('~'));
     // Today marker lands when today is in view.
     let d = jiff::civil::date(2038, 1, 19);
-    assert!(render_month_text(&jan2038, Some(d)).contains('*'));
+    assert!(render_month_text(&jan2038, Some(d), ColorMode::Mono).contains('*'));
 }
 
 #[test]
@@ -473,9 +475,10 @@ fn day_card_shows_all_alternative_calendars_and_season() {
 #[test]
 fn month_view_has_an_overlay_footer() {
     use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_color::ColorMode;
     use timeglyph::cal_render::render_month_text;
     let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
-    let s = render_month_text(&m, None);
+    let s = render_month_text(&m, None, ColorMode::Mono);
     // A neofetch-style info panel: the month's Chinese year + season at least.
     assert!(
         s.contains("年"),

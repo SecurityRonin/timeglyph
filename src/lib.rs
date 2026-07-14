@@ -47,6 +47,8 @@ pub mod cal;
 /// ASCII art (moon discs, seasonal tiles) for the `cal` visual layer.
 #[cfg(feature = "lunisolar")]
 pub mod cal_art;
+/// Terminal colour (truecolor→256→16→mono ladder) for the `cal` visual layer.
+pub mod cal_color;
 /// Pure text renderers for the `cal` month grid.
 pub mod cal_render;
 /// Shared calendar-display formatters (Chinese lunar date / 干支 / solar term,
