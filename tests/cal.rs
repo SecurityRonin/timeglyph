@@ -479,14 +479,20 @@ fn month_view_has_an_overlay_footer() {
     use timeglyph::cal_render::render_month_text;
     let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
     let s = render_month_text(&m, None, ColorMode::Mono);
-    // A neofetch-style info panel: the month's Chinese year + season at least.
+    // A neofetch-style panel: the seasonal scene tile as the left "logo" (July =
+    // northern summer → the beach tile) beside the grid, with the Chinese year in
+    // the info footer.
     assert!(
         s.contains("年"),
         "chinese year pillar missing from month footer:\n{s}"
     );
     assert!(
-        s.contains("summer"),
-        "season missing from month footer:\n{s}"
+        s.contains("beach"),
+        "summer scene tile (beach) missing from month panel:\n{s}"
+    );
+    assert!(
+        s.contains("Mo") && s.contains("Su"),
+        "grid header missing:\n{s}"
     );
 }
 

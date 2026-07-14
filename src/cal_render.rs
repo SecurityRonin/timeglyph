@@ -72,18 +72,60 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
+/// The display width of a line, skipping ANSI SGR escapes (`\x1b[…m`). The panels
+/// composed side-by-side are ASCII art, so each visible char counts as width 1.
+fn visible_width(s: &str) -> usize {
+    let mut w = 0;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip until the SGR terminator 'm'.
+            for e in chars.by_ref() {
+                if e == 'm' {
+                    break;
+                }
+            }
+        } else {
+            w += 1;
+        }
+    }
+    w
+}
+
+/// Compose `left` and `right` line-blocks side by side, top-aligned, padding each
+/// left line to `left_w` visible columns (a neofetch-style art-beside-grid panel).
+fn side_by_side(left: &[String], right: &[String], left_w: usize) -> String {
+    let mut out = String::new();
+    for i in 0..left.len().max(right.len()) {
+        let l = left.get(i).map_or("", String::as_str);
+        let r = right.get(i).map_or("", String::as_str);
+        let pad = " ".repeat(left_w.saturating_sub(visible_width(l)));
+        out.push_str(l);
+        out.push_str(&pad);
+        out.push_str("  ");
+        out.push_str(r);
+        out.push('\n');
+    }
+    out
+}
+
 /// Render a month as a monospace grid: a title line, an ISO-week gutter, weekday
 /// headers, and one `%2d` day + marker per cell, followed by a legend. Markers are
-/// coloured per `color` (today = reverse video); [`ColorMode::Mono`] is plain.
+/// coloured per `color` (today = reverse video); [`ColorMode::Mono`] is plain. When
+/// a season is known, the season scene tile is placed to the left, neofetch-style.
 #[must_use]
 pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) -> String {
     use std::fmt::Write as _;
-    let mut out = String::new();
     let name = MONTHS[(m.month as usize).clamp(1, 12) - 1];
-    let _ = writeln!(out, "{name} {}                {}\n", m.year, m.zone_label);
-    out.push_str("      Mo  Tu  We  Th  Fr  Sa  Su\n");
+    // Build the calendar block (title + weekday header + week rows) as lines, then
+    // optionally compose it right of the season scene tile.
+    let mut grid: Vec<String> = Vec::new();
+    grid.push(format!("{name} {}   {}", m.year, m.zone_label));
+    grid.push(String::new());
+    grid.push("      Mo  Tu  We  Th  Fr  Sa  Su".to_string());
 
     for week in &m.weeks {
+        let mut out = String::new();
         // ISO week gutter: from the first real day in the row.
         let wk = match week.iter().flatten().next() {
             Some(&i) => format!("W{:02}", m.days[i].iso_week),
@@ -110,29 +152,47 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
                 None => out.push_str("    "),
             }
         }
-        out.push('\n');
+        grid.push(out);
     }
 
-    out.push_str("\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover\n");
+    // Compose: the season scene tile (left "logo") beside the calendar grid.
+    #[cfg(feature = "lunisolar")]
+    let mut result = match m
+        .days
+        .get(m.days.len() / 2)
+        .and_then(|d| d.season.as_deref())
+    {
+        Some(season) => {
+            let ink = cal_color::season_ink(season);
+            let art: Vec<String> = crate::cal_art::season_tile_for(season)
+                .iter()
+                .map(|l| color.paint(ink, l))
+                .collect();
+            side_by_side(&art, &grid, 16)
+        }
+        None => grid.join("\n") + "\n",
+    };
+    #[cfg(not(feature = "lunisolar"))]
+    let mut result = grid.join("\n") + "\n";
 
-    // Overlay footer: the month's alternative calendars, season, and moon phase,
-    // taken from a representative mid-month day (an info panel, neofetch-style).
+    result
+        .push_str("\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover\n");
+
+    // Overlay footer: the month's alternative calendars and moon, from a
+    // representative mid-month day (facts beside the seasonal "logo" above).
     #[cfg(feature = "lunisolar")]
     if let Some(mid) = m.days.get(m.days.len() / 2) {
-        out.push('\n');
+        result.push('\n');
         if let Some(c) = &mid.alt_chinese {
             let _ = writeln!(
-                out,
+                result,
                 "  {}年 · {} · lunar month {}",
                 c.year_pillar, c.solar_term, c.lunar_month
             );
         }
-        if let Some(season) = &mid.season {
-            let _ = writeln!(out, "  season {season}");
-        }
         if let Some(mo) = &mid.moon {
             let _ = writeln!(
-                out,
+                result,
                 "  moon around mid-month: {} ({:.0}%)",
                 mo.phase_name,
                 mo.illuminated_fraction * 100.0
@@ -144,7 +204,7 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
             if let (Some(f), Some(l)) = (first, m.days.last()) {
                 if let (Some(hf), Some(hl)) = (&f.alt_hebrew, &l.alt_hebrew) {
                     let _ = writeln!(
-                        out,
+                        result,
                         "  hebrew {}–{} {}",
                         crate::calfmt::hebrew_month(&hf.month_code),
                         crate::calfmt::hebrew_month(&hl.month_code),
@@ -153,7 +213,7 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
                 }
                 if let (Some(isf), Some(isl)) = (&f.alt_islamic, &l.alt_islamic) {
                     let _ = writeln!(
-                        out,
+                        result,
                         "  islamic {}–{} {}",
                         crate::calfmt::islamic_month(isf.month),
                         crate::calfmt::islamic_month(isl.month),
@@ -163,7 +223,7 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
             }
         }
     }
-    out
+    result
 }
 
 /// Append the day's alternative-calendar and season overlays (Chinese/干支,
