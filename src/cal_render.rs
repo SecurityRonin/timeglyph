@@ -72,8 +72,28 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-/// The display width of a line, skipping ANSI SGR escapes (`\x1b[…m`). The panels
-/// composed side-by-side are ASCII art, so each visible char counts as width 1.
+/// The monospace display width of `c`: 2 for East-Asian wide / fullwidth glyphs
+/// (CJK, Hangul, kana, fullwidth forms), 1 otherwise.
+fn char_width(c: char) -> usize {
+    let u = c as u32;
+    if (0x1100..=0x115F).contains(&u)      // Hangul Jamo
+        || (0x2E80..=0xA4CF).contains(&u)  // CJK radicals … Yi
+        || (0xAC00..=0xD7A3).contains(&u)  // Hangul syllables
+        || (0xF900..=0xFAFF).contains(&u)  // CJK compat ideographs
+        || (0xFE30..=0xFE4F).contains(&u)  // CJK compat forms
+        || (0xFF00..=0xFF60).contains(&u)  // fullwidth forms
+        || (0xFFE0..=0xFFE6).contains(&u)
+        || (0x20000..=0x3FFFD).contains(&u)
+    // CJK extension planes
+    {
+        2
+    } else {
+        1
+    }
+}
+
+/// The display width of a line, skipping ANSI SGR escapes (`\x1b[…m`) and counting
+/// East-Asian wide glyphs as 2 columns.
 fn visible_width(s: &str) -> usize {
     let mut w = 0;
     let mut chars = s.chars();
@@ -86,7 +106,7 @@ fn visible_width(s: &str) -> usize {
                 }
             }
         } else {
-            w += 1;
+            w += char_width(c);
         }
     }
     w
@@ -198,29 +218,16 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
                 mo.illuminated_fraction * 100.0
             );
         }
+        // A compact alt-calendar hint (the mid-month year in each), full detail
+        // lives in the single-day view.
         #[cfg(feature = "altcal")]
-        {
-            let first = m.days.first();
-            if let (Some(f), Some(l)) = (first, m.days.last()) {
-                if let (Some(hf), Some(hl)) = (&f.alt_hebrew, &l.alt_hebrew) {
-                    let _ = writeln!(
-                        result,
-                        "  hebrew {}–{} {}",
-                        crate::calfmt::hebrew_month(&hf.month_code),
-                        crate::calfmt::hebrew_month(&hl.month_code),
-                        hl.year
-                    );
-                }
-                if let (Some(isf), Some(isl)) = (&f.alt_islamic, &l.alt_islamic) {
-                    let _ = writeln!(
-                        result,
-                        "  islamic {}–{} {}",
-                        crate::calfmt::islamic_month(isf.month),
-                        crate::calfmt::islamic_month(isl.month),
-                        isl.year
-                    );
-                }
-            }
+        if !mid.extra_calendars.is_empty() {
+            let hint: Vec<String> = mid
+                .extra_calendars
+                .iter()
+                .map(|e| format!("{} {}", e.name, e.year))
+                .collect();
+            let _ = writeln!(result, "  {}", hint.join(" · "));
         }
     }
     result
@@ -252,29 +259,14 @@ fn append_day_overlays(out: &mut String, d: &CalDay, color: ColorMode) {
             let _ = writeln!(out, "            {row}");
         }
     }
-    #[cfg(feature = "altcal")]
-    if let Some(h) = &d.alt_hebrew {
-        let _ = writeln!(
-            out,
-            "  hebrew    {} {} {}",
-            h.day,
-            crate::calfmt::hebrew_month(&h.month_code),
-            h.year
-        );
-    }
-    #[cfg(feature = "altcal")]
-    if let Some(i) = &d.alt_islamic {
-        let _ = writeln!(
-            out,
-            "  islamic   {} {} {}",
-            i.day,
-            crate::calfmt::islamic_month(i.month),
-            i.year
-        );
-    }
+    // Every alternative calendar, in one ordered list (中華民國 · Japanese ·
+    // Buddhist · Hebrew · Islamic · Persian). The label is padded to a fixed
+    // *display* width so the CJK-named 中華民國 row still aligns.
     #[cfg(feature = "altcal")]
     for e in &d.extra_calendars {
-        let _ = writeln!(out, "  {:<9} {}", e.name.to_lowercase(), e.formatted);
+        let label = e.name.to_lowercase();
+        let pad = " ".repeat(10_usize.saturating_sub(visible_width(&label)));
+        let _ = writeln!(out, "  {label}{pad}{}", e.formatted);
     }
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
         let hemi = if d.southern_hemisphere { "S" } else { "N" };

@@ -439,13 +439,8 @@ pub struct CalDay {
     /// flipped from the northern-hemisphere event mapping).
     #[cfg(feature = "lunisolar")]
     pub southern_hemisphere: bool,
-    /// Hebrew calendar date (civil-date based).
-    #[cfg(feature = "altcal")]
-    pub alt_hebrew: Option<HebrewDate>,
-    /// Islamic (tabular civil) calendar date.
-    #[cfg(feature = "altcal")]
-    pub alt_islamic: Option<IslamicDate>,
-    /// Additional calendars (Persian, Buddhist, Japanese).
+    /// Every alternative calendar, in display order (中華民國 · Japanese · Buddhist
+    /// · Hebrew · Islamic · Persian).
     #[cfg(feature = "altcal")]
     pub extra_calendars: Vec<ExtraCal>,
     /// Leap seconds inserted (`+1`) / deleted (`-1`) during this UTC day.
@@ -549,12 +544,6 @@ fn chinese_at(ref_ns: i128, zone: &RenderZone) -> Option<ChineseDate> {
     })
 }
 
-/// The Hebrew and Islamic (tabular civil) overlays for `date`, via ICU4X.
-#[cfg(feature = "altcal")]
-fn altcal_on(date: Date) -> (Option<HebrewDate>, Option<IslamicDate>) {
-    (hebrew_date(date), islamic_date(date))
-}
-
 /// The ICU4X ISO date for a jiff civil date, if representable.
 #[cfg(feature = "altcal")]
 fn icu_iso(date: Date) -> Option<icu_calendar::Date<icu_calendar::cal::Iso>> {
@@ -593,37 +582,32 @@ pub fn islamic_date(date: Date) -> Option<IslamicDate> {
     })
 }
 
-/// The Persian (Solar Hijri), Buddhist, and Japanese-era dates for a civil date,
-/// via ICU4X — the generic "extra calendars" list (`cal` day card + lens overlay).
+/// All the alternative calendars for a civil date, via ICU4X, in the display
+/// order 中華民國 · Japanese · Buddhist · Hebrew · Islamic · Persian — the single
+/// ordered list shared by the `cal` day card and the lens overlay.
 #[cfg(feature = "altcal")]
 #[must_use]
 pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
-    use crate::calfmt::{greg_month_abbr, japanese_era, persian_month};
+    use crate::calfmt::{
+        greg_month_abbr, hebrew_month, islamic_month, japanese_era, persian_month,
+    };
     let Some(iso) = icu_iso(date) else {
         return Vec::new();
     };
-    let mut out = Vec::with_capacity(3);
+    let mut out = Vec::with_capacity(6);
 
-    let p = iso.to_calendar(icu_calendar::cal::Persian);
-    let (py, pm, pd) = (p.era_year().year, p.month().ordinal, p.day_of_month().0);
+    // 1. 中華民國 (ROC / Minguo): Gregorian months, year = Gregorian − 1911.
+    let r = iso.to_calendar(icu_calendar::cal::Roc);
+    let (ry, rm, rd) = (r.era_year().year, r.month().ordinal, r.day_of_month().0);
     out.push(ExtraCal {
-        name: "Persian".to_string(),
-        year: py,
-        month: pm,
-        day: pd,
-        formatted: format!("{pd} {} {py}", persian_month(pm)),
+        name: "中華民國".to_string(),
+        year: ry,
+        month: rm,
+        day: rd,
+        formatted: format!("{ry}年{rm}月{rd}日"),
     });
 
-    let b = iso.to_calendar(icu_calendar::cal::Buddhist);
-    let (by, bm, bd) = (b.era_year().year, b.month().ordinal, b.day_of_month().0);
-    out.push(ExtraCal {
-        name: "Buddhist".to_string(),
-        year: by,
-        month: bm,
-        day: bd,
-        formatted: format!("{bd} {} {by} BE", greg_month_abbr(bm)),
-    });
-
+    // 2. Japanese era.
     let j = iso.to_calendar(icu_calendar::cal::Japanese::new());
     let jey = j.era_year();
     let (jy, jm, jd) = (jey.year, j.month().ordinal, j.day_of_month().0);
@@ -635,26 +619,53 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         formatted: format!("{}{jy}年{jm}月{jd}日", japanese_era(jey.era.as_str())),
     });
 
+    // 3. Buddhist (Gregorian months, +543 BE).
+    let b = iso.to_calendar(icu_calendar::cal::Buddhist);
+    let (by, bm, bd) = (b.era_year().year, b.month().ordinal, b.day_of_month().0);
+    out.push(ExtraCal {
+        name: "Buddhist".to_string(),
+        year: by,
+        month: bm,
+        day: bd,
+        formatted: format!("{bd} {} {by} BE", greg_month_abbr(bm)),
+    });
+
+    // 4. Hebrew, 5. Islamic (from the typed converters, formatted for display).
+    if let Some(h) = hebrew_date(date) {
+        out.push(ExtraCal {
+            name: "Hebrew".to_string(),
+            year: h.year,
+            month: h.month,
+            day: h.day,
+            formatted: format!("{} {} {}", h.day, hebrew_month(&h.month_code), h.year),
+        });
+    }
+    if let Some(i) = islamic_date(date) {
+        out.push(ExtraCal {
+            name: "Islamic".to_string(),
+            year: i.year,
+            month: i.month,
+            day: i.day,
+            formatted: format!("{} {} {}", i.day, islamic_month(i.month), i.year),
+        });
+    }
+
+    // 6. Persian (Solar Hijri).
+    let p = iso.to_calendar(icu_calendar::cal::Persian);
+    let (py, pm, pd) = (p.era_year().year, p.month().ordinal, p.day_of_month().0);
+    out.push(ExtraCal {
+        name: "Persian".to_string(),
+        year: py,
+        month: pm,
+        day: pd,
+        formatted: format!("{pd} {} {py}", persian_month(pm)),
+    });
+
     out
 }
 
-/// The Hebrew and Islamic dates for the civil date of `instant` in `zone` — a
-/// one-call helper for consumers that work from an instant (the lens overlay).
-#[cfg(feature = "altcal")]
-#[must_use]
-pub fn altcal_at(
-    instant: crate::PosixNs,
-    zone: &RenderZone,
-) -> (Option<HebrewDate>, Option<IslamicDate>) {
-    let Ok(ts) = jiff::Timestamp::from_nanosecond(instant.0) else {
-        return (None, None);
-    };
-    let date = ts.to_zoned(zone_to_tz(zone)).date();
-    (hebrew_date(date), islamic_date(date))
-}
-
-/// The extra calendars (Persian / Buddhist / Japanese) for the civil date of
-/// `instant` in `zone` — the instant-based helper for the lens overlay.
+/// Every alternative calendar for the civil date of `instant` in `zone`, in
+/// display order — the instant-based helper for the lens overlay.
 #[cfg(feature = "altcal")]
 #[must_use]
 pub fn extra_calendars_at(instant: crate::PosixNs, zone: &RenderZone) -> Vec<ExtraCal> {
@@ -761,9 +772,6 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
         })
     });
 
-    #[cfg(feature = "altcal")]
-    let (alt_hebrew, alt_islamic) = altcal_on(date);
-
     // The reference instant for the astronomical/Chinese overlays (the given time
     // in the zone; compatible disambiguation resolves a DST gap, never errors).
     #[cfg(feature = "lunisolar")]
@@ -803,10 +811,6 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
         season: Some(season_for(solar_lon, hemisphere).to_string()),
         #[cfg(feature = "lunisolar")]
         southern_hemisphere: hemisphere == Hemisphere::South,
-        #[cfg(feature = "altcal")]
-        alt_hebrew,
-        #[cfg(feature = "altcal")]
-        alt_islamic,
         #[cfg(feature = "altcal")]
         extra_calendars: extra_calendars(date),
         #[cfg(feature = "leap")]

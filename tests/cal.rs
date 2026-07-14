@@ -218,11 +218,14 @@ fn chinese_overlay_matches_lunisolar() {
 fn hebrew_and_islamic_overlays() {
     // 2007-09-13: Rosh Hashanah 5768 = 1 Tishrei 5768 (Hebrew); 1 Ramadan 1428
     // (Islamic tabular civil). Both independently verifiable (Hebcal / almanac).
-    let d = day(2007, 9, 13);
-    let h = d.alt_hebrew.expect("hebrew overlay");
+    let cals = &day(2007, 9, 13).extra_calendars;
+    let by = |n: &str| cals.iter().find(|e| e.name == n).unwrap();
+    let h = by("Hebrew");
     assert_eq!((h.year, h.month, h.day), (5768, 1, 1));
-    let i = d.alt_islamic.expect("islamic overlay");
+    let i = by("Islamic");
     assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
+    // The unified list is in display order, ROC first.
+    assert_eq!(cals[0].name, "中華民國");
 }
 
 // --- Cycle 6a: moon phase overlay (stem-branch, feature=lunisolar) ------------
@@ -622,20 +625,20 @@ fn day_card_season_and_tile_follow_the_zone() {
     );
 }
 
-// --- altcal_at: Hebrew/Islamic of an instant at a zone (shared with the lens) --
+// --- extra_calendars_at: all six of an instant at a zone (shared with the lens) -
 
 #[cfg(feature = "altcal")]
 #[test]
-fn altcal_at_resolves_hebrew_and_islamic_for_an_instant() {
-    use timeglyph::cal::altcal_at;
+fn extra_calendars_at_resolves_the_ordered_list_for_an_instant() {
+    use timeglyph::cal::extra_calendars_at;
     use timeglyph::PosixNs;
-    // 2007-09-13T12:00:00Z → 1 Tishrei 5768 / 1 Ramadan 1428.
+    // 2007-09-13T12:00:00Z: Hebrew 1 Tishrei 5768, Islamic 1 Ramadan 1428.
     let ns = 1_189_684_800_i128 * 1_000_000_000;
-    let (h, i) = altcal_at(PosixNs(ns), &RenderZone::Utc);
-    let h = h.expect("hebrew");
-    let i = i.expect("islamic");
-    assert_eq!((h.year, h.month_code.as_str(), h.day), (5768, "M01", 1));
-    assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
+    let cals = extra_calendars_at(PosixNs(ns), &RenderZone::Utc);
+    assert_eq!(cals[0].name, "中華民國");
+    let by = |n: &str| cals.iter().find(|e| e.name == n).unwrap();
+    assert_eq!((by("Hebrew").year, by("Hebrew").day), (5768, 1));
+    assert_eq!((by("Islamic").year, by("Islamic").month), (1428, 9));
 }
 
 // --- extra calendars: Persian / Buddhist / Japanese (icu, feature=altcal) ------
@@ -659,15 +662,4 @@ fn extra_calendars_persian_buddhist_japanese() {
     // Shown in the day card.
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("persian") && card.contains("令和"), "{card}");
-}
-
-#[cfg(feature = "altcal")]
-#[test]
-fn extra_calendars_at_resolves_for_an_instant() {
-    use timeglyph::cal::extra_calendars_at;
-    use timeglyph::PosixNs;
-    // 2025-03-21T12:00Z → Persian 1404 (Nowruz).
-    let ns = 1_742_558_400_i128 * 1_000_000_000;
-    let v = extra_calendars_at(PosixNs(ns), &RenderZone::Utc);
-    assert!(v.iter().any(|e| e.name == "Persian" && e.year == 1404));
 }

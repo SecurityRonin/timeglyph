@@ -69,12 +69,16 @@ its scene tile.
     @ @ @ @ @ @ @
       @ @ @ @ @
 
-  chinese   lunar 十二月十六日 · 小寒
+  chinese   十二月十六日 · 小寒
             甲丁甲庚
             辰丑申午
             年月日時
+  中華民國  114年1月15日
+  japanese  令和7年1月15日
+  buddhist  15 Jan 2568 BE
   hebrew    15 Tevet 5785
   islamic   15 Rajab 1446
+  persian   26 Dey 1403
   season    winter (N. hemisphere; solar longitude 295.6deg)
        _===_
       (.o.o.)
@@ -84,8 +88,8 @@ its scene tile.
 ```
 
 The month view closes with an info panel (Chinese year + solar term, season, the
-mid-month moon, and the Hebrew / Islamic spans), and the year view opens with the
-season timeline of astronomically-exact equinox/solstice dates.
+mid-month moon, and each alternative calendar's year), and the year view opens with
+the season timeline of astronomically-exact equinox/solstice dates.
 
 ## Definitions and conventions
 
@@ -127,6 +131,8 @@ pillar (時柱) is computed at the day's noon** (午時); pass a time —
 `cal 2025-02-19T14:30` — to get the 時柱 for that actual hour (the year/month/day
 pillars are unchanged). The solar term is shown as a period phrase — the bare term
 on its own day, else `<term>後第<N>日` (e.g. `雨水後第七日`) — so a day well past the
-term is not misread as its exact day. Behind the `altcal` feature, the Hebrew and
-Islamic (tabular civil) dates come from ICU4X, along with the Persian (Solar
-Hijri), Buddhist, and Japanese-era calendars. All values appear in `--json`.
+term is not misread as its exact day. Behind the `altcal` feature, six further
+calendars come from ICU4X, shown in order: **中華民國** (ROC / Minguo, year =
+Gregorian − 1911), **Japanese-era** (令和/平成/…), **Buddhist** (Gregorian + 543
+BE), **Hebrew**, **Islamic** (tabular civil), and **Persian** (Solar Hijri). All
+values appear in `--json`.
