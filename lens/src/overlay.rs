@@ -55,7 +55,8 @@ pub fn run(verbose: u8) -> Result<(), String> {
     init_tracing(verbose);
     tracing::info!(verbose, "TimeGlyph Lens starting");
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([560.0, 400.0])
+        // Wide enough that the six alternative-calendar rows don't wrap by default.
+        .with_inner_size([680.0, 400.0])
         .with_min_inner_size([380.0, 220.0])
         .with_always_on_top()
         .with_title("TimeGlyph Lens");
