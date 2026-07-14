@@ -456,7 +456,10 @@ fn day_card_shows_all_alternative_calendars_and_season() {
     // 2024-09-18 (solar longitude ~176°) is still summer — the autumn equinox
     // (180°) is Sept 22 — so the season is "summer" and its scene tile (beach) draws.
     assert!(card.contains("summer"), "season missing:\n{card}");
-    assert!(card.contains("beach"), "summer scene tile missing:\n{card}");
+    assert!(
+        card.contains("-- O --"),
+        "summer scene tile (sun) missing:\n{card}"
+    );
     // A clearly-autumn day draws the leaf-fall tile and names autumn.
     let autumn = render_day_text(&build_day(date(2024, 11, 1), &RenderZone::Utc).unwrap());
     assert!(
@@ -466,7 +469,7 @@ fn day_card_shows_all_alternative_calendars_and_season() {
     // A winter day draws the snowman.
     let winter = render_day_text(&build_day(date(2025, 1, 15), &RenderZone::Utc).unwrap());
     assert!(
-        winter.contains("snowman"),
+        winter.contains("_===_"),
         "winter scene tile missing:\n{winter}"
     );
 }
@@ -487,8 +490,8 @@ fn month_view_has_an_overlay_footer() {
         "chinese year pillar missing from month footer:\n{s}"
     );
     assert!(
-        s.contains("beach"),
-        "summer scene tile (beach) missing from month panel:\n{s}"
+        s.contains("-- O --"),
+        "summer scene tile missing from month panel:\n{s}"
     );
     assert!(
         s.contains("Mo") && s.contains("Su"),
@@ -610,11 +613,11 @@ fn day_card_season_and_tile_follow_the_zone() {
     let syd = RenderZone::parse("Australia/Sydney").unwrap();
     let card = render_day_text(&build_day(date(2026, 1, 15), &syd).unwrap());
     assert!(card.contains("summer"), "sydney summer:\n{card}");
-    assert!(card.contains("beach"), "sydney beach tile:\n{card}");
+    assert!(card.contains("-- O --"), "sydney summer tile:\n{card}");
     let ldn = RenderZone::parse("Europe/London").unwrap();
     let cardn = render_day_text(&build_day(date(2026, 1, 15), &ldn).unwrap());
     assert!(
-        cardn.contains("winter") && cardn.contains("snowman"),
+        cardn.contains("winter") && cardn.contains("_===_"),
         "london winter:\n{cardn}"
     );
 }
@@ -633,4 +636,38 @@ fn altcal_at_resolves_hebrew_and_islamic_for_an_instant() {
     let i = i.expect("islamic");
     assert_eq!((h.year, h.month_code.as_str(), h.day), (5768, "M01", 1));
     assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
+}
+
+// --- extra calendars: Persian / Buddhist / Japanese (icu, feature=altcal) ------
+
+#[cfg(feature = "altcal")]
+#[test]
+fn extra_calendars_persian_buddhist_japanese() {
+    // 2025-03-21 (Nowruz): Persian 1 Farvardin 1404; Buddhist 2568 (2025+543);
+    // Japanese 令和7年 (Reiwa 7).
+    let e = &day(2025, 3, 21).extra_calendars;
+    let by_name = |n: &str| e.iter().find(|x| x.name == n).unwrap();
+    let p = by_name("Persian");
+    assert_eq!((p.year, p.month, p.day), (1404, 1, 1));
+    assert_eq!(p.formatted, "1 Farvardin 1404");
+    let b = by_name("Buddhist");
+    assert_eq!(b.year, 2568);
+    assert!(b.formatted.ends_with("BE"), "{}", b.formatted);
+    let j = by_name("Japanese");
+    assert_eq!(j.year, 7);
+    assert!(j.formatted.contains("令和"), "{}", j.formatted);
+    // Shown in the day card.
+    let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
+    assert!(card.contains("persian") && card.contains("令和"), "{card}");
+}
+
+#[cfg(feature = "altcal")]
+#[test]
+fn extra_calendars_at_resolves_for_an_instant() {
+    use timeglyph::cal::extra_calendars_at;
+    use timeglyph::PosixNs;
+    // 2025-03-21T12:00Z → Persian 1404 (Nowruz).
+    let ns = 1_742_558_400_i128 * 1_000_000_000;
+    let v = extra_calendars_at(PosixNs(ns), &RenderZone::Utc);
+    assert!(v.iter().any(|e| e.name == "Persian" && e.year == 1404));
 }

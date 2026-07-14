@@ -1319,10 +1319,18 @@ fn altcal_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, pal: Pale
         ui.label("");
         return;
     };
+    let extras: String = v
+        .extras
+        .iter()
+        .map(|(n, f)| format!("  ·  {n} {f}"))
+        .collect();
     ui.label(
-        RichText::new(format!("Hebrew {}  ·  Islamic {}", v.hebrew, v.islamic))
-            .font(FontId::proportional(10.5))
-            .color(pal.faint),
+        RichText::new(format!(
+            "Hebrew {}  ·  Islamic {}{extras}",
+            v.hebrew, v.islamic
+        ))
+        .font(FontId::proportional(10.5))
+        .color(pal.faint),
     );
 }
 

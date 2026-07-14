@@ -272,6 +272,10 @@ fn append_day_overlays(out: &mut String, d: &CalDay, color: ColorMode) {
             i.year
         );
     }
+    #[cfg(feature = "altcal")]
+    for e in &d.extra_calendars {
+        let _ = writeln!(out, "  {:<9} {}", e.name.to_lowercase(), e.formatted);
+    }
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
         let hemi = if d.southern_hemisphere { "S" } else { "N" };
         let _ = writeln!(

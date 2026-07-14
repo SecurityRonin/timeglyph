@@ -109,7 +109,7 @@ const SEASON_TILE: [[&str; 6]; 4] = [
         " *---- o ----*",
         "  .  /|\\  .",
         "   *  '  *",
-        "   blossom",
+        "   spring",
     ],
     // summer: beach (sun + umbrella + waves)
     [
@@ -118,7 +118,7 @@ const SEASON_TILE: [[&str; 6]; 4] = [
         "  / | \\      |",
         " ~~~~~~~~~~~~|~~~",
         "            |",
-        "   beach",
+        "   summer",
     ],
     // autumn: falling leaves
     [
@@ -127,7 +127,7 @@ const SEASON_TILE: [[&str; 6]; 4] = [
         " ,  &   ,   &",
         "   &   ,  &",
         "  ~~~~~~~~~~~",
-        "   leaves",
+        "   autumn",
     ],
     // winter: snowman
     [
@@ -136,12 +136,12 @@ const SEASON_TILE: [[&str; 6]; 4] = [
         "    ( >^< )",
         "   (( : : ))",
         "  *  *  *  *  *",
-        "   snowman",
+        "   winter",
     ],
 ];
 
 /// The six-line scene tile for a season index (`0..=3`, clamped) — the last line
-/// names the scene (blossom / beach / leaves / snowman).
+/// names the season (spring / summer / autumn / winter).
 #[must_use]
 pub fn season_tile(season_index: u8) -> &'static [&'static str; 6] {
     &SEASON_TILE[(season_index as usize) % 4]

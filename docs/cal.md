@@ -128,4 +128,5 @@ pillar (時柱) is computed at the day's noon** (午時); pass a time —
 pillars are unchanged). The solar term is shown as a period phrase — the bare term
 on its own day, else `<term>後第<N>日` (e.g. `雨水後第七日`) — so a day well past the
 term is not misread as its exact day. Behind the `altcal` feature, the Hebrew and
-Islamic (tabular civil) dates come from ICU4X. All values appear in `--json`.
+Islamic (tabular civil) dates come from ICU4X, along with the Persian (Solar
+Hijri), Buddhist, and Japanese-era calendars. All values appear in `--json`.

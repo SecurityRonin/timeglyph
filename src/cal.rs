@@ -126,6 +126,23 @@ pub struct IslamicDate {
     pub day: u8,
 }
 
+/// One additional calendar's date for a day — a generic, structured record
+/// (Persian / Buddhist / Japanese) with a ready-to-display string.
+#[cfg(feature = "altcal")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExtraCal {
+    /// Calendar name (`Persian`, `Buddhist`, `Japanese`).
+    pub name: String,
+    /// Year in that calendar (year-in-era for Japanese).
+    pub year: i32,
+    /// Month ordinal, 1-based.
+    pub month: u8,
+    /// Day of month.
+    pub day: u8,
+    /// A human-readable rendering (month names / era resolved).
+    pub formatted: String,
+}
+
 /// Hemisphere for mapping a solar longitude to a season name.
 #[cfg(feature = "lunisolar")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -428,6 +445,9 @@ pub struct CalDay {
     /// Islamic (tabular civil) calendar date.
     #[cfg(feature = "altcal")]
     pub alt_islamic: Option<IslamicDate>,
+    /// Additional calendars (Persian, Buddhist, Japanese).
+    #[cfg(feature = "altcal")]
+    pub extra_calendars: Vec<ExtraCal>,
     /// Leap seconds inserted (`+1`) / deleted (`-1`) during this UTC day.
     #[cfg(feature = "leap")]
     pub leap_second: i8,
@@ -573,6 +593,51 @@ pub fn islamic_date(date: Date) -> Option<IslamicDate> {
     })
 }
 
+/// The Persian (Solar Hijri), Buddhist, and Japanese-era dates for a civil date,
+/// via ICU4X — the generic "extra calendars" list (`cal` day card + lens overlay).
+#[cfg(feature = "altcal")]
+#[must_use]
+pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
+    use crate::calfmt::{greg_month_abbr, japanese_era, persian_month};
+    let Some(iso) = icu_iso(date) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(3);
+
+    let p = iso.to_calendar(icu_calendar::cal::Persian);
+    let (py, pm, pd) = (p.era_year().year, p.month().ordinal, p.day_of_month().0);
+    out.push(ExtraCal {
+        name: "Persian".to_string(),
+        year: py,
+        month: pm,
+        day: pd,
+        formatted: format!("{pd} {} {py}", persian_month(pm)),
+    });
+
+    let b = iso.to_calendar(icu_calendar::cal::Buddhist);
+    let (by, bm, bd) = (b.era_year().year, b.month().ordinal, b.day_of_month().0);
+    out.push(ExtraCal {
+        name: "Buddhist".to_string(),
+        year: by,
+        month: bm,
+        day: bd,
+        formatted: format!("{bd} {} {by} BE", greg_month_abbr(bm)),
+    });
+
+    let j = iso.to_calendar(icu_calendar::cal::Japanese::new());
+    let jey = j.era_year();
+    let (jy, jm, jd) = (jey.year, j.month().ordinal, j.day_of_month().0);
+    out.push(ExtraCal {
+        name: "Japanese".to_string(),
+        year: jy,
+        month: jm,
+        day: jd,
+        formatted: format!("{}{jy}年{jm}月{jd}日", japanese_era(jey.era.as_str())),
+    });
+
+    out
+}
+
 /// The Hebrew and Islamic dates for the civil date of `instant` in `zone` — a
 /// one-call helper for consumers that work from an instant (the lens overlay).
 #[cfg(feature = "altcal")]
@@ -586,6 +651,17 @@ pub fn altcal_at(
     };
     let date = ts.to_zoned(zone_to_tz(zone)).date();
     (hebrew_date(date), islamic_date(date))
+}
+
+/// The extra calendars (Persian / Buddhist / Japanese) for the civil date of
+/// `instant` in `zone` — the instant-based helper for the lens overlay.
+#[cfg(feature = "altcal")]
+#[must_use]
+pub fn extra_calendars_at(instant: crate::PosixNs, zone: &RenderZone) -> Vec<ExtraCal> {
+    let Ok(ts) = jiff::Timestamp::from_nanosecond(instant.0) else {
+        return Vec::new();
+    };
+    extra_calendars(ts.to_zoned(zone_to_tz(zone)).date())
 }
 
 /// The Julian Ephemeris Day (TT) for a reference instant `ref_ns` (ns since Unix).
@@ -731,6 +807,8 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
         alt_hebrew,
         #[cfg(feature = "altcal")]
         alt_islamic,
+        #[cfg(feature = "altcal")]
+        extra_calendars: extra_calendars(date),
         #[cfg(feature = "leap")]
         leap_second: crate::leap::leap_seconds_on_utc_day(unix_utc_midnight),
         #[cfg(feature = "leap")]

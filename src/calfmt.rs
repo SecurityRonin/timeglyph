@@ -119,6 +119,54 @@ pub fn islamic_month(ordinal: u8) -> &'static str {
         .unwrap_or("?")
 }
 
+/// Persian (Solar Hijri) month name for a 1-based ordinal.
+#[must_use]
+pub fn persian_month(ordinal: u8) -> &'static str {
+    const M: [&str; 12] = [
+        "Farvardin",
+        "Ordibehesht",
+        "Khordad",
+        "Tir",
+        "Mordad",
+        "Shahrivar",
+        "Mehr",
+        "Aban",
+        "Azar",
+        "Dey",
+        "Bahman",
+        "Esfand",
+    ];
+    M.get((ordinal as usize).wrapping_sub(1))
+        .copied()
+        .unwrap_or("?")
+}
+
+/// The Japanese era name (kanji) for an ICU era code (`reiwa`, `heisei`, …). The
+/// modern eras; an unknown/older code falls back to the code itself.
+#[must_use]
+pub fn japanese_era(code: &str) -> &'static str {
+    match code {
+        "reiwa" => "令和",
+        "heisei" => "平成",
+        "showa" => "昭和",
+        "taisho" => "大正",
+        "meiji" => "明治",
+        _ => "?",
+    }
+}
+
+/// A short Gregorian month name for a 1-based ordinal (for the Buddhist era, whose
+/// months are the Gregorian ones).
+#[must_use]
+pub fn greg_month_abbr(ordinal: u8) -> &'static str {
+    const M: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    M.get((ordinal as usize).wrapping_sub(1))
+        .copied()
+        .unwrap_or("?")
+}
+
 /// Hebrew month name for an ICU month code (`M01`..`M12`, `M05L` = Adar I).
 #[must_use]
 pub fn hebrew_month(code: &str) -> &'static str {
