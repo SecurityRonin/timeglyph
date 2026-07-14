@@ -532,31 +532,60 @@ fn chinese_at(ref_ns: i128, zone: &RenderZone) -> Option<ChineseDate> {
 /// The Hebrew and Islamic (tabular civil) overlays for `date`, via ICU4X.
 #[cfg(feature = "altcal")]
 fn altcal_on(date: Date) -> (Option<HebrewDate>, Option<IslamicDate>) {
-    let Ok(iso) = icu_calendar::Date::try_new_iso(
-        i32::from(date.year()),
-        date.month() as u8,
-        date.day() as u8,
-    ) else {
-        return (None, None);
-    };
-    let h = iso.to_calendar(icu_calendar::cal::Hebrew);
-    let hebrew = HebrewDate {
+    (hebrew_date(date), islamic_date(date))
+}
+
+/// The ICU4X ISO date for a jiff civil date, if representable.
+#[cfg(feature = "altcal")]
+fn icu_iso(date: Date) -> Option<icu_calendar::Date<icu_calendar::cal::Iso>> {
+    icu_calendar::Date::try_new_iso(i32::from(date.year()), date.month() as u8, date.day() as u8)
+        .ok()
+}
+
+/// The Hebrew calendar date for a civil date, via ICU4X. Reusable by any consumer
+/// (the `cal` day card, the lens overlay).
+#[cfg(feature = "altcal")]
+#[must_use]
+pub fn hebrew_date(date: Date) -> Option<HebrewDate> {
+    let h = icu_iso(date)?.to_calendar(icu_calendar::cal::Hebrew);
+    Some(HebrewDate {
         year: h.era_year().year,
         month: h.month().ordinal,
         day: h.day_of_month().0,
         month_code: h.month().to_input().code().to_string(),
-    };
+    })
+}
+
+/// The Islamic (tabular civil, type II / Friday epoch) date for a civil date, via
+/// ICU4X. Reusable by any consumer (the `cal` day card, the lens overlay).
+#[cfg(feature = "altcal")]
+#[must_use]
+pub fn islamic_date(date: Date) -> Option<IslamicDate> {
     let cal = icu_calendar::cal::Hijri::new_tabular(
         icu_calendar::cal::HijriTabularLeapYears::TypeII,
         icu_calendar::cal::HijriTabularEpoch::Friday,
     );
-    let i = iso.to_calendar(cal);
-    let islamic = IslamicDate {
+    let i = icu_iso(date)?.to_calendar(cal);
+    Some(IslamicDate {
         year: i.era_year().year,
         month: i.month().ordinal,
         day: i.day_of_month().0,
+    })
+}
+
+/// The Hebrew and Islamic dates for the civil date of `instant` in `zone` — a
+/// one-call helper for consumers that work from an instant (the lens overlay).
+#[cfg(feature = "altcal")]
+#[must_use]
+pub fn altcal_at(
+    instant: crate::PosixNs,
+    zone: &RenderZone,
+) -> (Option<HebrewDate>, Option<IslamicDate>) {
+    let Ok(ts) = jiff::Timestamp::from_nanosecond(instant.0) else {
+        return (None, None);
     };
-    (Some(hebrew), Some(islamic))
+    let date = ts.to_zoned(zone_to_tz(zone)).date();
+    (hebrew_date(date), islamic_date(date))
 }
 
 /// The Julian Ephemeris Day (TT) for a reference instant `ref_ns` (ns since Unix).

@@ -20,7 +20,7 @@ use timeglyph::{DateStyle, PosixNs, RenderZone};
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
-use timeglyph_lens::{ganzhi, text, tzinfo, tzmap};
+use timeglyph_lens::{altcal, ganzhi, text, tzinfo, tzmap};
 
 use crate::picker::Picker;
 use crate::scan::{self, NumberReadings, Reading};
@@ -616,6 +616,10 @@ fn render_readings(
                                         ui.label(""); // col 1 (confidence)
                                         ui.label(""); // col 2 (format)
                                         ganzhi_cell(ui, r.instant, zone, longitude, pal);
+                                        ui.end_row();
+                                        ui.label(""); // col 1
+                                        ui.label(""); // col 2
+                                        altcal_cell(ui, r.instant, zone, pal);
                                         ui.end_row();
                                     }
                                 }
@@ -1306,6 +1310,20 @@ fn ganzhi_cell(
             ui.add_space(6.0);
         }
     });
+}
+
+/// The Hebrew + Islamic calendar dates for a reading, on one faint line beneath
+/// the 干支 row — the lens counterpart to the `cal` day card's alt-calendar rows.
+fn altcal_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, pal: Palette) {
+    let Some(v) = altcal::altcal_view(instant, zone) else {
+        ui.label("");
+        return;
+    };
+    ui.label(
+        RichText::new(format!("Hebrew {}  ·  Islamic {}", v.hebrew, v.islamic))
+            .font(FontId::proportional(10.5))
+            .color(pal.faint),
+    );
 }
 
 /// A calm centred placeholder instead of a debug string.

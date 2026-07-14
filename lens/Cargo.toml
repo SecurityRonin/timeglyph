@@ -21,7 +21,7 @@ path = "src/main.rs"
 [dependencies]
 # `lunisolar` powers the opt-in 干支 expansion; `holiday` annotates each reading
 # with the public holiday (if any) for its date in the display zone.
-timeglyph = { path = "..", features = ["lunisolar", "holiday"] }
+timeglyph = { path = "..", features = ["lunisolar", "holiday", "altcal"] }
 # Structured instrumentation for debuggability; the subscriber is installed by
 # `run()` and gated by -v / -vv (silent by default).
 tracing = "0.1"

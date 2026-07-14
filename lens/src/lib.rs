@@ -15,6 +15,7 @@ pub use timeglyph::scan;
 /// per-number cap to [`scan::inspect_text`].
 pub const READINGS_SHOWN: usize = usize::MAX;
 
+pub mod altcal;
 pub mod fonts;
 pub mod ganzhi;
 pub mod ocr;

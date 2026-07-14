@@ -609,3 +609,19 @@ fn day_card_season_and_tile_follow_the_zone() {
         "london winter:\n{cardn}"
     );
 }
+
+// --- altcal_at: Hebrew/Islamic of an instant at a zone (shared with the lens) --
+
+#[cfg(feature = "altcal")]
+#[test]
+fn altcal_at_resolves_hebrew_and_islamic_for_an_instant() {
+    use timeglyph::cal::altcal_at;
+    use timeglyph::PosixNs;
+    // 2007-09-13T12:00:00Z → 1 Tishrei 5768 / 1 Ramadan 1428.
+    let ns = 1_189_684_800_i128 * 1_000_000_000;
+    let (h, i) = altcal_at(PosixNs(ns), &RenderZone::Utc);
+    let h = h.expect("hebrew");
+    let i = i.expect("islamic");
+    assert_eq!((h.year, h.month_code.as_str(), h.day), (5768, "M01", 1));
+    assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
+}
