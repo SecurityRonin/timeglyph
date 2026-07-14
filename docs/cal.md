@@ -21,12 +21,12 @@ timeglyph cal 2026                # a whole year (with the season timeline)
 timeglyph cal 2026-11-01          # one day, in full detail (with a moon disc)
 timeglyph cal 2025-02-19T14:30    # a specific instant → the 時柱 for that hour
 timeglyph cal 2026-11 --tz America/New_York   # zone-aware: DST folds/gaps flagged
-timeglyph cal 2026 --south        # southern-hemisphere seasons
+timeglyph cal 2026 --tz Australia/Sydney      # southern-hemisphere seasons (Dec = summer)
 timeglyph cal 2026-07 --json      # faithful, one record per day, for pipes
 ```
 
 Flags: `--tz <zone>` (global; UTC by default), `--week-start monday|sunday`,
-`--south` (flip the season strip), `--json`.
+`--json`.
 
 ## The month grid
 
@@ -108,7 +108,10 @@ season timeline of astronomically-exact equinox/solstice dates.
   longitude reaches 0/90/180/270° (the 春分/夏至/秋分/冬至 solar terms), from the
   stem-branch ephemeris — not fixed calendar dates. Which season a boundary opens
   depends on hemisphere: the December solstice opens winter in the north, summer
-  in the south.
+  in the south. **The hemisphere is derived from the `--tz` zone** — a named zone
+  south of the equator (`Australia/Sydney`, `Pacific/Auckland`, `America/Santiago`)
+  yields austral seasons automatically, from the tzdb `zone1970.tab` latitudes. UTC
+  and fixed offsets carry no latitude, so they default to the northern hemisphere.
 - **Moon phase** uses the true geocentric elongation (Meeus ch. 48, including the
   Moon's ecliptic latitude and the real Sun/Moon distances), so the illuminated
   fraction is accurate near the quarters. It is an almanac-grade value, useful for

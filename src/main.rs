@@ -234,9 +234,6 @@ enum Commands {
         /// First day of the week: `monday` (ISO, default) or `sunday`.
         #[arg(long, value_name = "DAY", default_value = "monday")]
         week_start: String,
-        /// Southern hemisphere: flip the season strip (December solstice = summer).
-        #[arg(long)]
-        south: bool,
         /// Emit the calendar as JSON (faithful, one record per day).
         #[arg(long)]
         json: bool,
@@ -320,9 +317,8 @@ fn main() -> ExitCode {
         Some(Commands::Cal {
             when,
             week_start,
-            south,
             json,
-        }) => run_cal(when.as_deref(), &week_start, south, json, &zone),
+        }) => run_cal(when.as_deref(), &week_start, json, &zone),
         Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
@@ -1230,8 +1226,7 @@ fn emit_day(day: &timeglyph::cal::CalDay, json: bool) -> u8 {
 }
 
 /// `cal` subcommand: render a forensic calendar (year / month / single day).
-#[cfg_attr(not(feature = "lunisolar"), allow(unused_variables))]
-fn run_cal(when: Option<&str>, week_start: &str, south: bool, json: bool, zone: &RenderZone) -> u8 {
+fn run_cal(when: Option<&str>, week_start: &str, json: bool, zone: &RenderZone) -> u8 {
     use timeglyph::cal::{build_day, build_month, WeekStart};
     let ws = match week_start.to_ascii_lowercase().as_str() {
         "monday" | "mon" => WeekStart::Monday,
@@ -1304,15 +1299,14 @@ fn run_cal(when: Option<&str>, week_start: &str, south: bool, json: bool, zone: 
             } else {
                 #[cfg(feature = "lunisolar")]
                 {
-                    use timeglyph::cal::{season_markers, Hemisphere};
-                    let hemi = if south {
-                        Hemisphere::South
-                    } else {
-                        Hemisphere::North
-                    };
+                    use timeglyph::cal::{hemisphere_for, season_markers};
                     print!(
                         "{}",
-                        timeglyph::cal_art::season_strip(y, &season_markers(y), hemi)
+                        timeglyph::cal_art::season_strip(
+                            y,
+                            &season_markers(y),
+                            hemisphere_for(zone)
+                        )
                     );
                     println!();
                 }

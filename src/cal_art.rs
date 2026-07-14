@@ -147,6 +147,18 @@ pub fn season_tile(season_index: u8) -> &'static [&'static str; 6] {
     &SEASON_TILE[(season_index as usize) % 4]
 }
 
+/// The scene tile for a season *name* (`spring`/`summer`/`autumn`/`winter`).
+#[must_use]
+pub fn season_tile_for(season: &str) -> &'static [&'static str; 6] {
+    let idx = match season {
+        "spring" => 0,
+        "summer" => 1,
+        "autumn" => 2,
+        _ => 3, // winter
+    };
+    season_tile(idx)
+}
+
 use crate::cal::{season_for, Hemisphere, SeasonMarker};
 
 /// The astronomical-event → hemisphere season name for a cardinal boundary, and

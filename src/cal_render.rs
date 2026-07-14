@@ -91,12 +91,6 @@ fn hebrew_month(code: &str) -> &'static str {
     }
 }
 
-/// The northern-hemisphere season name for a solar longitude.
-#[cfg(feature = "lunisolar")]
-fn season_name(solar_longitude_deg: f64) -> &'static str {
-    crate::cal::season_for(solar_longitude_deg, crate::cal::Hemisphere::North)
-}
-
 /// The Chinese lunar month name (`正月`..`十二月`, `閏`-prefixed for a leap month).
 #[cfg(feature = "lunisolar")]
 fn lunar_month_cn(month: u8, is_leap: bool) -> String {
@@ -234,8 +228,8 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>) -> String {
                 c.year_pillar, c.solar_term, c.lunar_month
             );
         }
-        if let Some(lon) = mid.solar_longitude_deg {
-            let _ = writeln!(out, "  season {}", season_name(lon));
+        if let Some(season) = &mid.season {
+            let _ = writeln!(out, "  season {season}");
         }
         if let Some(mo) = &mid.moon {
             let _ = writeln!(
@@ -312,16 +306,15 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             i.year
         );
     }
-    if let Some(lon) = d.solar_longitude_deg {
+    if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
+        let hemi = if d.southern_hemisphere { "S" } else { "N" };
         let _ = writeln!(
             out,
-            "  season    {} (N. hemisphere; solar longitude {lon:.1}deg)",
-            season_name(lon)
+            "  season    {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
         );
         // The seasonal scene tile (spring blossom / summer beach / autumn leaves /
-        // winter snowman), keyed by the northern-hemisphere quarter.
-        let idx = (lon.rem_euclid(360.0) / 90.0).floor() as u8 % 4;
-        for line in crate::cal_art::season_tile(idx) {
+        // winter snowman), keyed by the resolved season name.
+        for line in crate::cal_art::season_tile_for(season) {
             let _ = writeln!(out, "  {line}");
         }
     }

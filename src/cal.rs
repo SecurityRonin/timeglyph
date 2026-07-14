@@ -152,6 +152,142 @@ pub fn season_for(solar_longitude_deg: f64, hemisphere: Hemisphere) -> &'static 
     }
 }
 
+/// The 114 southern-hemisphere IANA zones, generated from the tzdb `zone1970.tab`
+/// coordinates (every zone whose latitude is south of the equator). A zone's
+/// hemisphere is a geographic fact of its location, not a heuristic — this table
+/// is the authoritative-source derivation of it.
+#[cfg(feature = "lunisolar")]
+const SOUTHERN_ZONES: &[&str] = &[
+    "Africa/Blantyre",
+    "Africa/Brazzaville",
+    "Africa/Bujumbura",
+    "Africa/Dar_es_Salaam",
+    "Africa/Gaborone",
+    "Africa/Harare",
+    "Africa/Johannesburg",
+    "Africa/Kigali",
+    "Africa/Kinshasa",
+    "Africa/Luanda",
+    "Africa/Lubumbashi",
+    "Africa/Lusaka",
+    "Africa/Maputo",
+    "Africa/Maseru",
+    "Africa/Mbabane",
+    "Africa/Nairobi",
+    "Africa/Windhoek",
+    "America/Araguaina",
+    "America/Argentina/Buenos_Aires",
+    "America/Argentina/Catamarca",
+    "America/Argentina/Cordoba",
+    "America/Argentina/Jujuy",
+    "America/Argentina/La_Rioja",
+    "America/Argentina/Mendoza",
+    "America/Argentina/Rio_Gallegos",
+    "America/Argentina/Salta",
+    "America/Argentina/San_Juan",
+    "America/Argentina/San_Luis",
+    "America/Argentina/Tucuman",
+    "America/Argentina/Ushuaia",
+    "America/Asuncion",
+    "America/Bahia",
+    "America/Belem",
+    "America/Campo_Grande",
+    "America/Coyhaique",
+    "America/Cuiaba",
+    "America/Eirunepe",
+    "America/Fortaleza",
+    "America/Guayaquil",
+    "America/La_Paz",
+    "America/Lima",
+    "America/Maceio",
+    "America/Manaus",
+    "America/Montevideo",
+    "America/Noronha",
+    "America/Porto_Velho",
+    "America/Punta_Arenas",
+    "America/Recife",
+    "America/Rio_Branco",
+    "America/Santarem",
+    "America/Santiago",
+    "America/Sao_Paulo",
+    "Antarctica/Casey",
+    "Antarctica/Davis",
+    "Antarctica/DumontDUrville",
+    "Antarctica/Macquarie",
+    "Antarctica/Mawson",
+    "Antarctica/McMurdo",
+    "Antarctica/Palmer",
+    "Antarctica/Rothera",
+    "Antarctica/Syowa",
+    "Antarctica/Troll",
+    "Antarctica/Vostok",
+    "Asia/Dili",
+    "Asia/Jakarta",
+    "Asia/Jayapura",
+    "Asia/Makassar",
+    "Atlantic/South_Georgia",
+    "Atlantic/St_Helena",
+    "Atlantic/Stanley",
+    "Australia/Adelaide",
+    "Australia/Brisbane",
+    "Australia/Broken_Hill",
+    "Australia/Darwin",
+    "Australia/Eucla",
+    "Australia/Hobart",
+    "Australia/Lindeman",
+    "Australia/Lord_Howe",
+    "Australia/Melbourne",
+    "Australia/Perth",
+    "Australia/Sydney",
+    "Indian/Antananarivo",
+    "Indian/Chagos",
+    "Indian/Christmas",
+    "Indian/Cocos",
+    "Indian/Comoro",
+    "Indian/Kerguelen",
+    "Indian/Mahe",
+    "Indian/Mauritius",
+    "Indian/Mayotte",
+    "Indian/Reunion",
+    "Pacific/Apia",
+    "Pacific/Auckland",
+    "Pacific/Bougainville",
+    "Pacific/Chatham",
+    "Pacific/Easter",
+    "Pacific/Efate",
+    "Pacific/Fakaofo",
+    "Pacific/Fiji",
+    "Pacific/Funafuti",
+    "Pacific/Gambier",
+    "Pacific/Guadalcanal",
+    "Pacific/Kanton",
+    "Pacific/Marquesas",
+    "Pacific/Niue",
+    "Pacific/Norfolk",
+    "Pacific/Noumea",
+    "Pacific/Pago_Pago",
+    "Pacific/Pitcairn",
+    "Pacific/Port_Moresby",
+    "Pacific/Rarotonga",
+    "Pacific/Tahiti",
+    "Pacific/Tongatapu",
+    "Pacific/Wallis",
+];
+
+/// The hemisphere for a render zone, derived from the IANA zone's latitude (tzdb
+/// `zone1970.tab`). A named zone south of the equator is [`Hemisphere::South`];
+/// UTC and fixed offsets carry no latitude, so they default to [`Hemisphere::North`].
+#[cfg(feature = "lunisolar")]
+#[must_use]
+pub fn hemisphere_for(zone: &RenderZone) -> Hemisphere {
+    if let RenderZone::Named(tz) = zone {
+        if tz.iana_name().is_some_and(|n| SOUTHERN_ZONES.contains(&n)) {
+            return Hemisphere::South;
+        }
+    }
+    Hemisphere::North
+}
+
 /// An astronomical season boundary — the instant the Sun's apparent longitude
 /// reaches a cardinal value (0/90/180/270°).
 #[cfg(feature = "lunisolar")]
@@ -278,6 +414,14 @@ pub struct CalDay {
     /// noon — the hemisphere-neutral season fact ([`season_for`] maps it to a name).
     #[cfg(feature = "lunisolar")]
     pub solar_longitude_deg: Option<f64>,
+    /// The season name (`spring`/`summer`/`autumn`/`winter`), resolved for the
+    /// zone's hemisphere ([`hemisphere_for`]).
+    #[cfg(feature = "lunisolar")]
+    pub season: Option<String>,
+    /// `true` if the render zone is in the southern hemisphere (the season was
+    /// flipped from the northern-hemisphere event mapping).
+    #[cfg(feature = "lunisolar")]
+    pub southern_hemisphere: bool,
     /// Hebrew calendar date (civil-date based).
     #[cfg(feature = "altcal")]
     pub alt_hebrew: Option<HebrewDate>,
@@ -523,6 +667,10 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
         |_| i128::from(unix_utc_midnight + 43_200) * 1_000_000_000,
         |z| z.timestamp().as_nanosecond(),
     );
+    #[cfg(feature = "lunisolar")]
+    let solar_lon = solar_longitude_at(ref_ns, date.year());
+    #[cfg(feature = "lunisolar")]
+    let hemisphere = hemisphere_for(zone);
 
     Ok(CalDay {
         date: date.to_string(),
@@ -545,7 +693,11 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
         #[cfg(feature = "lunisolar")]
         moon: Some(moon_at(ref_ns, date.year())),
         #[cfg(feature = "lunisolar")]
-        solar_longitude_deg: Some(solar_longitude_at(ref_ns, date.year())),
+        solar_longitude_deg: Some(solar_lon),
+        #[cfg(feature = "lunisolar")]
+        season: Some(season_for(solar_lon, hemisphere).to_string()),
+        #[cfg(feature = "lunisolar")]
+        southern_hemisphere: hemisphere == Hemisphere::South,
         #[cfg(feature = "altcal")]
         alt_hebrew,
         #[cfg(feature = "altcal")]

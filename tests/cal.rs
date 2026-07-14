@@ -561,3 +561,46 @@ fn build_day_at_moves_only_the_hour_pillar() {
         default.alt_chinese.unwrap().hour_pillar
     );
 }
+
+// --- Cycle 15: hemisphere derived from the zone (no --south flag) --------------
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn hemisphere_and_season_are_derived_from_the_zone() {
+    use timeglyph::cal::{hemisphere_for, Hemisphere};
+    // A named southern zone resolves to South (from tzdb zone1970.tab); mid-January
+    // is austral summer, boreal winter.
+    let syd = RenderZone::parse("Australia/Sydney").unwrap();
+    assert_eq!(hemisphere_for(&syd), Hemisphere::South);
+    let s = build_day(date(2026, 1, 15), &syd).unwrap();
+    assert_eq!(s.season.as_deref(), Some("summer"));
+    assert!(s.southern_hemisphere);
+    let ldn = RenderZone::parse("Europe/London").unwrap();
+    assert_eq!(hemisphere_for(&ldn), Hemisphere::North);
+    let n = build_day(date(2026, 1, 15), &ldn).unwrap();
+    assert_eq!(n.season.as_deref(), Some("winter"));
+    assert!(!n.southern_hemisphere);
+    // UTC and a fixed offset carry no latitude → default North.
+    assert_eq!(hemisphere_for(&RenderZone::Utc), Hemisphere::North);
+    assert_eq!(
+        hemisphere_for(&RenderZone::parse("+11:00").unwrap()),
+        Hemisphere::North
+    );
+}
+
+#[cfg(feature = "lunisolar")]
+#[test]
+fn day_card_season_and_tile_follow_the_zone() {
+    use timeglyph::cal_render::render_day_text;
+    // Sydney mid-January → summer + the beach tile; London → winter + snowman.
+    let syd = RenderZone::parse("Australia/Sydney").unwrap();
+    let card = render_day_text(&build_day(date(2026, 1, 15), &syd).unwrap());
+    assert!(card.contains("summer"), "sydney summer:\n{card}");
+    assert!(card.contains("beach"), "sydney beach tile:\n{card}");
+    let ldn = RenderZone::parse("Europe/London").unwrap();
+    let cardn = render_day_text(&build_day(date(2026, 1, 15), &ldn).unwrap());
+    assert!(
+        cardn.contains("winter") && cardn.contains("snowman"),
+        "london winter:\n{cardn}"
+    );
+}
