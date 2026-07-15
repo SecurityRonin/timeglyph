@@ -86,6 +86,8 @@ pub mod registry;
 /// Scan arbitrary text for timestamp candidates and decode each into ranked
 /// readings (the CLI `scan` command and the timeglyph-lens overlay share this).
 pub mod scan;
+/// Whole-second convenience over the `PosixNs` spine (filesystem/bodyfile use).
+pub mod secs;
 
 /// The engine's version (`CARGO_PKG_VERSION`), for callers that surface it — e.g.
 /// the timeglyph-lens overlay's landing screen.
@@ -125,6 +127,14 @@ pub struct PosixNs(pub i128);
 impl PosixNs {
     /// The Unix epoch (the zero of this scale).
     pub const UNIX_EPOCH: Self = Self(0);
+
+    /// Whole Unix seconds, floored toward negative infinity (sub-second precision
+    /// dropped). For callers that store a plain `i64` seconds timestamp — see the
+    /// [`crate::secs`] convenience module.
+    #[must_use]
+    pub fn unix_seconds(self) -> i64 {
+        self.0.div_euclid(1_000_000_000) as i64
+    }
 
     /// Render as an RFC 3339 / ISO 8601 UTC string. Returns `None` when the
     /// instant is outside the civil range `jiff` can represent (≈ years
