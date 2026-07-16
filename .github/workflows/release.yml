@@ -18,7 +18,7 @@ name: Release
 # fails on a not-yet-provisioned channel.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]*"]
 
 permissions:
   contents: write
