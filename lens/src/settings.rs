@@ -112,6 +112,13 @@ impl CalendarVisibility {
             _ => true,
         }
     }
+
+    /// Whether any alternative calendar is enabled (so the overlay knows whether
+    /// to draw the alt-calendar row at all — independent of the 干支 view).
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.roc || self.japanese || self.buddhist || self.hebrew || self.islamic || self.persian
+    }
 }
 
 /// The path of the settings file: `<config-dir>/timeglyph-lens/settings.json`

@@ -57,8 +57,9 @@ pub fn run(verbose: u8) -> Result<(), String> {
     init_tracing(verbose);
     tracing::info!(verbose, "TimeGlyph Lens starting");
     let mut viewport = egui::ViewportBuilder::default()
-        // Wide enough that the six alternative-calendar rows don't wrap by default.
-        .with_inner_size([680.0, 400.0])
+        // Wide enough that the alternative-calendar rows don't wrap, and tall
+        // enough for the full settings panel (七 calendar toggles) without scroll.
+        .with_inner_size([680.0, 560.0])
         .with_min_inner_size([380.0, 220.0])
         .with_always_on_top()
         .with_title("TimeGlyph Lens");
@@ -637,11 +638,15 @@ fn render_readings(
                                     chip_cell(ui, r, pal);
                                     datetime_cell(ui, r, zone, date_style, pal);
                                     ui.end_row();
+                                    // The 干支 row and the alternative-calendar row
+                                    // are independent — each drawn on its own toggle.
                                     if cal.show_lunar {
                                         ui.label(""); // col 1 (confidence)
                                         ui.label(""); // col 2 (format)
                                         ganzhi_cell(ui, r.instant, zone, longitude, pal);
                                         ui.end_row();
+                                    }
+                                    if cal.calendars.any() {
                                         ui.label(""); // col 1
                                         ui.label(""); // col 2
                                         altcal_cell(ui, r.instant, zone, cal.calendars, pal);
@@ -877,32 +882,24 @@ impl LensApp {
                             .font(FontId::proportional(11.0))
                             .color(pal.faint),
                     );
+                    // Every calendar is an independent toggle — the 干支/lunisolar
+                    // line and the six alternative calendars are siblings, not a
+                    // hierarchy (the alt calendars are not part of the 干支 view).
                     settings_changed |= ui
                         .checkbox(
                             &mut s.show_lunar,
                             "Chinese lunisolar and heavenly stem / earthly branch",
                         )
                         .changed();
-                    // The alternative calendars shown alongside the 干支, each an
-                    // independent toggle (only relevant while the expansion is on).
-                    if s.show_lunar {
-                        ui.indent("alt_calendars", |ui| {
-                            let c = &mut s.calendars;
-                            settings_changed |= ui
-                                .checkbox(&mut c.roc, "中華民國 Republic of China")
-                                .changed();
-                            settings_changed |=
-                                ui.checkbox(&mut c.japanese, "和暦 Japanese").changed();
-                            settings_changed |=
-                                ui.checkbox(&mut c.buddhist, "बौद्ध संवत् Buddhist").changed();
-                            settings_changed |=
-                                ui.checkbox(&mut c.hebrew, "לוח עברי Hebrew").changed();
-                            settings_changed |=
-                                ui.checkbox(&mut c.islamic, "هجري Islamic").changed();
-                            settings_changed |=
-                                ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
-                        });
-                    }
+                    let c = &mut s.calendars;
+                    settings_changed |= ui
+                        .checkbox(&mut c.roc, "中華民國 Republic of China")
+                        .changed();
+                    settings_changed |= ui.checkbox(&mut c.japanese, "和暦 Japanese").changed();
+                    settings_changed |= ui.checkbox(&mut c.buddhist, "बौद्ध संवत् Buddhist").changed();
+                    settings_changed |= ui.checkbox(&mut c.hebrew, "לוח עברי Hebrew").changed();
+                    settings_changed |= ui.checkbox(&mut c.islamic, "هجري Islamic").changed();
+                    settings_changed |= ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
                 }
                 ui.add_space(10.0);
                 ui.separator();
