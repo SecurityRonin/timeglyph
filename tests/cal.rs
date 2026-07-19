@@ -219,13 +219,14 @@ fn hebrew_and_islamic_overlays() {
     // 2007-09-13: Rosh Hashanah 5768 = 1 Tishrei 5768 (Hebrew); 1 Ramadan 1428
     // (Islamic tabular civil). Both independently verifiable (Hebcal / almanac).
     let cals = &day(2007, 9, 13).extra_calendars;
-    let by = |n: &str| cals.iter().find(|e| e.name == n).unwrap();
-    let h = by("Hebrew");
+    let by = |k: &str| cals.iter().find(|e| e.key == k).unwrap();
+    let h = by("hebrew");
     assert_eq!((h.year, h.month, h.day), (5768, 1, 1));
-    let i = by("Islamic");
+    let i = by("islamic");
     assert_eq!((i.year, i.month, i.day), (1428, 9, 1));
-    // The unified list is in display order, ROC first.
-    assert_eq!(cals[0].name, "中華民國");
+    // The unified list is in display order, ROC first, with a bilingual name.
+    assert_eq!(cals[0].key, "roc");
+    assert!(cals[0].name.contains("中華民國") && cals[0].name.contains("Republic of China"));
 }
 
 // --- Cycle 6a: moon phase overlay (stem-branch, feature=lunisolar) ------------
@@ -635,10 +636,10 @@ fn extra_calendars_at_resolves_the_ordered_list_for_an_instant() {
     // 2007-09-13T12:00:00Z: Hebrew 1 Tishrei 5768, Islamic 1 Ramadan 1428.
     let ns = 1_189_684_800_i128 * 1_000_000_000;
     let cals = extra_calendars_at(PosixNs(ns), &RenderZone::Utc);
-    assert_eq!(cals[0].name, "中華民國");
-    let by = |n: &str| cals.iter().find(|e| e.name == n).unwrap();
-    assert_eq!((by("Hebrew").year, by("Hebrew").day), (5768, 1));
-    assert_eq!((by("Islamic").year, by("Islamic").month), (1428, 9));
+    assert_eq!(cals[0].key, "roc");
+    let by = |k: &str| cals.iter().find(|e| e.key == k).unwrap();
+    assert_eq!((by("hebrew").year, by("hebrew").day), (5768, 1));
+    assert_eq!((by("islamic").year, by("islamic").month), (1428, 9));
 }
 
 // --- extra calendars: Persian / Buddhist / Japanese (icu, feature=altcal) ------
@@ -649,17 +650,17 @@ fn extra_calendars_persian_buddhist_japanese() {
     // 2025-03-21 (Nowruz): Persian 1 Farvardin 1404; Buddhist 2568 (2025+543);
     // Japanese 令和7年 (Reiwa 7).
     let e = &day(2025, 3, 21).extra_calendars;
-    let by_name = |n: &str| e.iter().find(|x| x.name == n).unwrap();
-    let p = by_name("Persian");
+    let by_key = |k: &str| e.iter().find(|x| x.key == k).unwrap();
+    let p = by_key("persian");
     assert_eq!((p.year, p.month, p.day), (1404, 1, 1));
     assert_eq!(p.formatted, "1 Farvardin 1404");
-    let b = by_name("Buddhist");
+    let b = by_key("buddhist");
     assert_eq!(b.year, 2568);
     assert!(b.formatted.ends_with("BE"), "{}", b.formatted);
-    let j = by_name("Japanese");
+    let j = by_key("japanese");
     assert_eq!(j.year, 7);
     assert!(j.formatted.contains("令和"), "{}", j.formatted);
-    // Shown in the day card.
+    // Shown in the day card (bilingual name + the Japanese era value).
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
-    assert!(card.contains("persian") && card.contains("令和"), "{card}");
+    assert!(card.contains("Persian") && card.contains("令和"), "{card}");
 }

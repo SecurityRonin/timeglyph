@@ -38,6 +38,8 @@ struct Settings {
     /// Whether to show the 干支 / lunisolar line (and, with it, the longitude
     /// input, which only refines the 干支 hour pillar). Off by default.
     show_lunar: bool,
+    /// Which alternative calendars are shown in the calendar expansion.
+    calendars: persist::CalendarVisibility,
     /// Datetime display style for rendered readings (ISO 8601 by default).
     date_style: DateStyle,
 }
@@ -363,6 +365,7 @@ impl LensApp {
                 // the OS setting each frame.
                 theme: saved.theme.resolve(None),
                 show_lunar: saved.show_lunar,
+                calendars: saved.calendars,
                 date_style: saved.date_style,
             })),
             verbose,
@@ -382,6 +385,7 @@ impl LensApp {
             date_style: cur.date_style,
             zone_spec: self.zone_spec(),
             longitude: self.longitude,
+            calendars: cur.calendars,
         });
     }
 
@@ -480,6 +484,7 @@ impl eframe::App for LensApp {
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
+        let cals = cur.calendars;
         let date_style = cur.date_style;
         let logo = self.logo.clone();
         // Cloned Arcs so the header's top-right controls (gear, ⏸ freeze) can
@@ -502,7 +507,18 @@ impl eframe::App for LensApp {
             if hits.is_empty() {
                 render_empty(ui, pal, logo.as_ref());
             } else {
-                render_readings(ui, &hits, &zone, longitude, show_lunar, date_style, pal);
+                render_readings(
+                    ui,
+                    &hits,
+                    &zone,
+                    longitude,
+                    CalPrefs {
+                        show_lunar,
+                        calendars: cals,
+                    },
+                    date_style,
+                    pal,
+                );
             }
         });
 
@@ -572,6 +588,14 @@ fn render_empty(ui: &mut egui::Ui, pal: Palette, logo: Option<&egui::TextureHand
     }
 }
 
+/// The calendar-expansion preferences: whether the 干支 expansion shows, and which
+/// alternative calendars within it are enabled.
+#[derive(Clone, Copy)]
+struct CalPrefs {
+    show_lunar: bool,
+    calendars: persist::CalendarVisibility,
+}
+
 /// The scrollable list of decoded readings: one card per number, each a
 /// confidence / format-chip / datetime grid, with the optional 干支 line beneath.
 fn render_readings(
@@ -579,7 +603,7 @@ fn render_readings(
     hits: &[scan::NumberReadings],
     zone: &RenderZone,
     longitude: Option<f64>,
-    show_lunar: bool,
+    cal: CalPrefs,
     date_style: DateStyle,
     pal: Palette,
 ) {
@@ -613,14 +637,14 @@ fn render_readings(
                                     chip_cell(ui, r, pal);
                                     datetime_cell(ui, r, zone, date_style, pal);
                                     ui.end_row();
-                                    if show_lunar {
+                                    if cal.show_lunar {
                                         ui.label(""); // col 1 (confidence)
                                         ui.label(""); // col 2 (format)
                                         ganzhi_cell(ui, r.instant, zone, longitude, pal);
                                         ui.end_row();
                                         ui.label(""); // col 1
                                         ui.label(""); // col 2
-                                        altcal_cell(ui, r.instant, zone, pal);
+                                        altcal_cell(ui, r.instant, zone, cal.calendars, pal);
                                         ui.end_row();
                                     }
                                 }
@@ -855,6 +879,26 @@ impl LensApp {
                             "Chinese lunisolar and heavenly stem / earthly branch",
                         )
                         .changed();
+                    // The alternative calendars shown alongside the 干支, each an
+                    // independent toggle (only relevant while the expansion is on).
+                    if s.show_lunar {
+                        ui.indent("alt_calendars", |ui| {
+                            let c = &mut s.calendars;
+                            settings_changed |= ui
+                                .checkbox(&mut c.roc, "中華民國 Republic of China")
+                                .changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.japanese, "和暦 Japanese").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.buddhist, "बौद्ध संवत् Buddhist").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.hebrew, "לוח עברי Hebrew").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.islamic, "هجري Islamic").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
+                        });
+                    }
                 }
                 ui.add_space(10.0);
                 ui.separator();
@@ -1315,23 +1359,20 @@ fn ganzhi_cell(
 
 /// The Hebrew + Islamic calendar dates for a reading, on one faint line beneath
 /// the 干支 row — the lens counterpart to the `cal` day card's alt-calendar rows.
-fn altcal_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, pal: Palette) {
+fn altcal_cell(
+    ui: &mut egui::Ui,
+    instant: PosixNs,
+    zone: &RenderZone,
+    cals: persist::CalendarVisibility,
+    pal: Palette,
+) {
     let Some(v) = altcal::altcal_view(instant, zone) else {
         ui.label("");
         return;
     };
-    // The six calendars split over two grouped lines (中華民國 · Japanese ·
-    // Buddhist, then Hebrew · Islamic · Persian) so they stay readable in the
-    // narrow cursor-following window.
-    let line = |ui: &mut egui::Ui, group: &[(String, String)]| {
-        if group.is_empty() {
-            return;
-        }
-        let text = group
-            .iter()
-            .map(|(n, f)| format!("{n} {f}"))
-            .collect::<Vec<_>>()
-            .join("  ·  ");
+    // Only the calendars enabled in settings (matched by stable key). Each row's
+    // bilingual label is long, so show one per line for readability.
+    let line = |ui: &mut egui::Ui, text: &str| {
         ui.label(
             RichText::new(text)
                 .font(FontId::proportional(10.5))
@@ -1340,8 +1381,8 @@ fn altcal_cell(ui: &mut egui::Ui, instant: PosixNs, zone: &RenderZone, pal: Pale
     };
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 1.0;
-        for group in v.calendars.chunks(3) {
-            line(ui, group);
+        for row in v.calendars.iter().filter(|r| cals.shows(&r.key)) {
+            line(ui, &row.label);
         }
     });
 }

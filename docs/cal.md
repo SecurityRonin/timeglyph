@@ -73,12 +73,12 @@ its scene tile.
             甲丁甲庚
             辰丑申午
             年月日時
-  中華民國  114年1月15日
-  japanese  令和7年1月15日
-  buddhist  15 Jan 2568 BE
-  hebrew    15 Tevet 5785
-  islamic   15 Rajab 1446
-  persian   26 Dey 1403
+  中華民國 Republic of China  114年1月15日
+  和暦 Japanese  令和7年1月15日
+  बौद्ध संवत् Buddhist  15 Jan 2568 BE
+  לוח עברי Hebrew  15 Tevet 5785
+  هجري Islamic  15 Rajab 1446
+  خورشیدی Persian  26 Dey 1403
   season    winter (N. hemisphere; solar longitude 295.6deg)
        _===_
       (.o.o.)
@@ -132,7 +132,10 @@ pillar (時柱) is computed at the day's noon** (午時); pass a time —
 pillars are unchanged). The solar term is shown as a period phrase — the bare term
 on its own day, else `<term>後第<N>日` (e.g. `雨水後第七日`) — so a day well past the
 term is not misread as its exact day. Behind the `altcal` feature, six further
-calendars come from ICU4X, shown in order: **中華民國** (ROC / Minguo, year =
-Gregorian − 1911), **Japanese-era** (令和/平成/…), **Buddhist** (Gregorian + 543
-BE), **Hebrew**, **Islamic** (tabular civil), and **Persian** (Solar Hijri). All
-values appear in `--json`.
+calendars come from ICU4X, each labelled with its native name and the English one,
+shown in order: **中華民國 Republic of China** (ROC / Minguo, year = Gregorian −
+1911), **和暦 Japanese** (令和/平成/…), **बौद्ध संवत् Buddhist** (Gregorian + 543
+BE), **לוח עברי Hebrew**, **هجري Islamic** (tabular civil), and **خورشیدی Persian**
+(Solar Hijri). Each carries a stable `key` (`roc`/`japanese`/…) in the `--json`
+record, and the `timeglyph-lens` overlay lets you toggle each one independently in
+its settings. All values appear in `--json`.

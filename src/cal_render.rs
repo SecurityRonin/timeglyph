@@ -260,13 +260,11 @@ fn append_day_overlays(out: &mut String, d: &CalDay, color: ColorMode) {
         }
     }
     // Every alternative calendar, in one ordered list (中華民國 · Japanese ·
-    // Buddhist · Hebrew · Islamic · Persian). The label is padded to a fixed
-    // *display* width so the CJK-named 中華民國 row still aligns.
+    // Buddhist · Hebrew · Islamic · Persian). The bilingual display names vary in
+    // width, so each is followed by its formatted date (no fixed column).
     #[cfg(feature = "altcal")]
     for e in &d.extra_calendars {
-        let label = e.name.to_lowercase();
-        let pad = " ".repeat(10_usize.saturating_sub(visible_width(&label)));
-        let _ = writeln!(out, "  {label}{pad}{}", e.formatted);
+        let _ = writeln!(out, "  {}  {}", e.name, e.formatted);
     }
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
         let hemi = if d.southern_hemisphere { "S" } else { "N" };

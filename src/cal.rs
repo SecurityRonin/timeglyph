@@ -131,7 +131,11 @@ pub struct IslamicDate {
 #[cfg(feature = "altcal")]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ExtraCal {
-    /// Calendar name (`Persian`, `Buddhist`, `Japanese`).
+    /// A stable identifier (`roc`, `japanese`, `buddhist`, `hebrew`, `islamic`,
+    /// `persian`) — the toggle key, decoupled from the display [`name`](Self::name)
+    /// so renaming the label never breaks a consumer's visibility setting.
+    pub key: String,
+    /// Display name (native + English, e.g. `中華民國 Republic of China`).
     pub name: String,
     /// Year in that calendar (year-in-era for Japanese).
     pub year: i32,
@@ -600,7 +604,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     let r = iso.to_calendar(icu_calendar::cal::Roc);
     let (ry, rm, rd) = (r.era_year().year, r.month().ordinal, r.day_of_month().0);
     out.push(ExtraCal {
-        name: "中華民國".to_string(),
+        key: "roc".to_string(),
+        name: "中華民國 Republic of China".to_string(),
         year: ry,
         month: rm,
         day: rd,
@@ -612,7 +617,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     let jey = j.era_year();
     let (jy, jm, jd) = (jey.year, j.month().ordinal, j.day_of_month().0);
     out.push(ExtraCal {
-        name: "Japanese".to_string(),
+        key: "japanese".to_string(),
+        name: "和暦 Japanese".to_string(),
         year: jy,
         month: jm,
         day: jd,
@@ -623,7 +629,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     let b = iso.to_calendar(icu_calendar::cal::Buddhist);
     let (by, bm, bd) = (b.era_year().year, b.month().ordinal, b.day_of_month().0);
     out.push(ExtraCal {
-        name: "Buddhist".to_string(),
+        key: "buddhist".to_string(),
+        name: "बौद्ध संवत् Buddhist".to_string(),
         year: by,
         month: bm,
         day: bd,
@@ -633,7 +640,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     // 4. Hebrew, 5. Islamic (from the typed converters, formatted for display).
     if let Some(h) = hebrew_date(date) {
         out.push(ExtraCal {
-            name: "Hebrew".to_string(),
+            key: "hebrew".to_string(),
+            name: "לוח עברי Hebrew".to_string(),
             year: h.year,
             month: h.month,
             day: h.day,
@@ -642,7 +650,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     }
     if let Some(i) = islamic_date(date) {
         out.push(ExtraCal {
-            name: "Islamic".to_string(),
+            key: "islamic".to_string(),
+            name: "هجري Islamic".to_string(),
             year: i.year,
             month: i.month,
             day: i.day,
@@ -654,7 +663,8 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
     let p = iso.to_calendar(icu_calendar::cal::Persian);
     let (py, pm, pd) = (p.era_year().year, p.month().ordinal, p.day_of_month().0);
     out.push(ExtraCal {
-        name: "Persian".to_string(),
+        key: "persian".to_string(),
+        name: "خورشیدی Persian".to_string(),
         year: py,
         month: pm,
         day: pd,

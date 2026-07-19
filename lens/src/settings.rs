@@ -31,6 +31,11 @@ pub struct PersistedSettings {
     pub zone_spec: String,
     /// The 干支 hour-pillar longitude (°E), if set.
     pub longitude: Option<f64>,
+    /// Which alternative calendars are shown in the calendar expansion.
+    /// `#[serde(default)]` so a settings file predating this key loads with all
+    /// calendars enabled.
+    #[serde(default)]
+    pub calendars: CalendarVisibility,
 }
 
 impl Default for PersistedSettings {
@@ -41,6 +46,70 @@ impl Default for PersistedSettings {
             date_style: DateStyle::default(),
             zone_spec: "UTC".to_string(),
             longitude: None,
+            calendars: CalendarVisibility::default(),
+        }
+    }
+}
+
+/// A default of `true` for each calendar toggle, so a partial settings file
+/// (missing one key) still enables that calendar rather than hiding it.
+fn enabled() -> bool {
+    true
+}
+
+/// Which alternative calendars the overlay shows in its calendar expansion. Each
+/// toggle defaults to on, so enabling the expansion shows every calendar until
+/// the user hides individual ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarVisibility {
+    /// 中華民國 (ROC / Minguo).
+    #[serde(default = "enabled")]
+    pub roc: bool,
+    /// Japanese era (令和/平成/…).
+    #[serde(default = "enabled")]
+    pub japanese: bool,
+    /// Buddhist (BE).
+    #[serde(default = "enabled")]
+    pub buddhist: bool,
+    /// Hebrew.
+    #[serde(default = "enabled")]
+    pub hebrew: bool,
+    /// Islamic (tabular civil).
+    #[serde(default = "enabled")]
+    pub islamic: bool,
+    /// Persian (Solar Hijri).
+    #[serde(default = "enabled")]
+    pub persian: bool,
+}
+
+impl Default for CalendarVisibility {
+    fn default() -> Self {
+        Self {
+            roc: true,
+            japanese: true,
+            buddhist: true,
+            hebrew: true,
+            islamic: true,
+            persian: true,
+        }
+    }
+}
+
+impl CalendarVisibility {
+    /// Whether the calendar with the stable `key` is enabled — the keys emitted by
+    /// `timeglyph::cal::extra_calendars` (`roc`/`japanese`/`buddhist`/`hebrew`/
+    /// `islamic`/`persian`). Matching the key, not the display name, means renaming
+    /// a label never silently breaks a saved visibility choice. Unknown keys show.
+    #[must_use]
+    pub fn shows(&self, key: &str) -> bool {
+        match key {
+            "roc" => self.roc,
+            "japanese" => self.japanese,
+            "buddhist" => self.buddhist,
+            "hebrew" => self.hebrew,
+            "islamic" => self.islamic,
+            "persian" => self.persian,
+            _ => true,
         }
     }
 }

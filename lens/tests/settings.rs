@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use timeglyph::DateStyle;
-use timeglyph_lens::settings::PersistedSettings;
+use timeglyph_lens::settings::{CalendarVisibility, PersistedSettings};
 use timeglyph_lens::theme::ThemePreference;
 use timeglyph_lens::zone::parse_zone;
 
@@ -17,6 +17,9 @@ fn default_theme_preference_is_system() {
     assert_eq!(s.date_style, DateStyle::Iso8601);
     assert_eq!(s.zone_spec, "UTC");
     assert_eq!(s.longitude, None);
+    // Every alternative calendar is on by default.
+    assert_eq!(s.calendars, CalendarVisibility::default());
+    assert!(s.calendars.roc && s.calendars.japanese && s.calendars.persian);
 }
 
 #[test]
@@ -27,10 +30,35 @@ fn round_trips_through_json() {
         date_style: DateStyle::UsStyle,
         zone_spec: "Asia/Shanghai".to_string(),
         longitude: Some(120.5),
+        calendars: CalendarVisibility {
+            islamic: false,
+            persian: false,
+            ..CalendarVisibility::default()
+        },
     };
     let json = serde_json::to_string(&s).unwrap();
     let back: PersistedSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(back, s);
+    assert!(!back.calendars.islamic && back.calendars.roc);
+}
+
+#[test]
+fn missing_calendars_field_enables_all() {
+    // A settings file predating the per-calendar toggles (no `calendars` key)
+    // loads with every alternative calendar enabled — current behaviour preserved.
+    let json = r#"{"show_lunar":true,"date_style":"Iso8601","zone_spec":"UTC","longitude":null}"#;
+    let s: PersistedSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(s.calendars, CalendarVisibility::default());
+    // The stable key → toggle mapping the renderer filters by (not the display
+    // name, so relabelling never breaks a saved choice).
+    assert!(s.calendars.shows("roc") && s.calendars.shows("persian"));
+    let hidden = CalendarVisibility {
+        japanese: false,
+        ..CalendarVisibility::default()
+    };
+    assert!(!hidden.shows("japanese") && hidden.shows("hebrew"));
+    // An unknown key defaults to shown.
+    assert!(hidden.shows("gregorian"));
 }
 
 #[test]
