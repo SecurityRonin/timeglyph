@@ -57,9 +57,9 @@ pub fn run(verbose: u8) -> Result<(), String> {
     init_tracing(verbose);
     tracing::info!(verbose, "TimeGlyph Lens starting");
     let mut viewport = egui::ViewportBuilder::default()
-        // Wide enough that the alternative-calendar rows don't wrap, and tall
-        // enough for the full settings panel (七 calendar toggles) without scroll.
-        .with_inner_size([680.0, 560.0])
+        // Wide enough that the alternative-calendar rows don't wrap; a compact
+        // height (the settings panel scrolls if it needs more).
+        .with_inner_size([680.0, 420.0])
         .with_min_inner_size([380.0, 220.0])
         .with_always_on_top()
         .with_title("TimeGlyph Lens");
@@ -461,8 +461,8 @@ impl eframe::App for LensApp {
         if self.map_window(ctx) {
             dirty = true;
         }
-        // The settings dialog (bottom-right), if open.
-        self.settings_window(ctx, ref_instant);
+        // The settings dialog (top-right), if open.
+        self.settings_window(ctx);
         self.about_window(ctx);
 
         // Re-decode when either the hovered text OR the display zone changed.
@@ -804,21 +804,18 @@ impl LensApp {
         }
     }
 
-    /// The settings dialog: theme, the datetime display style, whether to show
-    /// 干支, and the shared display-timezone [`zone_controls`](Self::zone_controls)
-    /// (identical to the main-window footer). Opened by the footer's ⚙ button or
-    /// the native macOS Settings… item. Rendered as an immediate `egui::Window`
-    /// inside the overlay so it shares `&mut self` with the zone controls; a
-    /// change writes back through `settings` and is persisted to disk. `at` is
-    /// the reference instant for the zone controls' offset resolution.
-    fn settings_window(&mut self, ctx: &egui::Context, at: PosixNs) {
+    /// The settings dialog: theme, the datetime display style, and the per-calendar
+    /// toggles. Opened by the footer's ⚙ button or the native macOS Settings… item;
+    /// the display timezone / longitude live in the footer, not here. Closed by the
+    /// ✕, a second ⚙ click, or Escape. A change writes back through `settings` and
+    /// is persisted to disk.
+    fn settings_window(&mut self, ctx: &egui::Context) {
         if !self.show_settings.load(Ordering::Relaxed) {
             return;
         }
         let pal = self.settings().theme.palette();
         let mut open = true;
         let mut settings_changed = false;
-        let mut close_clicked = false;
         // Cap the panel to the viewport so tall content (seven calendar toggles +
         // the zone / longitude section) scrolls instead of clipping the bottom.
         let max_h = (ctx.screen_rect().height() - 90.0).max(180.0);
@@ -929,37 +926,14 @@ impl LensApp {
                             settings_changed |=
                                 ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
                         }
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.add_space(10.0);
-                        ui.label(
-                            RichText::new("Display time zone")
-                                .font(FontId::proportional(11.0))
-                                .color(pal.faint),
-                        );
-                        // The SAME control the footer uses — no duplicated widget code.
-                        if self.zone_controls(ui, at) {
-                            settings_changed = true;
-                        }
-                        // An always-visible Close button — the egui window ✕ can render
-                        // invisibly against the dark theme, so don't rely on it.
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(8.0);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Close").clicked() {
-                                close_clicked = true;
-                            }
-                        });
                     }); // ScrollArea
             });
         if settings_changed {
             self.save_settings();
         }
-        // Escape also closes the panel — a fourth affordance beside the title-bar
-        // ✕, the ⚙ toggle, and the explicit Close button.
+        // Close via the title-bar ✕, the ⚙ toggle, or Escape.
         let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        if !open || close_clicked || esc {
+        if !open || esc {
             self.show_settings.store(false, Ordering::Relaxed);
         }
     }
