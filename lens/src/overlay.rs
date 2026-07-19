@@ -819,6 +819,9 @@ impl LensApp {
         let mut open = true;
         let mut settings_changed = false;
         let mut close_clicked = false;
+        // Cap the panel to the viewport so tall content (seven calendar toggles +
+        // the zone / longitude section) scrolls instead of clipping the bottom.
+        let max_h = (ctx.screen_rect().height() - 90.0).max(180.0);
         // Anchor to the TOP so the title bar (with egui's ✕) is always on-screen —
         // a bottom anchor pushes the title bar off the top edge once the content
         // is tall (the six calendar toggles).
@@ -833,96 +836,122 @@ impl LensApp {
                     .inner_margin(Margin::same(16.0)),
             )
             .show(ctx, |ui| {
-                if let Ok(mut s) = self.settings.lock() {
-                    ui.label(
-                        RichText::new("Theme")
-                            .font(FontId::proportional(11.0))
-                            .color(pal.faint),
-                    );
-                    ui.horizontal(|ui| {
-                        settings_changed |= ui
-                            .selectable_value(&mut s.theme_pref, ThemePreference::System, "System")
-                            .changed();
-                        settings_changed |= ui
-                            .selectable_value(&mut s.theme_pref, ThemePreference::Light, "Light")
-                            .changed();
-                        settings_changed |= ui
-                            .selectable_value(&mut s.theme_pref, ThemePreference::Dark, "Dark")
-                            .changed();
-                    });
-                    ui.add_space(10.0);
-                    ui.label(
-                        RichText::new("Date format")
-                            .font(FontId::proportional(11.0))
-                            .color(pal.faint),
-                    );
-                    let style_label = |st: DateStyle| match st {
-                        DateStyle::Iso8601 => "ISO 8601",
-                        DateStyle::SpaceSeparated => "Space-separated",
-                        DateStyle::Rfc2822 => "RFC 2822",
-                        DateStyle::UsStyle => "US (12-hour)",
-                    };
-                    egui::ComboBox::from_id_salt("date_style")
-                        .selected_text(style_label(s.date_style))
-                        .show_ui(ui, |ui| {
-                            for st in [
-                                DateStyle::Iso8601,
-                                DateStyle::SpaceSeparated,
-                                DateStyle::Rfc2822,
-                                DateStyle::UsStyle,
-                            ] {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .max_height(max_h)
+                    .show(ui, |ui| {
+                        if let Ok(mut s) = self.settings.lock() {
+                            ui.label(
+                                RichText::new("Theme")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                            ui.horizontal(|ui| {
                                 settings_changed |= ui
-                                    .selectable_value(&mut s.date_style, st, style_label(st))
+                                    .selectable_value(
+                                        &mut s.theme_pref,
+                                        ThemePreference::System,
+                                        "System",
+                                    )
                                     .changed();
+                                settings_changed |= ui
+                                    .selectable_value(
+                                        &mut s.theme_pref,
+                                        ThemePreference::Light,
+                                        "Light",
+                                    )
+                                    .changed();
+                                settings_changed |= ui
+                                    .selectable_value(
+                                        &mut s.theme_pref,
+                                        ThemePreference::Dark,
+                                        "Dark",
+                                    )
+                                    .changed();
+                            });
+                            ui.add_space(10.0);
+                            ui.label(
+                                RichText::new("Date format")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                            let style_label = |st: DateStyle| match st {
+                                DateStyle::Iso8601 => "ISO 8601",
+                                DateStyle::SpaceSeparated => "Space-separated",
+                                DateStyle::Rfc2822 => "RFC 2822",
+                                DateStyle::UsStyle => "US (12-hour)",
+                            };
+                            egui::ComboBox::from_id_salt("date_style")
+                                .selected_text(style_label(s.date_style))
+                                .show_ui(ui, |ui| {
+                                    for st in [
+                                        DateStyle::Iso8601,
+                                        DateStyle::SpaceSeparated,
+                                        DateStyle::Rfc2822,
+                                        DateStyle::UsStyle,
+                                    ] {
+                                        settings_changed |= ui
+                                            .selectable_value(
+                                                &mut s.date_style,
+                                                st,
+                                                style_label(st),
+                                            )
+                                            .changed();
+                                    }
+                                });
+                            ui.add_space(10.0);
+                            ui.label(
+                                RichText::new("Calendar")
+                                    .font(FontId::proportional(11.0))
+                                    .color(pal.faint),
+                            );
+                            // Every calendar is an independent toggle — the 干支/lunisolar
+                            // line and the six alternative calendars are siblings, not a
+                            // hierarchy (the alt calendars are not part of the 干支 view).
+                            settings_changed |= ui
+                                .checkbox(
+                                    &mut s.show_lunar,
+                                    "Chinese lunisolar and heavenly stem / earthly branch",
+                                )
+                                .changed();
+                            let c = &mut s.calendars;
+                            settings_changed |= ui
+                                .checkbox(&mut c.roc, "中華民國 Republic of China")
+                                .changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.japanese, "和暦 Japanese").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.buddhist, "बौद्ध संवत् Buddhist").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.hebrew, "לוח עברי Hebrew").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.islamic, "هجري Islamic").changed();
+                            settings_changed |=
+                                ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
+                        }
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+                        ui.label(
+                            RichText::new("Display time zone")
+                                .font(FontId::proportional(11.0))
+                                .color(pal.faint),
+                        );
+                        // The SAME control the footer uses — no duplicated widget code.
+                        if self.zone_controls(ui, at) {
+                            settings_changed = true;
+                        }
+                        // An always-visible Close button — the egui window ✕ can render
+                        // invisibly against the dark theme, so don't rely on it.
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Close").clicked() {
+                                close_clicked = true;
                             }
                         });
-                    ui.add_space(10.0);
-                    ui.label(
-                        RichText::new("Calendar")
-                            .font(FontId::proportional(11.0))
-                            .color(pal.faint),
-                    );
-                    // Every calendar is an independent toggle — the 干支/lunisolar
-                    // line and the six alternative calendars are siblings, not a
-                    // hierarchy (the alt calendars are not part of the 干支 view).
-                    settings_changed |= ui
-                        .checkbox(
-                            &mut s.show_lunar,
-                            "Chinese lunisolar and heavenly stem / earthly branch",
-                        )
-                        .changed();
-                    let c = &mut s.calendars;
-                    settings_changed |= ui
-                        .checkbox(&mut c.roc, "中華民國 Republic of China")
-                        .changed();
-                    settings_changed |= ui.checkbox(&mut c.japanese, "和暦 Japanese").changed();
-                    settings_changed |= ui.checkbox(&mut c.buddhist, "बौद्ध संवत् Buddhist").changed();
-                    settings_changed |= ui.checkbox(&mut c.hebrew, "לוח עברי Hebrew").changed();
-                    settings_changed |= ui.checkbox(&mut c.islamic, "هجري Islamic").changed();
-                    settings_changed |= ui.checkbox(&mut c.persian, "خورشیدی Persian").changed();
-                }
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new("Display time zone")
-                        .font(FontId::proportional(11.0))
-                        .color(pal.faint),
-                );
-                // The SAME control the footer uses — no duplicated widget code.
-                if self.zone_controls(ui, at) {
-                    settings_changed = true;
-                }
-                // An always-visible Close button — the egui window ✕ can render
-                // invisibly against the dark theme, so don't rely on it.
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Close").clicked() {
-                        close_clicked = true;
-                    }
-                });
+                    }); // ScrollArea
             });
         if settings_changed {
             self.save_settings();
