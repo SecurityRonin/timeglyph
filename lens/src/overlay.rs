@@ -813,6 +813,7 @@ impl LensApp {
         let pal = self.settings().theme.palette();
         let mut open = true;
         let mut settings_changed = false;
+        let mut close_clicked = false;
         egui::Window::new("TimeGlyph Lens — Settings")
             .collapsible(false)
             .resizable(false)
@@ -912,11 +913,21 @@ impl LensApp {
                 if self.zone_controls(ui, at) {
                     settings_changed = true;
                 }
+                // An always-visible Close button — the egui window ✕ can render
+                // invisibly against the dark theme, so don't rely on it.
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Close").clicked() {
+                        close_clicked = true;
+                    }
+                });
             });
         if settings_changed {
             self.save_settings();
         }
-        if !open {
+        if !open || close_clicked {
             self.show_settings.store(false, Ordering::Relaxed);
         }
     }
@@ -1053,8 +1064,16 @@ fn header(
         // right-to-left layout hugs the corner; reachable on every platform (the
         // ⌘, native menu item is macOS-only).
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("⚙").on_hover_text("settings").clicked() {
-                show_settings.store(true, Ordering::Relaxed);
+            if ui
+                .button("⚙")
+                .on_hover_text("settings (click again to close)")
+                .clicked()
+            {
+                // Toggle, so a second click on the gear closes the panel — the
+                // reliable close affordance (egui's title-bar ✕ can be invisible
+                // against the dark theme).
+                let open = show_settings.load(Ordering::Relaxed);
+                show_settings.store(!open, Ordering::Relaxed);
             }
             // Freeze toggle, left of the gear. Frozen holds the current reading so
             // the cursor can move onto the overlay to read/copy without the value
