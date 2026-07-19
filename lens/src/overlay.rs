@@ -828,8 +828,12 @@ impl LensApp {
             .open(&mut open)
             .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
             .frame(
+                // A raised surface (bg_card) with a hairline border, so the panel
+                // reads as a distinct floating pane over the main window rather
+                // than blending into the same bg_deep background.
                 Frame::none()
-                    .fill(pal.bg_deep)
+                    .fill(pal.bg_card)
+                    .stroke(egui::Stroke::new(1.0, pal.hairline))
                     .inner_margin(Margin::same(16.0)),
             )
             .show(ctx, |ui| {
