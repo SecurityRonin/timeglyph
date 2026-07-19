@@ -906,10 +906,7 @@ impl LensApp {
                             // line and the six alternative calendars are siblings, not a
                             // hierarchy (the alt calendars are not part of the 干支 view).
                             settings_changed |= ui
-                                .checkbox(
-                                    &mut s.show_lunar,
-                                    "Chinese lunisolar and heavenly stem / earthly branch",
-                                )
+                                .checkbox(&mut s.show_lunar, "農曆+干支暦 Lunisolar + Stem-Branch")
                                 .changed();
                             let c = &mut s.calendars;
                             settings_changed |= ui
