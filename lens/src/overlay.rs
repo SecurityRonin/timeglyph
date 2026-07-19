@@ -814,11 +814,14 @@ impl LensApp {
         let mut open = true;
         let mut settings_changed = false;
         let mut close_clicked = false;
+        // Anchor to the TOP so the title bar (with egui's ✕) is always on-screen —
+        // a bottom anchor pushes the title bar off the top edge once the content
+        // is tall (the six calendar toggles).
         egui::Window::new("TimeGlyph Lens — Settings")
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -64.0))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
             .frame(
                 Frame::none()
                     .fill(pal.bg_deep)
@@ -927,7 +930,10 @@ impl LensApp {
         if settings_changed {
             self.save_settings();
         }
-        if !open || close_clicked {
+        // Escape also closes the panel — a fourth affordance beside the title-bar
+        // ✕, the ⚙ toggle, and the explicit Close button.
+        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if !open || close_clicked || esc {
             self.show_settings.store(false, Ordering::Relaxed);
         }
     }
