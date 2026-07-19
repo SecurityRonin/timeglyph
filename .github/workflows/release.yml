@@ -25,6 +25,14 @@ permissions:
 
 jobs:
   build:
+    # 'release' environment → the OIDC token's subject becomes
+    # repo:SecurityRonin/timeglyph:environment:release, which the Azure federated
+    # credential matches (a classic FIC cannot wildcard tag refs). id-token:write
+    # lets the Windows leg mint that token to authenticate the signing step.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +88,26 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
+
+      # Authenticode-sign the Windows .exe UNDER Security Ronin Ltd (UK) via Azure
+      # Trusted Signing, BEFORE the .zip below, so the shipped timeglyph.exe +
+      # timeglyph-lens.exe carry the signature (SmartScreen verified publisher).
+      # OIDC auth via the 'release' environment federated credential — no client
+      # secret. Values + gotchas: ronin-issen/CLAUDE.md §"Windows code signing".
+      - name: Sign Windows binaries (Azure Trusted Signing)
+        if: runner.os == 'Windows'
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: target/${{ matrix.target }}/release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       # One archive per platform carries the CLI plus (on macOS/Windows) the lens
       # GUI, so a single install brings both commands: the Homebrew formula does
