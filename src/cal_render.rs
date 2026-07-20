@@ -183,34 +183,42 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             let _ = writeln!(out, "            {row}");
         }
     }
-    // Every alternative calendar, in one ordered list (中華民國 · Japanese ·
-    // Buddhist · Hebrew · Islamic · Persian). The bilingual display names vary in
-    // width, so each is followed by its formatted date (no fixed column).
+    // A blank line, then every alternative calendar in one ordered list (中華民國 ·
+    // Japanese · Buddhist · Hebrew · Islamic · Persian), left-aligned into a label
+    // column and a data column (monospace display width — CJK 2-wide, Devanagari
+    // combining marks 0-wide, etc.). `label_w` is reused to align the season line.
     #[cfg(feature = "altcal")]
-    {
-        // Left-align the bilingual labels into one column (so the dates line up
-        // too), measured by monospace display width — CJK is 2-wide, Devanagari
-        // combining marks 0-wide, etc.
+    let label_w = {
         use unicode_width::UnicodeWidthStr as _;
-        let label_w = d
+        if !d.extra_calendars.is_empty() {
+            out.push('\n');
+        }
+        let w = d
             .extra_calendars
             .iter()
             .map(|e| e.name.width())
             .max()
             .unwrap_or(0);
         for e in &d.extra_calendars {
-            let pad = " ".repeat(label_w.saturating_sub(e.name.width()) + 2);
+            let pad = " ".repeat(w.saturating_sub(e.name.width()) + 2);
             let _ = writeln!(out, "  {}{}{}", e.name, pad, e.formatted);
         }
-    }
+        w
+    };
+    // Without the alt-calendars, the season keeps its own 4-space gap (label_w 8).
+    #[cfg(not(feature = "altcal"))]
+    let label_w = 8usize;
+
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
         // How far into the 90° season arc: early / mid / late (each ~30°).
         let stage = season_stage(lon);
         let cn = crate::calfmt::traditional_season(stage, season);
         let hemi = if d.southern_hemisphere { "S" } else { "N" };
+        // Pad "season" (6 wide) so its data lines up with the calendar data column.
+        let pad = " ".repeat((label_w + 2).saturating_sub(6).max(1));
         let _ = writeln!(
             out,
-            "  season    {cn} {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
+            "  season{pad}{cn} {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
         );
     }
 }
