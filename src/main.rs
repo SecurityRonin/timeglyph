@@ -1361,6 +1361,17 @@ fn run_cal(
                         "{}",
                         timeglyph::cal_render::render_month_text(&month, Some(today), color)
                     );
+                    // A month grid can't show a single day's pillars/moon/date, so
+                    // when the rendered month contains today, append today's full
+                    // day card below it.
+                    if today.year() == y && today.month() == m {
+                        if let Ok(day) = build_day(today, zone) {
+                            println!(
+                                "\n{}",
+                                timeglyph::cal_render::render_day_text_with(&day, color)
+                            );
+                        }
+                    }
                 }
                 EXIT_OK
             }
