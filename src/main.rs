@@ -1274,6 +1274,25 @@ fn today_in(zone: &RenderZone) -> jiff::civil::Date {
     ts.to_zoned(tz).date()
 }
 
+/// Append today's full day card after a text month view that contains today — the
+/// grid can't show a single day's pillars/moon/date.
+fn append_today_card(
+    today: jiff::civil::Date,
+    y: i16,
+    m: i8,
+    zone: &RenderZone,
+    color: timeglyph::cal_color::ColorMode,
+) {
+    if today.year() == y && today.month() == m {
+        if let Ok(day) = timeglyph::cal::build_day(today, zone) {
+            println!(
+                "\n{}",
+                timeglyph::cal_render::render_day_text_with(&day, color)
+            );
+        }
+    }
+}
+
 /// Print a single day as JSON or the text detail card.
 fn emit_day(
     day: &timeglyph::cal::CalDay,
@@ -1362,16 +1381,8 @@ fn run_cal(
                         timeglyph::cal_render::render_month_text(&month, Some(today), color)
                     );
                     // A month grid can't show a single day's pillars/moon/date, so
-                    // when the rendered month contains today, append today's full
-                    // day card below it.
-                    if today.year() == y && today.month() == m {
-                        if let Ok(day) = build_day(today, zone) {
-                            println!(
-                                "\n{}",
-                                timeglyph::cal_render::render_day_text_with(&day, color)
-                            );
-                        }
-                    }
+                    // when the rendered month contains today, append today's card.
+                    append_today_card(today, y, m, zone, color);
                 }
                 EXIT_OK
             }
