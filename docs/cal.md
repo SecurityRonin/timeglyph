@@ -52,8 +52,8 @@ ASCII, so a piped or colourless view loses no information.
 ## The day detail card
 
 A single date prints every field: the week/epoch systems, timezone, leap/GPS, the
-moon as a shaded disc, the Chinese / Hebrew / Islamic dates, and the season with
-its scene tile.
+moon as a shaded disc, the alternative calendars, and the season stated as
+early/mid/late.
 
 ```
 2025-01-15  wednesday
@@ -69,7 +69,7 @@ its scene tile.
     @ @ @ @ @ @ @
       @ @ @ @ @
 
-  chinese   十二月十六日 · 小寒
+  農曆+干支暦 Lunisolar + Stem-Branch  十二月十六日 · 小寒
             甲丁甲庚
             辰丑申午
             年月日時
@@ -79,15 +79,13 @@ its scene tile.
   לוח עברי Hebrew  15 Tevet 5785
   هجري Islamic  15 Rajab 1446
   خورشیدی Persian  26 Dey 1403
-  season    winter (N. hemisphere; solar longitude 295.6deg)
-       _===_
-      (.o.o.)
-      ( >^< )
-     (( : : ))
-    *  *  *  *  *
+  season    late winter (N. hemisphere; solar longitude 295.6deg)
 ```
 
-The month view closes with an info panel (Chinese year + solar term, season, the
+The 農曆+干支暦 label and the bilingual alternative-calendar names match the
+`timeglyph-lens` overlay. The season is stated as **early / mid / late** — which
+third of the 90° season arc the Sun's longitude falls in — rather than an ASCII
+scene. The month view closes with an info panel (Chinese year + solar term, the
 mid-month moon, and each alternative calendar's year), and the year view opens with
 the season timeline of astronomically-exact equinox/solstice dates.
 

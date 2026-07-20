@@ -429,16 +429,6 @@ fn build_month_rejects_an_invalid_month() {
     assert!(build_month(2026, 13, &RenderZone::Utc, WeekStart::Monday).is_err());
 }
 
-#[cfg(feature = "lunisolar")]
-#[test]
-fn season_tiles_are_five_lines_each() {
-    use timeglyph::cal_art::season_tile;
-    for idx in 0u8..4 {
-        assert_eq!(season_tile(idx).len(), 6, "season {idx}");
-    }
-    assert!(season_tile(3).iter().any(|l| l.contains('*'))); // winter snowman
-}
-
 // --- Cycle 11: surface the overlays in the human text views -------------------
 
 #[cfg(all(feature = "lunisolar", feature = "altcal"))]
@@ -453,28 +443,35 @@ fn day_card_shows_all_alternative_calendars_and_season() {
         card.contains("年月日時"),
         "four-pillar block missing:\n{card}"
     );
+    // The 干支 line uses the lens-aligned label.
+    assert!(
+        card.contains("農曆+干支暦"),
+        "aligned lunisolar label missing:\n{card}"
+    );
     assert!(card.contains("白露"), "solar term missing:\n{card}");
     assert!(card.contains("5784"), "hebrew year missing:\n{card}");
     assert!(card.contains("Elul"), "hebrew month name missing:\n{card}");
     assert!(card.contains("1446"), "islamic year missing:\n{card}");
-    // 2024-09-18 (solar longitude ~176°) is still summer — the autumn equinox
-    // (180°) is Sept 22 — so the season is "summer" and its scene tile (beach) draws.
-    assert!(card.contains("summer"), "season missing:\n{card}");
+    // 2024-09-18 (solar longitude ~176°) is late summer — the autumn equinox
+    // (180°) is Sept 22 — stated as a plain "late summer", no scene tile.
     assert!(
-        card.contains("-- O --"),
-        "summer scene tile (sun) missing:\n{card}"
+        card.contains("late summer"),
+        "season stage missing:\n{card}"
     );
-    // A clearly-autumn day draws the leaf-fall tile and names autumn.
     let autumn = render_day_text(&build_day(date(2024, 11, 1), &RenderZone::Utc).unwrap());
     assert!(
         autumn.contains("autumn"),
         "autumn season missing:\n{autumn}"
     );
-    // A winter day draws the snowman.
     let winter = render_day_text(&build_day(date(2025, 1, 15), &RenderZone::Utc).unwrap());
     assert!(
-        winter.contains("_===_"),
-        "winter scene tile missing:\n{winter}"
+        winter.contains("winter"),
+        "winter season missing:\n{winter}"
+    );
+    // The crude scene tiles are gone.
+    assert!(
+        !card.contains("-- O --") && !winter.contains("_===_"),
+        "scene tile still drawn"
     );
 }
 
@@ -486,20 +483,18 @@ fn month_view_has_an_overlay_footer() {
     use timeglyph::cal_render::render_month_text;
     let m = build_month(2026, 7, &RenderZone::Utc, WeekStart::Monday).unwrap();
     let s = render_month_text(&m, None, ColorMode::Mono);
-    // A neofetch-style panel: the seasonal scene tile as the left "logo" (July =
-    // northern summer → the beach tile) beside the grid, with the Chinese year in
-    // the info footer.
+    // Single-column grid plus an info footer with the Chinese year — no side art.
     assert!(
         s.contains("年"),
         "chinese year pillar missing from month footer:\n{s}"
     );
     assert!(
-        s.contains("-- O --"),
-        "summer scene tile missing from month panel:\n{s}"
-    );
-    assert!(
         s.contains("Mo") && s.contains("Su"),
         "grid header missing:\n{s}"
+    );
+    assert!(
+        !s.contains("-- O --"),
+        "season scene tile should be gone:\n{s}"
     );
 }
 
@@ -611,19 +606,15 @@ fn hemisphere_and_season_are_derived_from_the_zone() {
 
 #[cfg(feature = "lunisolar")]
 #[test]
-fn day_card_season_and_tile_follow_the_zone() {
+fn day_card_season_follows_the_zone() {
     use timeglyph::cal_render::render_day_text;
-    // Sydney mid-January → summer + the beach tile; London → winter + snowman.
+    // Same date, opposite hemispheres: Sydney mid-January is summer, London winter.
     let syd = RenderZone::parse("Australia/Sydney").unwrap();
     let card = render_day_text(&build_day(date(2026, 1, 15), &syd).unwrap());
     assert!(card.contains("summer"), "sydney summer:\n{card}");
-    assert!(card.contains("-- O --"), "sydney summer tile:\n{card}");
     let ldn = RenderZone::parse("Europe/London").unwrap();
     let cardn = render_day_text(&build_day(date(2026, 1, 15), &ldn).unwrap());
-    assert!(
-        cardn.contains("winter") && cardn.contains("_===_"),
-        "london winter:\n{cardn}"
-    );
+    assert!(cardn.contains("winter"), "london winter:\n{cardn}");
 }
 
 // --- extra_calendars_at: all six of an instant at a zone (shared with the lens) -

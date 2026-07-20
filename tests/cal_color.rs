@@ -1,7 +1,7 @@
 //! Terminal colour capability ladder for the cal visual layer.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use timeglyph::cal_color::{detect, season_ink, ColorMode, EPOCH};
+use timeglyph::cal_color::{detect, ColorMode, EPOCH};
 
 #[test]
 fn detection_ladder() {
@@ -52,10 +52,4 @@ fn paint_emits_sgr_only_when_colored() {
     // 256 and 16 use their own codes.
     assert!(ColorMode::Ansi256.paint(EPOCH, "e").contains("38;5;80"));
     assert!(ColorMode::Ansi16.paint(EPOCH, "e").contains("[36m"));
-}
-
-#[test]
-fn season_ink_maps_names() {
-    assert_eq!(season_ink("summer").rgb, (0xf2, 0xc1, 0x4e));
-    assert_eq!(season_ink("winter").rgb, (0x8a, 0xb6, 0xd6));
 }

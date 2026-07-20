@@ -129,38 +129,3 @@ pub const MOON_DARK: Ink = Ink {
     c256: 237,
     c16: 30,
 };
-/// Spring tile (green).
-pub const SPRING: Ink = Ink {
-    rgb: (0x7e, 0xc9, 0x7e),
-    c256: 114,
-    c16: 32,
-};
-/// Summer tile (gold).
-pub const SUMMER: Ink = Ink {
-    rgb: (0xf2, 0xc1, 0x4e),
-    c256: 221,
-    c16: 33,
-};
-/// Autumn tile (amber).
-pub const AUTUMN: Ink = Ink {
-    rgb: (0xd1, 0x7a, 0x3f),
-    c256: 173,
-    c16: 31,
-};
-/// Winter tile (ice-blue).
-pub const WINTER: Ink = Ink {
-    rgb: (0x8a, 0xb6, 0xd6),
-    c256: 110,
-    c16: 36,
-};
-
-/// The tile [`Ink`] for a season name.
-#[must_use]
-pub fn season_ink(season: &str) -> Ink {
-    match season {
-        "spring" => SPRING,
-        "summer" => SUMMER,
-        "autumn" => AUTUMN,
-        _ => WINTER,
-    }
-}

@@ -72,67 +72,9 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-/// The monospace display width of `c`: 2 for East-Asian wide / fullwidth glyphs
-/// (CJK, Hangul, kana, fullwidth forms), 1 otherwise.
-fn char_width(c: char) -> usize {
-    let u = c as u32;
-    if (0x1100..=0x115F).contains(&u)      // Hangul Jamo
-        || (0x2E80..=0xA4CF).contains(&u)  // CJK radicals … Yi
-        || (0xAC00..=0xD7A3).contains(&u)  // Hangul syllables
-        || (0xF900..=0xFAFF).contains(&u)  // CJK compat ideographs
-        || (0xFE30..=0xFE4F).contains(&u)  // CJK compat forms
-        || (0xFF00..=0xFF60).contains(&u)  // fullwidth forms
-        || (0xFFE0..=0xFFE6).contains(&u)
-        || (0x20000..=0x3FFFD).contains(&u)
-    // CJK extension planes
-    {
-        2
-    } else {
-        1
-    }
-}
-
-/// The display width of a line, skipping ANSI SGR escapes (`\x1b[…m`) and counting
-/// East-Asian wide glyphs as 2 columns.
-fn visible_width(s: &str) -> usize {
-    let mut w = 0;
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            // Skip until the SGR terminator 'm'.
-            for e in chars.by_ref() {
-                if e == 'm' {
-                    break;
-                }
-            }
-        } else {
-            w += char_width(c);
-        }
-    }
-    w
-}
-
-/// Compose `left` and `right` line-blocks side by side, top-aligned, padding each
-/// left line to `left_w` visible columns (a neofetch-style art-beside-grid panel).
-fn side_by_side(left: &[String], right: &[String], left_w: usize) -> String {
-    let mut out = String::new();
-    for i in 0..left.len().max(right.len()) {
-        let l = left.get(i).map_or("", String::as_str);
-        let r = right.get(i).map_or("", String::as_str);
-        let pad = " ".repeat(left_w.saturating_sub(visible_width(l)));
-        out.push_str(l);
-        out.push_str(&pad);
-        out.push_str("  ");
-        out.push_str(r);
-        out.push('\n');
-    }
-    out
-}
-
 /// Render a month as a monospace grid: a title line, an ISO-week gutter, weekday
 /// headers, and one `%2d` day + marker per cell, followed by a legend. Markers are
-/// coloured per `color` (today = reverse video); [`ColorMode::Mono`] is plain. When
-/// a season is known, the season scene tile is placed to the left, neofetch-style.
+/// coloured per `color` (today = reverse video); [`ColorMode::Mono`] is plain.
 #[must_use]
 pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) -> String {
     use std::fmt::Write as _;
@@ -175,24 +117,6 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
         grid.push(out);
     }
 
-    // Compose: the season scene tile (left "logo") beside the calendar grid.
-    #[cfg(feature = "lunisolar")]
-    let mut result = match m
-        .days
-        .get(m.days.len() / 2)
-        .and_then(|d| d.season.as_deref())
-    {
-        Some(season) => {
-            let ink = cal_color::season_ink(season);
-            let art: Vec<String> = crate::cal_art::season_tile_for(season)
-                .iter()
-                .map(|l| color.paint(ink, l))
-                .collect();
-            side_by_side(&art, &grid, 16)
-        }
-        None => grid.join("\n") + "\n",
-    };
-    #[cfg(not(feature = "lunisolar"))]
     let mut result = grid.join("\n") + "\n";
 
     result
@@ -236,14 +160,14 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
 /// Append the day's alternative-calendar and season overlays (Chinese/干支,
 /// Hebrew, Islamic, the season name + its scene tile) to the day card.
 #[cfg(feature = "lunisolar")]
-fn append_day_overlays(out: &mut String, d: &CalDay, color: ColorMode) {
+fn append_day_overlays(out: &mut String, d: &CalDay) {
     use std::fmt::Write as _;
     out.push('\n');
     if let Some(c) = &d.alt_chinese {
         use crate::calfmt;
         let _ = writeln!(
             out,
-            "  chinese   {} · {}",
+            "  農曆+干支暦 Lunisolar + Stem-Branch  {} · {}",
             calfmt::lunar_date_cn(c.lunar_month, c.lunar_day, c.is_leap_month),
             calfmt::solar_term_phrase(&c.solar_term, c.days_into_term)
         );
@@ -267,17 +191,27 @@ fn append_day_overlays(out: &mut String, d: &CalDay, color: ColorMode) {
         let _ = writeln!(out, "  {}  {}", e.name, e.formatted);
     }
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
+        // How far into the 90° season arc: early / mid / late (each ~30°).
+        let stage = season_stage(lon);
         let hemi = if d.southern_hemisphere { "S" } else { "N" };
         let _ = writeln!(
             out,
-            "  season    {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
+            "  season    {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
         );
-        // The seasonal scene tile (spring blossom / summer beach / autumn leaves /
-        // winter snowman), keyed by the resolved season name and tinted its colour.
-        let ink = cal_color::season_ink(season);
-        for line in crate::cal_art::season_tile_for(season) {
-            let _ = writeln!(out, "  {}", color.paint(ink, line));
-        }
+    }
+}
+
+/// Which third of its 90° arc a solar longitude falls in: `early` / `mid` / `late`
+/// (the season name is resolved separately, hemisphere-aware).
+#[cfg(feature = "lunisolar")]
+fn season_stage(solar_longitude_deg: f64) -> &'static str {
+    let into = solar_longitude_deg.rem_euclid(90.0);
+    if into < 30.0 {
+        "early"
+    } else if into < 60.0 {
+        "mid"
+    } else {
+        "late"
     }
 }
 
@@ -360,7 +294,7 @@ pub fn render_day_text_with(d: &CalDay, color: ColorMode) -> String {
         }
     }
     #[cfg(feature = "lunisolar")]
-    append_day_overlays(&mut out, d, color);
+    append_day_overlays(&mut out, d);
     if !d.artifacts.is_empty() {
         out.push('\n');
     }

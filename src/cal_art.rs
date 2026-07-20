@@ -100,65 +100,6 @@ pub fn moon_art(phase_index: u8) -> &'static [&'static str; 7] {
     &MOON_ART[(phase_index as usize) % 8]
 }
 
-/// Four seasonal scene tiles, indexed 0=spring 1=summer 2=autumn 3=winter.
-const SEASON_TILE: [[&str; 6]; 4] = [
-    // spring: blossom
-    [
-        "   *  .  *",
-        "  .  \\|/  .",
-        " *---- o ----*",
-        "  .  /|\\  .",
-        "   *  '  *",
-        "   spring",
-    ],
-    // summer: beach (sun + umbrella + waves)
-    [
-        "  \\ | /     ___",
-        " -- O --   /___\\",
-        "  / | \\      |",
-        " ~~~~~~~~~~~~|~~~",
-        "            |",
-        "   summer",
-    ],
-    // autumn: falling leaves
-    [
-        "   ,  &   ,",
-        "  &   ,  &  ,",
-        " ,  &   ,   &",
-        "   &   ,  &",
-        "  ~~~~~~~~~~~",
-        "   autumn",
-    ],
-    // winter: snowman
-    [
-        "     _===_",
-        "    (.o.o.)",
-        "    ( >^< )",
-        "   (( : : ))",
-        "  *  *  *  *  *",
-        "   winter",
-    ],
-];
-
-/// The six-line scene tile for a season index (`0..=3`, clamped) — the last line
-/// names the season (spring / summer / autumn / winter).
-#[must_use]
-pub fn season_tile(season_index: u8) -> &'static [&'static str; 6] {
-    &SEASON_TILE[(season_index as usize) % 4]
-}
-
-/// The scene tile for a season *name* (`spring`/`summer`/`autumn`/`winter`).
-#[must_use]
-pub fn season_tile_for(season: &str) -> &'static [&'static str; 6] {
-    let idx = match season {
-        "spring" => 0,
-        "summer" => 1,
-        "autumn" => 2,
-        _ => 3, // winter
-    };
-    season_tile(idx)
-}
-
 use crate::cal::{season_for, Hemisphere, SeasonMarker};
 
 /// The astronomical-event → hemisphere season name for a cardinal boundary, and
