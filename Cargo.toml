@@ -32,7 +32,12 @@ required-features = ["cli"]
 # REUSE, don't reinvent calendar/tz math. jiff = civil time + IANA tz (incl.
 # historical) + ISO 8601 / RFC 3339 parse+format. hifitime (added later, behind
 # a feature) = leap-second / TAI / GPS rigor for that family only.
-jiff = "0.2"
+# Cap below 0.2.33: jiff 0.2.33 (which split out jiff-core 0.1.0) regressed its
+# Timestamp constructors to PANIC on an internal range assertion instead of
+# returning Err for out-of-range input, so decoding arbitrary bytes
+# (interpret_hex) panics despite our correct `if let Ok(..)` handling. 0.2.32 is
+# the last good release; remove the cap once jiff ships a fix.
+jiff = ">=0.2, <0.2.33"
 thiserror = "2"
 hex = "0.4"
 clap = { version = "4", features = ["derive"], optional = true }
