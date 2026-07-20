@@ -70,6 +70,25 @@ pub fn lunar_date_cn(month: u8, day: u8, is_leap: bool) -> String {
     format!("{}{}日", lunar_month_cn(month, is_leap), lunar_day_cn(day))
 }
 
+/// The classical Chinese season name — 孟/仲/季 (first/middle/last month of a
+/// season) × 春/夏/秋/冬 — for a stage (`early`/`mid`/`late`) and a season
+/// (`spring`/`summer`/`autumn`/`winter`), e.g. `孟夏` for early summer.
+#[must_use]
+pub fn traditional_season(stage: &str, season: &str) -> String {
+    let meng = match stage {
+        "early" => '孟',
+        "mid" => '仲',
+        _ => '季',
+    };
+    let szn = match season {
+        "spring" => '春',
+        "summer" => '夏',
+        "autumn" => '秋',
+        _ => '冬',
+    };
+    format!("{meng}{szn}")
+}
+
 /// The solar term as a period phrase: the bare term on its own day, else
 /// `<term>後第<N>日` (`雨水後第七日`), so a day well past the term is not misread
 /// as the term's exact day.

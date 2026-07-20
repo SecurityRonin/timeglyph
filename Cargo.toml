@@ -75,6 +75,10 @@ forensicnomicon = { version = "1.3", default-features = false }
 # ONE place we do NOT hand-roll calendar arithmetic. Unicode-3.0 (allowed in
 # deny.toml). compiled_data embeds the needed calendar data (no runtime load).
 icu_calendar = { version = "2.2", optional = true, default-features = false, features = ["compiled_data"] }
+# Monospace display width (UAX #11) for aligning the alternative-calendar label
+# column, whose bilingual names mix CJK (2-wide), Devanagari combining marks
+# (0-wide), RTL, and Latin. Reuse the standard crate, don't hand-roll widths.
+unicode-width = { version = "0.2", optional = true }
 
 [features]
 # All on by default: timeglyph is an analyst tool, so the full format coverage
@@ -93,7 +97,7 @@ lunisolar = ["dep:stem-branch"]
 # The whole-world public-holiday dataset (~1.5 MB gzipped); pulls flate2.
 holiday = ["dep:flate2"]
 # Hebrew + Islamic (tabular civil) calendar overlays for `cal`; pulls icu_calendar.
-altcal = ["dep:icu_calendar"]
+altcal = ["dep:icu_calendar", "dep:unicode-width"]
 # Artifact→format pinning from forensicnomicon: `--artifact "ntfs mft"` pins the
 # format that artifact actually stores (filetime) over heuristic guesses. The
 # forensicnomicon dep is now unconditional (it carries the format registry), so

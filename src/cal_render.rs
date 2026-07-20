@@ -187,16 +187,30 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
     // Buddhist · Hebrew · Islamic · Persian). The bilingual display names vary in
     // width, so each is followed by its formatted date (no fixed column).
     #[cfg(feature = "altcal")]
-    for e in &d.extra_calendars {
-        let _ = writeln!(out, "  {}  {}", e.name, e.formatted);
+    {
+        // Left-align the bilingual labels into one column (so the dates line up
+        // too), measured by monospace display width — CJK is 2-wide, Devanagari
+        // combining marks 0-wide, etc.
+        use unicode_width::UnicodeWidthStr as _;
+        let label_w = d
+            .extra_calendars
+            .iter()
+            .map(|e| e.name.width())
+            .max()
+            .unwrap_or(0);
+        for e in &d.extra_calendars {
+            let pad = " ".repeat(label_w.saturating_sub(e.name.width()) + 2);
+            let _ = writeln!(out, "  {}{}{}", e.name, pad, e.formatted);
+        }
     }
     if let (Some(season), Some(lon)) = (&d.season, d.solar_longitude_deg) {
         // How far into the 90° season arc: early / mid / late (each ~30°).
         let stage = season_stage(lon);
+        let cn = crate::calfmt::traditional_season(stage, season);
         let hemi = if d.southern_hemisphere { "S" } else { "N" };
         let _ = writeln!(
             out,
-            "  season    {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
+            "  season    {cn} {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
         );
     }
 }

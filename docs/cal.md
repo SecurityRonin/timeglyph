@@ -79,14 +79,15 @@ early/mid/late.
   לוח עברי Hebrew  15 Tevet 5785
   هجري Islamic  15 Rajab 1446
   خورشیدی Persian  26 Dey 1403
-  season    late winter (N. hemisphere; solar longitude 295.6deg)
+  season    季冬 late winter (N. hemisphere; solar longitude 295.6deg)
 ```
 
 The 農曆+干支暦 label and the bilingual alternative-calendar names match the
-`timeglyph-lens` overlay. The season is stated as **early / mid / late** — which
+`timeglyph-lens` overlay. The season is stated as the classical 孟/仲/季 × 春夏秋冬 plus **early / mid / late** — which
 third of the 90° season arc the Sun's longitude falls in — rather than an ASCII
 scene. The month view closes with an info panel (Chinese year + solar term, the
-mid-month moon, and each alternative calendar's year), and the year view opens with
+mid-month moon, and each alternative calendar's year); the alternative-calendar
+labels are aligned into one column. The year view opens with
 the season timeline of astronomically-exact equinox/solstice dates.
 
 ## Definitions and conventions

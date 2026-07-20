@@ -3,7 +3,7 @@
 
 use timeglyph::calfmt::{
     cn_numeral, five_element, four_pillar_rows, hebrew_month, islamic_month, lunar_date_cn,
-    lunar_day_cn, lunar_month_cn, solar_term_phrase, Element,
+    lunar_day_cn, lunar_month_cn, solar_term_phrase, traditional_season, Element,
 };
 
 #[test]
@@ -49,4 +49,13 @@ fn five_element_of_stems_and_branches() {
     assert_eq!(five_element('午'), Some(Element::Fire));
     assert_eq!(five_element('酉'), Some(Element::Metal));
     assert_eq!(five_element('x'), None);
+}
+
+#[test]
+fn traditional_chinese_seasons() {
+    // 孟/仲/季 (early/mid/late) × 春夏秋冬.
+    assert_eq!(traditional_season("early", "summer"), "孟夏");
+    assert_eq!(traditional_season("mid", "spring"), "仲春");
+    assert_eq!(traditional_season("late", "winter"), "季冬");
+    assert_eq!(traditional_season("mid", "autumn"), "仲秋");
 }
