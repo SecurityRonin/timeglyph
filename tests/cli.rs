@@ -459,7 +459,14 @@ fn as_on_a_non_identify_command_errors() {
 
 #[test]
 fn artifact_on_a_non_identify_command_errors() {
+    // --artifact is identify-only and no longer a flag on `decode`, so clap rejects
+    // it at parse time (naming the offending arg) rather than a runtime guard.
     let (out, code) = run(&["decode", "unix", "1577836800", "--artifact", "ntfs"]);
+    assert_ne!(code, 0, "{out}");
+    assert!(out.contains("--artifact"), "{out}");
+    // But before a non-identify subcommand it's still parseable (top-level, for the
+    // bare value), so there the loud runtime guard fires.
+    let (out, code) = run(&["--artifact", "ntfs", "cal", "2026-01"]);
     assert_ne!(code, 0, "{out}");
     assert!(out.contains("--artifact applies only to"), "{out}");
 }

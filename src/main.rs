@@ -10,7 +10,7 @@
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 #[cfg(feature = "csv")]
 use timeglyph::csv_enrich::{Conversion, EnrichOptions};
 use timeglyph::interpret::{self, Candidate};
@@ -72,43 +72,74 @@ struct Cli {
     /// instant is unchanged — only the displayed offset differs.
     #[arg(long, global = true, value_name = "ZONE")]
     tz: Option<String>,
+    /// The interpretation/ranking knobs, for the bare value (`identify` shortcut).
+    #[command(flatten)]
+    ident: IdentifyOpts,
+    /// The datetime display style, for the bare value.
+    #[command(flatten)]
+    style: StyleOpt,
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+/// The datetime display style (`--format`): how a decoded instant is rendered as
+/// text. Shared only by the value-interpreting commands (bare value / identify /
+/// decode / scan) — not `cal`, which renders its own grid. The instant and zone
+/// are unchanged; only the textual shape differs.
+#[derive(Args, Debug, Clone, Copy)]
+struct StyleOpt {
+    #[arg(long = "format", id = "date_format", value_enum, default_value_t = FormatArg::Iso8601)]
+    style: FormatArg,
+}
+
+/// The `identify`-only knobs: how the value is interpreted (`--as`, `--artifact`)
+/// and how the ranked reading list is trimmed / judged ambiguous (`--top`,
+/// `--min-score`, `--ambiguity-gap`, `--provenance`). Flattened into the bare
+/// value and `identify` alone, so they never appear on `cal`/`decode`/etc.
+#[derive(Args, Debug)]
+struct IdentifyOpts {
     /// An artifact/source hint (e.g. `"chrome history"`, `"ntfs mft"`) that nudges
     /// identify readings whose format family matches it. A hint never hides a
     /// reading — it only adjusts the rank.
-    #[arg(long, global = true, value_name = "HINT")]
+    #[arg(long, value_name = "HINT")]
     artifact: Option<String>,
     /// Force one interpretation family (default: auto — detect and merge). int =
     /// integer epoch formats; hex = raw hex byte layouts; string = self-describing
     /// string forms (ISO 8601 / RFC 3339 / RFC 2822 / ASN.1 / ULID / UUID /
     /// ObjectId / EXIF).
-    #[arg(long = "as", value_enum, default_value_t = AsArg::Auto, global = true)]
+    #[arg(long = "as", value_enum, default_value_t = AsArg::Auto)]
     as_mode: AsArg,
-    /// Datetime display style for rendered output (identify/decode/scan). The
-    /// instant and zone are unchanged — only the textual shape differs.
-    #[arg(long = "format", id = "date_format", global = true, value_enum, default_value_t = FormatArg::Iso8601)]
-    format: FormatArg,
     /// Show at most N readings (identify). Default: all.
-    #[arg(long, global = true, value_name = "N")]
+    #[arg(long, value_name = "N")]
     top: Option<usize>,
     /// Drop readings scoring below S (0.0–1.0) (identify). Default: keep all.
-    #[arg(long = "min-score", global = true, value_name = "S")]
+    #[arg(long = "min-score", value_name = "S")]
     min_score: Option<f64>,
     /// Treat the top two readings as ambiguous (exit 2) when their scores differ
     /// by at most GAP. Default: exact tie only.
-    #[arg(
-        long = "ambiguity-gap",
-        global = true,
-        value_name = "GAP",
-        default_value_t = 1e-9
-    )]
+    #[arg(long = "ambiguity-gap", value_name = "GAP", default_value_t = 1e-9)]
     ambiguity_gap: f64,
     /// Wrap `--json` identify output in a reproducible provenance envelope:
     /// engine name/version, a registry digest, the verbatim input, and each
     /// reading's citation — traceable back to the exact method version.
-    #[arg(long, global = true)]
+    #[arg(long)]
     provenance: bool,
-    #[command(subcommand)]
-    command: Option<Commands>,
+}
+
+impl StyleOpt {
+    fn date_style(self) -> DateStyle {
+        self.style.into()
+    }
+}
+
+impl IdentifyOpts {
+    fn rank(&self) -> RankOpts {
+        RankOpts {
+            top: self.top,
+            min_score: self.min_score,
+            gap: self.ambiguity_gap,
+        }
+    }
 }
 
 /// How the ranked reading list is trimmed and when it counts as ambiguous —
@@ -131,6 +162,10 @@ enum Commands {
         /// Emit JSON instead of text.
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        ident: IdentifyOpts,
+        #[command(flatten)]
+        style: StyleOpt,
     },
     /// Decode a value under ONE known format id (see `list`).
     Decode {
@@ -138,6 +173,8 @@ enum Commands {
         format: String,
         /// The value (decimal integer, or a float for float formats).
         value: String,
+        #[command(flatten)]
+        style: StyleOpt,
     },
     /// Encode a datetime (ISO 8601 / RFC 3339 / ASN.1) into a format id.
     Encode {
@@ -162,6 +199,8 @@ enum Commands {
         /// Emit JSONL (one JSON object per value) instead of text.
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        style: StyleOpt,
     },
     /// Carve raw bytes (hex) for timestamps at every offset — a bounded blob (a
     /// config, a record, a selection), window + score-thresholded.
@@ -270,44 +309,61 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_ERR);
         }
     };
-    let style: DateStyle = cli.format.into();
-    let mode = cli.as_mode;
-    let opts = RankOpts {
-        top: cli.top,
-        min_score: cli.min_score,
-        gap: cli.ambiguity_gap,
-    };
-    // `--as` and `--artifact` only affect `identify` (the default / bare value);
-    // every other command sets its own interpretation, so a flag passed there is
-    // ignored. Reject it loudly rather than silently doing nothing.
+    // `--as` / `--artifact` are identify-only and no longer flattened onto other
+    // subcommands, so clap rejects them there at parse time. They remain top-level
+    // for the bare-value shortcut, so `--as X cal …` still parses — reject that
+    // loudly rather than silently ignoring the interpretation.
     let is_identify = matches!(cli.command, None | Some(Commands::Identify { .. }));
-    if !is_identify && mode != AsArg::Auto {
+    if !is_identify && cli.ident.as_mode != AsArg::Auto {
         eprintln!("error: --as applies only to `identify` / the bare value; other commands set their own interpretation");
         return ExitCode::from(EXIT_ERR);
     }
-    if !is_identify && cli.artifact.is_some() {
+    if !is_identify && cli.ident.artifact.is_some() {
         eprintln!("error: --artifact applies only to `identify` / the bare value");
         return ExitCode::from(EXIT_ERR);
     }
-    let code = match cli.command {
-        Some(Commands::Identify { value, json }) => run_identify(
+    ExitCode::from(dispatch(cli, &zone))
+}
+
+/// Route a parsed command to its runner and return the process exit code. Split
+/// from `main` so the parse/zone/guard preamble stays small and testable.
+fn dispatch(cli: Cli, zone: &RenderZone) -> u8 {
+    match cli.command {
+        Some(Commands::Identify {
+            value,
+            json,
+            ident,
+            style,
+        }) => run_identify(
             &value,
             json,
-            cli.provenance,
-            &zone,
-            style,
-            cli.artifact.as_deref(),
-            mode,
-            opts,
+            ident.provenance,
+            zone,
+            style.date_style(),
+            ident.artifact.as_deref(),
+            ident.as_mode,
+            ident.rank(),
         ),
-        Some(Commands::Decode { format, value }) => run_decode(&format, &value, &zone, style),
+        Some(Commands::Decode {
+            format,
+            value,
+            style,
+        }) => run_decode(&format, &value, zone, style.date_style()),
         Some(Commands::Encode { format, datetime }) => run_encode(&format, &datetime),
         Some(Commands::Scan {
             text,
             min_digits,
             top,
             json,
-        }) => run_scan(text.as_deref(), min_digits, top, json, &zone, style),
+            style,
+        }) => run_scan(
+            text.as_deref(),
+            min_digits,
+            top,
+            json,
+            zone,
+            style.date_style(),
+        ),
         Some(Commands::Carve {
             hex,
             min_score,
@@ -322,7 +378,7 @@ fn main() -> ExitCode {
             week_start,
             color,
             json,
-        }) => run_cal(when.as_deref(), &week_start, &color, json, &zone),
+        }) => run_cal(when.as_deref(), &week_start, &color, json, zone),
         Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
@@ -332,31 +388,30 @@ fn main() -> ExitCode {
             auto,
             replace,
             output,
-        }) => run_csv(&path, &convert, auto, replace, output.as_deref(), &zone),
+        }) => run_csv(&path, &convert, auto, replace, output.as_deref(), zone),
         #[cfg(feature = "lunisolar")]
         Some(Commands::Lunisolar {
             datetime,
             longitude,
-        }) => run_lunisolar(&datetime, longitude, &zone, cli.tz.is_some()),
+        }) => run_lunisolar(&datetime, longitude, zone, cli.tz.is_some()),
         None => {
             if let Some(v) = cli.value {
                 run_identify(
                     &v,
                     cli.json,
-                    cli.provenance,
-                    &zone,
-                    style,
-                    cli.artifact.as_deref(),
-                    mode,
-                    opts,
+                    cli.ident.provenance,
+                    zone,
+                    cli.style.date_style(),
+                    cli.ident.artifact.as_deref(),
+                    cli.ident.as_mode,
+                    cli.ident.rank(),
                 )
             } else {
                 eprintln!("error: give a VALUE or a subcommand (see --help)");
                 EXIT_ERR
             }
         }
-    };
-    ExitCode::from(code)
+    }
 }
 
 /// Exit code reflecting interpretation confidence (pipeline safety): a sentinel
