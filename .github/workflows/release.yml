@@ -89,17 +89,28 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
 
+      # OIDC login to Azure FIRST. The trusted-signing-action uses
+      # DefaultAzureCredential, which does NOT perform the GitHub OIDC exchange
+      # itself — azure/login trades the id-token (from the 'release' environment
+      # federated credential) for an az session the signer then rides on. Without
+      # this the signer fails "AzureCliCredential: Please run 'az login'".
+      - name: Azure login (OIDC)
+        if: runner.os == 'Windows'
+        uses: azure/login@93381592711f247e165c389ebb30b596c84cdc48 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       # Authenticode-sign the Windows .exe UNDER Security Ronin Ltd (UK) via Azure
       # Trusted Signing, BEFORE the .zip below, so the shipped timeglyph.exe +
       # timeglyph-lens.exe carry the signature (SmartScreen verified publisher).
-      # OIDC auth via the 'release' environment federated credential — no client
-      # secret. Values + gotchas: ronin-issen/CLAUDE.md §"Windows code signing".
+      # Auth comes from the azure/login session above (no client secret).
+      # Values + gotchas: ronin-issen/CLAUDE.md §"Windows code signing".
       - name: Sign Windows binaries (Azure Trusted Signing)
         if: runner.os == 'Windows'
         uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
           certificate-profile-name: securityronin-public
