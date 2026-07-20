@@ -675,6 +675,29 @@ fn cal_no_args_is_current_month() {
 }
 
 #[test]
+fn cal_current_month_appends_todays_day_card() {
+    // Bare `cal` renders the current month, which always contains today, so today's
+    // full day card (a day-only field like `jdn`) is appended below the grid — the
+    // month grid can't show a single day's pillars/moon/date.
+    let (out, code) = run(&["cal"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("Mo") && out.contains("Su"),
+        "grid missing:\n{out}"
+    );
+    assert!(
+        out.contains("jdn "),
+        "today's day card should be appended below the grid:\n{out}"
+    );
+    // A month that does not contain today gets the grid only — no day card.
+    let (past, _) = run(&["cal", "2020-01"]);
+    assert!(
+        !past.contains("jdn "),
+        "a past month must not append a day card:\n{past}"
+    );
+}
+
+#[test]
 fn cal_datetime_input_shows_hour_pillar() {
     let (out, code) = run(&["cal", "2025-02-19T14:30:00", "--tz", "+08:00"]);
     assert_eq!(code, 0, "{out}");
