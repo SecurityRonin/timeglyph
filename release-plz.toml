@@ -10,9 +10,13 @@
 # is needed.
 
 [workspace]
-# Per-package git tags, e.g. `timeglyph-v0.1.1`. `v[0-9]*` binary triggers never
-# match these — see the fleet release standard.
+# Per-package git tags, e.g. `timeglyph-v0.1.1`. git_tag_name is set EXPLICITLY:
+# release-plz's default is the bare `v{{ version }}`, which COLLIDES with the
+# binary release.yml `v[0-9]*` tags — release-plz then sees `v0.7.1` and errors
+# "local version ahead of registry but tag v0.7.1 exists" (bit timeglyph 0.7.1,
+# 2026-07-20). The `{{ package }}-v` prefix keeps the two tag namespaces disjoint.
 git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = false
 changelog_update = true
 dependencies_update = false
