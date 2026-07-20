@@ -61,7 +61,7 @@ These are real traps (several flagged in an adversarial design review):
   words), and it may be local or UTC depending on the API that wrote it.
 - **Composite/split timestamps** — date and time in separate columns; decoding one
   field alone yields plausible nonsense.
-- **Hex is a *syntax*, not an *encoding model*** — `--hex`/`hex` says "these are
+- **Hex is a *syntax*, not an *encoding model*** — `--as hex` says "these are
   bytes", not "this is how the format lays them out". The layout is separate.
 
 ## How timeglyph stays safe

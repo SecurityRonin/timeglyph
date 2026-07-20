@@ -10,7 +10,7 @@ description: >-
 
 Not every timestamp is a number. Many artifacts store **text**: logs, configs,
 certificates, and protocol headers. timeglyph parses the common forms via
-`timeglyph string <text>` (or `interpret_string` in the library).
+`timeglyph --as string <text>` (or `interpret_string` in the library).
 
 ## ISO 8601 / RFC 3339
 
@@ -46,9 +46,9 @@ is surfaced rather than hidden.
 ## Examples
 
 ```console
-$ timeglyph string 2020-01-01T00:00:00Z
-$ timeglyph string 20200101000000Z      # ASN.1 GeneralizedTime
-$ timeglyph string 950101000000Z        # ASN.1 UTCTime → 1995-01-01
+$ timeglyph --as string 2020-01-01T00:00:00Z
+$ timeglyph --as string 20200101000000Z      # ASN.1 GeneralizedTime
+$ timeglyph --as string 950101000000Z        # ASN.1 UTCTime → 1995-01-01
 ```
 
 ## See also

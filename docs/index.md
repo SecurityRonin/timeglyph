@@ -82,8 +82,8 @@ $ timeglyph 1577836800                        # identify (auto-detect, ranked)
 $ timeglyph identify --json 1577836800        # machine-readable candidates
 $ timeglyph decode filetime 132223104000000000  # decode under one known format
 $ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
-$ timeglyph hex 0060947C58B2D501              # raw bytes (LE/BE + packed on-disk)
-$ timeglyph string 20200101000000Z           # ASN.1 / ISO / RFC string forms
+$ timeglyph --as hex 0060947C58B2D501        # raw bytes only (LE/BE + packed on-disk)
+$ timeglyph --as string 20200101000000Z      # string forms only (ASN.1 / ISO / RFC)
 $ timeglyph scan app.log                     # find & decode every timestamp in text/stdin
 $ timeglyph cal 2026-11 --tz America/New_York  # forensic calendar (DST/leap/epoch markers + moon)
 $ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
@@ -111,7 +111,8 @@ Optional, feature-gated layers extend the engine past raw instant↔instant mapp
 - **Forensic calendar** (`cal`) — a day, month, or year rendered with the temporal
   detail an examiner reasons about: per-day UTC offset and DST fold/gap days, leap
   seconds and GPS week, ISO/Julian-Day numbering, timestamp-format epoch markers,
-  the Chinese / Hebrew / Islamic dates, and the moon's phase. See [the calendar](cal.md).
+  seven alternative calendars (Chinese lunisolar + 干支, plus ROC / Japanese /
+  Buddhist / Hebrew / Islamic / Persian), and the moon's phase. See [the calendar](cal.md).
 
 ## timeglyph-lens — the cursor overlay
 

@@ -65,12 +65,6 @@ cargo install timeglyph
 On macOS and Windows this also installs the
 [`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data) overlay.
 
-### Code signing
-
-Free code signing for `timeglyph`'s Windows binaries is provided by
-[SignPath.io](https://about.signpath.io/), using a code-signing certificate
-from the [SignPath Foundation](https://signpath.org/).
-
 ---
 
 ## What you do with it
@@ -80,8 +74,8 @@ from the [SignPath Foundation](https://signpath.org/).
 ```bash
 timeglyph 1577836800                    # ranked, scored readings across every format
 timeglyph identify --json 1577836800    # same, machine-readable
-timeglyph hex 0060947C58B2D501          # raw bytes: little/big-endian + packed on-disk
-timeglyph string 20200101000000Z        # ISO / RFC 2822 / ASN.1 string forms
+timeglyph --as hex 0060947C58B2D501     # raw bytes only: little/big-endian + packed on-disk
+timeglyph --as string 20200101000000Z   # string forms only: ISO / RFC 2822 / ASN.1
 ```
 
 Exit codes are pipeline-safe: `0` clear top reading, `2` ambiguous or a sentinel
@@ -93,7 +87,7 @@ offset, or a DST-correct IANA name); nudge readings toward a source family with
 
 ```bash
 timeglyph decode filetime 132223104000000000
-timeglyph decode oracle_date 78780101010101   # Oracle 7-byte DATE (and iso9660/cp56time2a/udf)
+timeglyph decode fat 1545691136          # FAT/DOS packed date+time (LOCAL) — one of 45 formats
 timeglyph encode unix 2020-01-01T00:00:00Z
 timeglyph explain filetime               # a spec card: epoch, tick, tz/leap, range, sentinels, citation
 timeglyph list                           # the format registry, with spec citations
@@ -125,9 +119,10 @@ timeglyph cal 2026 --json         # a whole year, faithful per-day records
 
 `cal` is a calendar built for temporal analysis: per-day UTC offset and DST
 fold/gap days, leap-second days and GPS week, ISO week / Julian Day / Unix,
-timestamp-format epoch and rollover markers, the Chinese / Hebrew / Islamic dates,
-and the moon's phase — every value computed and oracle-validated (`date`, `zdump`,
-USNO, IERS, JPL).
+timestamp-format epoch and rollover markers, seven alternative calendars (Chinese
+lunisolar with the 干支 four pillars, plus ROC, Japanese, Buddhist, Hebrew, Islamic,
+and Persian), and the moon's phase — every value computed and oracle-validated
+(`date`, `zdump`, USNO, IERS, JPL).
 
 [The forensic calendar →](docs/cal.md)
 
@@ -165,17 +160,22 @@ UI Automation on Windows. (Linux support is in progress.)
 
 ## Formats
 
-`timeglyph` decodes and auto-identifies:
+`timeglyph` decodes and auto-identifies **45 registered formats** plus the
+self-describing string forms:
 
-- **Epoch integers** — Unix (s/ms/µs/ns), FILETIME (incl. Active Directory / LDAP),
-  WebKit/Chrome, Cocoa / CFAbsoluteTime (integer, signed double, iOS-11 ns),
-  Apple HFS+, .NET ticks, OLE automation, Excel-1904, PostgreSQL, Mozilla PRTime,
-  SQLite Julian day
-- **Embedded IDs** — KSUID, ULID, UUIDv1 / v6 / v7, MongoDB ObjectId, and
-  Snowflake-class IDs (Twitter/X, Discord, Mastodon, LinkedIn, TikTok)
-- **Packed on-disk** — FAT/DOS date-time words and 128-bit SYSTEMTIME structs
+- **Epoch integers & floats** — Unix (s/ms/µs/ns and `double`), FILETIME (incl.
+  Active Directory / LDAP), WebKit/Chrome, Cocoa / CFAbsoluteTime (integer, signed
+  double, iOS-11 ns), Apple HFS+/HFS, .NET ticks, OLE automation, Excel-1904,
+  PostgreSQL, Mozilla PRTime, SQLite Julian day, DHCPv6, Modified Julian Day
+- **Embedded IDs** — KSUID, ULID, UUIDv1 / v6 / v7, MongoDB ObjectId, GMail message
+  IDs, and Snowflake-class IDs (Twitter/X, Discord, Mastodon, LinkedIn, TikTok, Sonyflake)
+- **Packed & mobile/broadcast** — FAT/DOS and exFAT date-time words, 128-bit
+  SYSTEMTIME structs, Microsoft DTTM, BCD, GSM 7-byte semi-octet, Nokia, DVR,
+  Motorola, Symantec, and SQL Server DATETIME
 - **Strings** — ISO 8601 / RFC 3339, RFC 2822 email dates, EXIF, ASN.1
   GeneralizedTime & UTCTime
+- **Leap-aware scales** (`--features leap`) — GPS, TAI64, NTP, kept separate from
+  the POSIX spine
 
 Every reading names the spec it assumes and is scored on window membership,
 granularity, magnitude, byte-width, endianness, artifact context, and neighbour
