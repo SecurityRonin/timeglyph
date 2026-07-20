@@ -651,6 +651,19 @@ fn extra_calendars_persian_buddhist_japanese() {
     let j = by_key("japanese");
     assert_eq!(j.year, 7);
     assert!(j.formatted.contains("令和"), "{}", j.formatted);
+    // The year-only footer label carries the era/qualifier (a bare "8" would be
+    // wrong for Japanese) — the month view shows this, not the raw year.
+    assert_eq!(j.year_label, "令和7年");
+    assert_eq!(b.year_label, "2568 BE");
+    assert_eq!(p.year_label, "1404");
+    // The month-view footer renders the era, not a bare number.
+    use timeglyph::cal_color::ColorMode;
+    let m =
+        timeglyph::cal::build_month(2025, 3, &RenderZone::Utc, timeglyph::cal::WeekStart::Monday)
+            .unwrap();
+    let month = timeglyph::cal_render::render_month_text(&m, None, ColorMode::Mono);
+    assert!(month.contains("和暦 Japanese 令和7年"), "{month}");
+    assert!(!month.contains("和暦 Japanese 7 "), "{month}");
     // Shown in the day card (bilingual name + the Japanese era value).
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("Persian") && card.contains("令和"), "{card}");
