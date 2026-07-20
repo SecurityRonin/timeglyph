@@ -189,18 +189,17 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
     // combining marks 0-wide, etc.). `label_w` is reused to align the season line.
     #[cfg(feature = "altcal")]
     let label_w = {
-        use unicode_width::UnicodeWidthStr as _;
         if !d.extra_calendars.is_empty() {
             out.push('\n');
         }
         let w = d
             .extra_calendars
             .iter()
-            .map(|e| e.name.width())
+            .map(|e| label_width(&e.name))
             .max()
             .unwrap_or(0);
         for e in &d.extra_calendars {
-            let pad = " ".repeat(w.saturating_sub(e.name.width()) + 2);
+            let pad = " ".repeat(w.saturating_sub(label_width(&e.name)) + 2);
             let _ = writeln!(out, "  {}{}{}", e.name, pad, e.formatted);
         }
         w
@@ -221,6 +220,20 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
             "  season{pad}{cn} {stage} {season} ({hemi}. hemisphere; solar longitude {lon:.1}deg)"
         );
     }
+}
+
+/// The alignment width of an alt-calendar label. `unicode-width` follows UAX #11,
+/// which counts non-spacing combining marks (Devanagari virama ्, anusvara ं, …)
+/// as 0 columns — but terminals render each with ~1 column, so a Sanskrit label
+/// looks ~N wider than measured. Add one column back per such mark so complex
+/// scripts line up with the CJK/Latin/RTL rows.
+#[cfg(feature = "altcal")]
+fn label_width(s: &str) -> usize {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    s.width()
+        + s.chars()
+            .filter(|c| UnicodeWidthChar::width(*c) == Some(0))
+            .count()
 }
 
 /// Which third of its 90° arc a solar longitude falls in: `early` / `mid` / `late`
