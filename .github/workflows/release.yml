@@ -120,11 +120,52 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      # Build a Windows MSI (WiX v3) so an install puts BOTH binaries in Program
+      # Files, the CLI on the system PATH, and a Start Menu shortcut for the Lens
+      # overlay — the portable winget zip installed only the CLI, leaving the GUI
+      # with no launcher (see wix/main.wxs). The exes are already Authenticode-
+      # signed above, so the MSI embeds signed binaries; the MSI itself is signed
+      # in the next step. WiX is Windows-only; pin the 3.14 binaries for a
+      # reproducible toolset instead of relying on the runner image's version.
+      - name: Build MSI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          $stage = "$env:RUNNER_TEMP\wixstage"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/timeglyph.exe" $stage
+          Copy-Item "target/${{ matrix.target }}/release/timeglyph-lens.exe" $stage
+          Copy-Item "wix/timeglyph.ico" $stage
+          $wix = "$env:RUNNER_TEMP\wixbin"
+          Invoke-WebRequest "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip" -OutFile "$env:RUNNER_TEMP\wix.zip"
+          Expand-Archive "$env:RUNNER_TEMP\wix.zip" -DestinationPath $wix -Force
+          & "$wix\candle.exe" -nologo -arch x64 "-dVersion=$ver" "-dStageDir=$stage" -out "$env:RUNNER_TEMP\main.wixobj" wix/main.wxs
+          if ($LASTEXITCODE -ne 0) { throw "candle failed" }
+          & "$wix\light.exe" -nologo -sval -out "timeglyph-$ver-${{ matrix.target }}.msi" "$env:RUNNER_TEMP\main.wixobj"
+          if ($LASTEXITCODE -ne 0) { throw "light failed" }
+
+      # Sign the MSI itself (verified publisher Security Ronin Ltd) so the
+      # installer clears SmartScreen, not just the exes inside it.
+      - name: Sign MSI (Azure Trusted Signing)
+        if: runner.os == 'Windows'
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       # One archive per platform carries the CLI plus (on macOS/Windows) the lens
       # GUI, so a single install brings both commands: the Homebrew formula does
-      # `bin.install "timeglyph", "timeglyph-lens"` on macOS, and the winget
-      # manifest lists both as NestedInstallerFiles. These Linux archives are
-      # CLI-only (musl); the Linux lens ships via the amd64 .deb (see `deb` job).
+      # `bin.install "timeglyph", "timeglyph-lens"` on macOS. On Windows the zip is
+      # a portable download; the winget package installs the signed MSI above.
+      # These Linux archives are CLI-only (musl); the Linux lens ships via the
+      # amd64 .deb (see `deb` job).
       - name: Package (Linux, CLI)
         if: runner.os == 'Linux'
         run: |
@@ -268,9 +309,12 @@ jobs:
           client-payload: '{"version": "${{ github.ref_name }}"}'
 
   # winget: update the single SecurityRonin.timeglyph package with the new Windows
-  # .zip — which now bundles both timeglyph.exe and timeglyph-lens.exe (two
-  # NestedInstallerFiles in the manifest). `continue-on-error` until the package's
-  # first winget-pkgs submission is merged.
+  # MSI, which installs both binaries, puts the CLI on PATH, and adds a Start Menu
+  # shortcut for the Lens (the old portable zip installed only the CLI). NOTE: the
+  # first MSI release switches the package's InstallerType zip → msi; if
+  # winget-releaser cannot flip the type in place, land a one-time manual
+  # winget-pkgs manifest PR (msi + the new ProductCode), after which this step
+  # maintains it. `continue-on-error` keeps a bad winget run from failing the tag.
   winget:
     needs: release
     runs-on: windows-latest
@@ -279,7 +323,7 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: SecurityRonin.timeglyph
-          installers-regex: '\.zip$'
+          installers-regex: '\.msi$'
           token: ${{ secrets.WINGET_TOKEN }}
           fork-user: securityronin-bot
 

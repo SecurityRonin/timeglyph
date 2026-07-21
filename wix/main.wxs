@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--
+  TimeGlyph Windows installer (WiX v3).
+
+  Installs both shipped binaries to Program Files and exposes them the way each is
+  used: the CLI (timeglyph.exe) is added to the system PATH; the GUI overlay
+  (timeglyph-lens.exe) gets a Start Menu shortcut with an icon, so a user who
+  "installs TimeGlyph" finds the Lens as an app — the thing the portable winget zip
+  never did.
+
+  Sources are parameterised so the same wxs builds in CI and locally:
+    candle -dVersion=<x.y.z> -dStageDir=<dir with the 2 exes + timeglyph.ico> ...
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="TimeGlyph"
+           UpgradeCode="503DF7F4-C6C0-4921-B4C7-1E3849919B84"
+           Manufacturer="Security Ronin Ltd"
+           Language="1033"
+           Codepage="1252"
+           Version="$(var.Version)">
+
+    <Package Id="*"
+             Keywords="Installer"
+             Description="TimeGlyph — forensic timestamp decipherment (CLI + Lens overlay)"
+             Manufacturer="Security Ronin Ltd"
+             InstallerVersion="500"
+             Languages="1033"
+             Compressed="yes"
+             InstallScope="perMachine"
+             SummaryCodepage="1252"
+             Platform="x64"/>
+
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of TimeGlyph is already installed. Setup will now exit."/>
+    <MediaTemplate EmbedCab="yes"/>
+
+    <Icon Id="ProductICO" SourceFile="$(var.StageDir)\timeglyph.ico"/>
+    <Property Id="ARPPRODUCTICON" Value="ProductICO"/>
+    <Property Id="ARPHELPLINK" Value="https://securityronin.github.io/timeglyph/"/>
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/SecurityRonin/timeglyph"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="TimeGlyph">
+          <Component Id="CliExe" Guid="*" Win64="yes">
+            <File Id="timeglyphExe" Name="timeglyph.exe" Source="$(var.StageDir)\timeglyph.exe" KeyPath="yes"/>
+          </Component>
+          <Component Id="LensExe" Guid="*" Win64="yes">
+            <File Id="timeglyphLensExe" Name="timeglyph-lens.exe" Source="$(var.StageDir)\timeglyph-lens.exe" KeyPath="yes"/>
+          </Component>
+          <!-- Put the CLI on the system PATH so `timeglyph` works in any shell. -->
+          <Component Id="PathEnv" Guid="138ABF8A-207B-4645-B660-F4F1AF7C3E03" Win64="yes">
+            <Environment Id="PATH" Name="PATH" Value="[INSTALLDIR]" Permanent="no" Part="last" Action="set" System="yes"/>
+            <RegistryValue Root="HKLM" Key="Software\SecurityRonin\TimeGlyph" Name="PathAdded" Type="integer" Value="1" KeyPath="yes"/>
+          </Component>
+        </Directory>
+      </Directory>
+
+      <!-- Start Menu shortcut for the Lens overlay (the GUI users expect to click). -->
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="LensShortcut" Guid="101FA626-C8C6-4AFB-863A-08F9A200826D" Win64="yes">
+          <Shortcut Id="LensStartMenuShortcut"
+                    Name="TimeGlyph Lens"
+                    Description="Hover any on-screen number and decode its time"
+                    Target="[INSTALLDIR]timeglyph-lens.exe"
+                    WorkingDirectory="INSTALLDIR"
+                    Icon="ProductICO"/>
+          <RegistryValue Root="HKLM" Key="Software\SecurityRonin\TimeGlyph" Name="ShortcutInstalled" Type="integer" Value="1" KeyPath="yes"/>
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Complete" Title="TimeGlyph" Level="1">
+      <ComponentRef Id="CliExe"/>
+      <ComponentRef Id="LensExe"/>
+      <ComponentRef Id="PathEnv"/>
+      <ComponentRef Id="LensShortcut"/>
+    </Feature>
+  </Product>
+</Wix>

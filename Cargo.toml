@@ -11,7 +11,7 @@ homepage = "https://securityronin.github.io/timeglyph/"
 documentation = "https://docs.rs/timeglyph"
 keywords = ["forensics", "timestamp", "dfir", "epoch", "datetime"]
 categories = ["date-and-time", "command-line-utilities"]
-exclude = ["docs/", "fuzz/", "lens/", "wasm/", "bindings/", ".github/", "mkdocs.yml", "site/"]
+exclude = ["docs/", "fuzz/", "lens/", "wasm/", "bindings/", ".github/", "wix/", "mkdocs.yml", "site/"]
 
 # One crate: a library (the engine — importable, fully testable) plus a thin CLI
 # shell over it (Humble Object). No `-core` split: there is no lean-vs-heavy
