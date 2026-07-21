@@ -171,6 +171,17 @@ jobs:
           tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph timeglyph-lens
           cd ../../..
 
+      # Bundle the lens GUI as a .app for the Homebrew Cask, so macOS users get a
+      # clickable /Applications icon (Launchpad/Spotlight/Dock) — a Formula's
+      # bin.install only puts a bare binary on PATH. GUI => cask is the fleet rule
+      # (SOP). The CLI tar.gz above still ships both binaries for the Formula;
+      # the cask adds the .app. ditto is the macOS-correct zipper for a bundle.
+      - name: Package (macOS, lens .app for the cask)
+        if: runner.os == 'macOS'
+        run: |
+          scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "${{ steps.version.outputs.version }}" .
+          ditto -c -k --keepParent timeglyph-lens.app "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
+
       - name: Package (Windows, CLI + lens)
         if: runner.os == 'Windows'
         shell: bash
@@ -182,7 +193,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}
-          path: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
+          path: |
+            timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
+            timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip
 
   # Publish the crate to crates.io. Gated on `build` so a version that does not
   # compile on every target never reaches the registry (a crates.io publish is
