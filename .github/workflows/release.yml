@@ -120,30 +120,21 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      # Build a Windows MSI (WiX v3) so an install puts BOTH binaries in Program
-      # Files, the CLI on the system PATH, and a Start Menu shortcut for the Lens
-      # overlay — the portable winget zip installed only the CLI, leaving the GUI
-      # with no launcher (see wix/main.wxs). The exes are already Authenticode-
-      # signed above, so the MSI embeds signed binaries; the MSI itself is signed
-      # in the next step. WiX is Windows-only; pin the 3.14 binaries for a
-      # reproducible toolset instead of relying on the runner image's version.
+      # Build a Windows MSI with cargo-wix (the fleet standard — issen/blazehash
+      # use the same tool + version). The custom wix/main.wxs installs BOTH
+      # binaries to Program Files, puts the CLI on the system PATH, and adds a
+      # Start Menu shortcut for the Lens overlay — the portable winget zip
+      # installed only the CLI, leaving the GUI with no launcher. The exes are
+      # already Authenticode-signed above, so `--no-build` packages the signed
+      # binaries; the MSI itself is signed in the next step. `-p timeglyph` is
+      # required (cargo-wix rejects a bare invocation); `--nocapture` surfaces any
+      # candle/light error inline.
+      - name: Install cargo-wix (Windows)
+        if: runner.os == 'Windows'
+        run: cargo install cargo-wix --version 0.3.9 --locked
       - name: Build MSI (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ver = "${{ steps.version.outputs.version }}"
-          $stage = "$env:RUNNER_TEMP\wixstage"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/timeglyph.exe" $stage
-          Copy-Item "target/${{ matrix.target }}/release/timeglyph-lens.exe" $stage
-          Copy-Item "wix/timeglyph.ico" $stage
-          $wix = "$env:RUNNER_TEMP\wixbin"
-          Invoke-WebRequest "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip" -OutFile "$env:RUNNER_TEMP\wix.zip"
-          Expand-Archive "$env:RUNNER_TEMP\wix.zip" -DestinationPath $wix -Force
-          & "$wix\candle.exe" -nologo -arch x64 "-dVersion=$ver" "-dStageDir=$stage" -out "$env:RUNNER_TEMP\main.wixobj" wix/main.wxs
-          if ($LASTEXITCODE -ne 0) { throw "candle failed" }
-          & "$wix\light.exe" -nologo -sval -out "timeglyph-$ver-${{ matrix.target }}.msi" "$env:RUNNER_TEMP\main.wixobj"
-          if ($LASTEXITCODE -ne 0) { throw "light failed" }
+        run: cargo wix --no-build --nocapture -p timeglyph --include wix/main.wxs --target ${{ matrix.target }} --output timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi
 
       # Sign the MSI itself (verified publisher Security Ronin Ltd) so the
       # installer clears SmartScreen, not just the exes inside it.

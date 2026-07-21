@@ -8,8 +8,10 @@
   "installs TimeGlyph" finds the Lens as an app — the thing the portable winget zip
   never did.
 
-  Sources are parameterised so the same wxs builds in CI and locally:
-    candle -dVersion=<x.y.z> -dStageDir=<dir with the 2 exes + timeglyph.ico> ...
+  Built by cargo-wix (the fleet standard): `cargo wix` supplies $(var.Version) and
+  $(var.CargoTargetBinDir); CI forces the lens crate into the root target dir
+  (CARGO_TARGET_DIR) so both exes sit in CargoTargetBinDir. The icon path is
+  repo-root-relative, resolved from the wix folder like issen's License.rtf.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*"
@@ -35,7 +37,7 @@
                   DowngradeErrorMessage="A newer version of TimeGlyph is already installed. Setup will now exit."/>
     <MediaTemplate EmbedCab="yes"/>
 
-    <Icon Id="ProductICO" SourceFile="$(var.StageDir)\timeglyph.ico"/>
+    <Icon Id="ProductICO" SourceFile="wix\timeglyph.ico"/>
     <Property Id="ARPPRODUCTICON" Value="ProductICO"/>
     <Property Id="ARPHELPLINK" Value="https://securityronin.github.io/timeglyph/"/>
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/SecurityRonin/timeglyph"/>
@@ -44,10 +46,10 @@
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="TimeGlyph">
           <Component Id="CliExe" Guid="*" Win64="yes">
-            <File Id="timeglyphExe" Name="timeglyph.exe" Source="$(var.StageDir)\timeglyph.exe" KeyPath="yes"/>
+            <File Id="timeglyphExe" Name="timeglyph.exe" Source="$(var.CargoTargetBinDir)\timeglyph.exe" KeyPath="yes"/>
           </Component>
           <Component Id="LensExe" Guid="*" Win64="yes">
-            <File Id="timeglyphLensExe" Name="timeglyph-lens.exe" Source="$(var.StageDir)\timeglyph-lens.exe" KeyPath="yes"/>
+            <File Id="timeglyphLensExe" Name="timeglyph-lens.exe" Source="$(var.CargoTargetBinDir)\timeglyph-lens.exe" KeyPath="yes"/>
           </Component>
           <!-- Put the CLI on the system PATH so `timeglyph` works in any shell. -->
           <Component Id="PathEnv" Guid="138ABF8A-207B-4645-B660-F4F1AF7C3E03" Win64="yes">
@@ -57,19 +59,27 @@
         </Directory>
       </Directory>
 
-      <!-- Start Menu shortcut for the Lens overlay (the GUI users expect to click). -->
+      <!-- Start Menu shortcut folder for the Lens overlay (the GUI to click). -->
       <Directory Id="ProgramMenuFolder">
-        <Component Id="LensShortcut" Guid="101FA626-C8C6-4AFB-863A-08F9A200826D" Win64="yes">
-          <Shortcut Id="LensStartMenuShortcut"
-                    Name="TimeGlyph Lens"
-                    Description="Hover any on-screen number and decode its time"
-                    Target="[INSTALLDIR]timeglyph-lens.exe"
-                    WorkingDirectory="INSTALLDIR"
-                    Icon="ProductICO"/>
-          <RegistryValue Root="HKLM" Key="Software\SecurityRonin\TimeGlyph" Name="ShortcutInstalled" Type="integer" Value="1" KeyPath="yes"/>
-        </Component>
+        <Directory Id="AppShortcutFolder" Name="TimeGlyph"/>
       </Directory>
     </Directory>
+
+    <!-- The shortcut component: a subfolder + an HKCU keypath + RemoveFolder is the
+         WiX-idiomatic, ICE-clean pattern for a Start Menu shortcut (an HKLM keypath
+         trips ICE38/43/57 — the shortcut lives in a per-user-profile location). -->
+    <DirectoryRef Id="AppShortcutFolder">
+      <Component Id="LensShortcut" Guid="101FA626-C8C6-4AFB-863A-08F9A200826D">
+        <Shortcut Id="LensStartMenuShortcut"
+                  Name="TimeGlyph Lens"
+                  Description="Hover any on-screen number and decode its time"
+                  Target="[INSTALLDIR]timeglyph-lens.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  Icon="ProductICO"/>
+        <RemoveFolder Id="AppShortcutFolder" On="uninstall"/>
+        <RegistryValue Root="HKCU" Key="Software\SecurityRonin\TimeGlyph" Name="ShortcutInstalled" Type="integer" Value="1" KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
 
     <Feature Id="Complete" Title="TimeGlyph" Level="1">
       <ComponentRef Id="CliExe"/>
