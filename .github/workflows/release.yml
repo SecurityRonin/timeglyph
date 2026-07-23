@@ -33,6 +33,13 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    # Presence flag for the optional macOS Developer ID signing/notarization steps:
+    # they run only once the MACOS_* secrets exist (see docs/macos-signing.md), so
+    # CI stays green before an Apple Developer account is set up. Until then the
+    # lens .app ships UNSIGNED and the Homebrew cask stays a draft (ADR
+    # ronin-issen 0002 — an unsigned cask .app is Gatekeeper-blocked).
+    env:
+      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -176,11 +183,44 @@ jobs:
       # bin.install only puts a bare binary on PATH. GUI => cask is the fleet rule
       # (SOP). The CLI tar.gz above still ships both binaries for the Formula;
       # the cask adds the .app. ditto is the macOS-correct zipper for a bundle.
-      - name: Package (macOS, lens .app for the cask)
+      - name: Build lens .app (macOS)
         if: runner.os == 'macOS'
+        run: scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "${{ steps.version.outputs.version }}" .
+
+      # Developer-ID-sign + notarize + staple the .app so the Homebrew cask is not
+      # Gatekeeper-blocked. Skipped until the MACOS_* secrets exist (see
+      # docs/macos-signing.md). The macOS mirror of the Windows Azure signing step.
+      - name: Sign + notarize lens .app (Developer ID)
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING == 'true'
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
-          scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "${{ steps.version.outputs.version }}" .
-          ditto -c -k --keepParent timeglyph-lens.app "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KCPW="$(uuidgen)"
+          security create-keychain -p "$KCPW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KCPW" "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/[",]//g' | xargs)
+          codesign --deep --force --options runtime --timestamp --sign "$SIGN_IDENTITY" timeglyph-lens.app
+          codesign --verify --deep --strict --verbose=2 timeglyph-lens.app
+          echo "$NOTARY_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          ditto -c -k --keepParent timeglyph-lens.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple timeglyph-lens.app
+
+      - name: Zip lens .app for the cask (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent timeglyph-lens.app "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
 
       - name: Package (Windows, CLI + lens)
         if: runner.os == 'Windows'
