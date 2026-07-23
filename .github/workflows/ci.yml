@@ -200,3 +200,22 @@ jobs:
           maturin build --release
           pip install target/wheels/*.whl
           pytest tests/ -q
+
+  vet:
+    name: Cargo Vet (supply-chain)
+    runs-on: ubuntu-latest
+    # Complements `deny` (known-bad advisories/licenses) with the supply-chain-
+    # injection layer: every dependency version must be human-source-reviewed or
+    # covered by an imported aggregate audit set (Google/Mozilla/Bytecode-Alliance/
+    # Embark). Config in supply-chain/{config,audits,imports}.toml.
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-vet
+        uses: taiki-e/install-action@59012be0884e296ca2da49b530610e72c49039ad # v2.81.6
+        with:
+          tool: cargo-vet
+      - name: Fetch dependencies
+        run: cargo fetch
+      - name: Check supply chain
+        run: cargo vet --locked
