@@ -33,6 +33,13 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    # Presence flag for the optional macOS Developer ID signing/notarization steps:
+    # they run only once the MACOS_* secrets exist (see docs/macos-signing.md), so
+    # CI stays green before an Apple Developer account is set up. Until then the
+    # lens .app ships UNSIGNED and the Homebrew cask stays a draft (ADR
+    # ronin-issen 0002 — an unsigned cask .app is Gatekeeper-blocked).
+    env:
+      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -120,11 +127,43 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      # Build a Windows MSI with cargo-wix (the fleet standard — issen/blazehash
+      # use the same tool + version). The custom wix/main.wxs installs BOTH
+      # binaries to Program Files, puts the CLI on the system PATH, and adds a
+      # Start Menu shortcut for the Lens overlay — the portable winget zip
+      # installed only the CLI, leaving the GUI with no launcher. The exes are
+      # already Authenticode-signed above, so `--no-build` packages the signed
+      # binaries; the MSI itself is signed in the next step. `-p timeglyph` is
+      # required (cargo-wix rejects a bare invocation); `--nocapture` surfaces any
+      # candle/light error inline.
+      - name: Install cargo-wix (Windows)
+        if: runner.os == 'Windows'
+        run: cargo install cargo-wix --version 0.3.9 --locked
+      - name: Build MSI (Windows)
+        if: runner.os == 'Windows'
+        run: cargo wix --no-build --nocapture -p timeglyph --include wix/main.wxs --target ${{ matrix.target }} --output timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi
+
+      # Sign the MSI itself (verified publisher Security Ronin Ltd) so the
+      # installer clears SmartScreen, not just the exes inside it.
+      - name: Sign MSI (Azure Trusted Signing)
+        if: runner.os == 'Windows'
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        with:
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: ${{ github.workspace }}
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       # One archive per platform carries the CLI plus (on macOS/Windows) the lens
       # GUI, so a single install brings both commands: the Homebrew formula does
-      # `bin.install "timeglyph", "timeglyph-lens"` on macOS, and the winget
-      # manifest lists both as NestedInstallerFiles. These Linux archives are
-      # CLI-only (musl); the Linux lens ships via the amd64 .deb (see `deb` job).
+      # `bin.install "timeglyph", "timeglyph-lens"` on macOS. On Windows the zip is
+      # a portable download; the winget package installs the signed MSI above.
+      # These Linux archives are CLI-only (musl); the Linux lens ships via the
+      # amd64 .deb (see `deb` job).
       - name: Package (Linux, CLI)
         if: runner.os == 'Linux'
         run: |
@@ -139,6 +178,50 @@ jobs:
           tar czf ../../../timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz timeglyph timeglyph-lens
           cd ../../..
 
+      # Bundle the lens GUI as a .app for the Homebrew Cask, so macOS users get a
+      # clickable /Applications icon (Launchpad/Spotlight/Dock) — a Formula's
+      # bin.install only puts a bare binary on PATH. GUI => cask is the fleet rule
+      # (SOP). The CLI tar.gz above still ships both binaries for the Formula;
+      # the cask adds the .app. ditto is the macOS-correct zipper for a bundle.
+      - name: Build lens .app (macOS)
+        if: runner.os == 'macOS'
+        run: scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "${{ steps.version.outputs.version }}" .
+
+      # Developer-ID-sign + notarize + staple the .app so the Homebrew cask is not
+      # Gatekeeper-blocked. Skipped until the MACOS_* secrets exist (see
+      # docs/macos-signing.md). The macOS mirror of the Windows Azure signing step.
+      - name: Sign + notarize lens .app (Developer ID)
+        if: runner.os == 'macOS' && env.HAS_MACOS_SIGNING == 'true'
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KCPW="$(uuidgen)"
+          security create-keychain -p "$KCPW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KCPW" "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/[",]//g' | xargs)
+          codesign --deep --force --options runtime --timestamp --sign "$SIGN_IDENTITY" timeglyph-lens.app
+          codesign --verify --deep --strict --verbose=2 timeglyph-lens.app
+          echo "$NOTARY_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          ditto -c -k --keepParent timeglyph-lens.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple timeglyph-lens.app
+
+      - name: Zip lens .app for the cask (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent timeglyph-lens.app "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
+
       - name: Package (Windows, CLI + lens)
         if: runner.os == 'Windows'
         shell: bash
@@ -150,7 +233,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}
-          path: timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
+          path: |
+            timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.*
+            timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip
 
   # Publish the crate to crates.io. Gated on `build` so a version that does not
   # compile on every target never reaches the registry (a crates.io publish is
@@ -268,9 +353,12 @@ jobs:
           client-payload: '{"version": "${{ github.ref_name }}"}'
 
   # winget: update the single SecurityRonin.timeglyph package with the new Windows
-  # .zip — which now bundles both timeglyph.exe and timeglyph-lens.exe (two
-  # NestedInstallerFiles in the manifest). `continue-on-error` until the package's
-  # first winget-pkgs submission is merged.
+  # MSI, which installs both binaries, puts the CLI on PATH, and adds a Start Menu
+  # shortcut for the Lens (the old portable zip installed only the CLI). NOTE: the
+  # first MSI release switches the package's InstallerType zip → msi; if
+  # winget-releaser cannot flip the type in place, land a one-time manual
+  # winget-pkgs manifest PR (msi + the new ProductCode), after which this step
+  # maintains it. `continue-on-error` keeps a bad winget run from failing the tag.
   winget:
     needs: release
     runs-on: windows-latest
@@ -279,7 +367,7 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: SecurityRonin.timeglyph
-          installers-regex: '\.zip$'
+          installers-regex: '\.msi$'
           token: ${{ secrets.WINGET_TOKEN }}
           fork-user: securityronin-bot
 
