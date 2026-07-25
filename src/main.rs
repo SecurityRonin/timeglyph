@@ -82,13 +82,13 @@ struct Cli {
     command: Option<Commands>,
 }
 
-/// The datetime display style (`--format`): how a decoded instant is rendered as
+/// The datetime display style (`--style`): how a decoded instant is rendered as
 /// text. Shared only by the value-interpreting commands (bare value / identify /
 /// decode / scan) — not `cal`, which renders its own grid. The instant and zone
 /// are unchanged; only the textual shape differs.
 #[derive(Args, Debug, Clone, Copy)]
 struct StyleOpt {
-    #[arg(long = "format", id = "date_format", value_enum, default_value_t = FormatArg::Iso8601)]
+    #[arg(long = "style", id = "date_style", value_enum, default_value_t = FormatArg::Iso8601)]
     style: FormatArg,
 }
 
