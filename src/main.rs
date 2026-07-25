@@ -154,7 +154,8 @@ struct RankOpts {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Identify a value across all formats (ranked candidates, never one verdict).
+    /// Identify a single value across all formats (ranked candidates, never one
+    /// verdict). Many values in text → `scan`; a raw byte blob → `carve`.
     #[command(visible_alias = "id")]
     Identify {
         /// The value to identify.
@@ -203,7 +204,8 @@ enum Commands {
         style: StyleOpt,
     },
     /// Carve raw bytes (hex) for timestamps at every offset — a bounded blob (a
-    /// config, a record, a selection), window + score-thresholded.
+    /// config, a record, a selection), window + score-thresholded. For text
+    /// rather than raw bytes, use `scan`.
     Carve {
         /// Hex bytes to carve (e.g. `aabbcc…`); omit or `-` to read hex from stdin.
         hex: Option<String>,
@@ -254,7 +256,8 @@ enum Commands {
         output: Option<String>,
     },
     /// Render an instant in the Chinese lunisolar calendar + 干支 four pillars.
-    /// Requires `--tz` (the conversion is meridian-relative).
+    /// Requires `--tz` (the conversion is meridian-relative). The full forensic
+    /// calendar (with this as one overlay) is `cal`.
     #[cfg(feature = "lunisolar")]
     Lunisolar {
         /// The instant: an ISO 8601 / RFC 3339 datetime, or a Unix-seconds integer.
