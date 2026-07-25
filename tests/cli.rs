@@ -25,6 +25,28 @@ fn bare_value_back_compat_identifies() {
 }
 
 #[test]
+fn style_flag_replaces_format_no_alias() {
+    // Pre-release rename: the date-display flag is `--style`, not `--format`
+    // (which collided with the *timestamp* format-id concept). No back-compat
+    // alias — `--style` is the only spelling and `--format` is rejected.
+    let (style_out, _) = run(&["--style", "us", "1577836800"]);
+    assert!(
+        !style_out.contains("unexpected argument"),
+        "--style must be accepted: {style_out}"
+    );
+    assert!(
+        style_out.contains("01/01/2020 12:00:00 AM"),
+        "--style us must render the US display style: {style_out}"
+    );
+
+    let (format_out, _) = run(&["--format", "us", "1577836800"]);
+    assert!(
+        format_out.contains("unexpected argument"),
+        "--format must be rejected (renamed to --style): {format_out}"
+    );
+}
+
+#[test]
 fn decode_subcommand() {
     let (out, code) = run(&["decode", "filetime", "132223104000000000"]);
     assert!(out.contains("2020-01-01"), "{out}");
