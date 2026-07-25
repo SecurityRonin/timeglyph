@@ -279,6 +279,12 @@ enum Commands {
         /// Colour: `auto` (TTY-detect, honours NO_COLOR), `always`, or `never`.
         #[arg(long, value_name = "WHEN", default_value = "auto")]
         color: String,
+        /// Which alternative-calendar overlays to show: a comma-list of
+        /// `roc,japanese,buddhist,hebrew,islamic,persian,lunisolar`, or `all`
+        /// (default) / `none`. Narrows only the overlay block — the grid, moon,
+        /// and season always render. Applies to the text view; `--json` stays full.
+        #[arg(long, value_name = "KEYS")]
+        calendars: Option<String>,
         /// Emit the calendar as JSON (faithful, one record per day).
         #[arg(long)]
         json: bool,
@@ -380,8 +386,16 @@ fn dispatch(cli: Cli, zone: &RenderZone) -> u8 {
             when,
             week_start,
             color,
+            calendars,
             json,
-        }) => run_cal(when.as_deref(), &week_start, &color, json, zone),
+        }) => run_cal(
+            when.as_deref(),
+            &week_start,
+            &color,
+            json,
+            calendars.as_deref(),
+            zone,
+        ),
         Some(Commands::Mcp) => run_mcp(),
         Some(Commands::List) => run_list(),
         #[cfg(feature = "csv")]
@@ -1285,12 +1299,13 @@ fn append_today_card(
     m: i8,
     zone: &RenderZone,
     color: timeglyph::cal_color::ColorMode,
+    cals: &timeglyph::cal_render::CalendarSel,
 ) {
     if today.year() == y && today.month() == m {
         if let Ok(day) = timeglyph::cal::build_day(today, zone) {
             println!(
                 "\n{}",
-                timeglyph::cal_render::render_day_text_with(&day, color)
+                timeglyph::cal_render::render_day_text_with_calendars(&day, color, cals)
             );
         }
     }
@@ -1301,13 +1316,14 @@ fn emit_day(
     day: &timeglyph::cal::CalDay,
     json: bool,
     color: timeglyph::cal_color::ColorMode,
+    cals: &timeglyph::cal_render::CalendarSel,
 ) -> u8 {
     if json {
         println!("{}", serde_json::to_string_pretty(day).unwrap_or_default());
     } else {
         println!(
             "{}",
-            timeglyph::cal_render::render_day_text_with(day, color)
+            timeglyph::cal_render::render_day_text_with_calendars(day, color, cals)
         );
     }
     EXIT_OK
@@ -1329,12 +1345,53 @@ fn resolve_cal_color(color_arg: &str, json: bool) -> timeglyph::cal_color::Color
     )
 }
 
+/// Parse the `cal --calendars` selector into a [`timeglyph::cal_render::CalendarSel`]:
+/// absent or `all` → every overlay; `none` → no overlays; else a comma-list of the
+/// overlay keys (`roc`/`japanese`/`buddhist`/`hebrew`/`islamic`/`persian`/`lunisolar`).
+/// An unknown key is an error (fail loud) naming the offender and the valid set.
+fn parse_calendar_sel(arg: Option<&str>) -> Result<timeglyph::cal_render::CalendarSel, String> {
+    use std::collections::HashSet;
+    use timeglyph::cal_render::CalendarSel;
+    const KEYS: [&str; 7] = [
+        "roc",
+        "japanese",
+        "buddhist",
+        "hebrew",
+        "islamic",
+        "persian",
+        "lunisolar",
+    ];
+    match arg {
+        None => Ok(CalendarSel::All),
+        Some(s) if s.eq_ignore_ascii_case("all") => Ok(CalendarSel::All),
+        Some(s) if s.eq_ignore_ascii_case("none") => Ok(CalendarSel::Only(HashSet::new())),
+        Some(s) => {
+            let mut set = HashSet::new();
+            for raw in s.split(',') {
+                let key = raw.trim().to_ascii_lowercase();
+                if key.is_empty() {
+                    continue;
+                }
+                if !KEYS.contains(&key.as_str()) {
+                    return Err(format!(
+                        "unknown calendar '{key}' (valid: {}, or all/none)",
+                        KEYS.join(", ")
+                    ));
+                }
+                set.insert(key);
+            }
+            Ok(CalendarSel::Only(set))
+        }
+    }
+}
+
 /// `cal` subcommand: render a reference calendar (year / month / single day).
 fn run_cal(
     when: Option<&str>,
     week_start: &str,
     color_arg: &str,
     json: bool,
+    calendars: Option<&str>,
     zone: &RenderZone,
 ) -> u8 {
     use timeglyph::cal::{build_day, build_month, WeekStart};
@@ -1347,6 +1404,13 @@ fn run_cal(
         }
     };
     let color = resolve_cal_color(color_arg, json);
+    let cals = match parse_calendar_sel(calendars) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return EXIT_ERR;
+        }
+    };
     let target = match parse_cal_when(when, zone) {
         Ok(t) => t,
         Err(e) => {
@@ -1362,14 +1426,14 @@ fn run_cal(
                 eprintln!("error: {date} is out of the representable range");
                 return EXIT_ERR;
             };
-            emit_day(&day, json, color)
+            emit_day(&day, json, color, &cals)
         }
         CalWhen::Instant(dt) => {
             let Ok(day) = timeglyph::cal::build_day_at(dt, zone) else {
                 eprintln!("error: {dt} is out of the representable range");
                 return EXIT_ERR;
             };
-            emit_day(&day, json, color)
+            emit_day(&day, json, color, &cals)
         }
         CalWhen::Month(y, m) => match build_month(y, m, zone, ws) {
             Ok(month) => {
@@ -1381,11 +1445,16 @@ fn run_cal(
                 } else {
                     print!(
                         "{}",
-                        timeglyph::cal_render::render_month_text(&month, Some(today), color)
+                        timeglyph::cal_render::render_month_text_with_calendars(
+                            &month,
+                            Some(today),
+                            color,
+                            &cals
+                        )
                     );
                     // A month grid can't show a single day's pillars/moon/date, so
                     // when the rendered month contains today, append today's card.
-                    append_today_card(today, y, m, zone, color);
+                    append_today_card(today, y, m, zone, color, &cals);
                 }
                 EXIT_OK
             }
@@ -1394,47 +1463,60 @@ fn run_cal(
                 EXIT_ERR
             }
         },
-        CalWhen::Year(y) => {
-            let mut months = Vec::new();
-            for m in 1..=12 {
-                match build_month(y, m, zone, ws) {
-                    Ok(month) => months.push(month),
-                    Err(e) => {
-                        eprintln!("error: {e}");
-                        return EXIT_ERR;
-                    }
-                }
+        CalWhen::Year(y) => emit_year(y, zone, ws, json, color, &cals, today),
+    }
+}
+
+/// Emit a whole year — 12 month grids (with an optional season strip) or the
+/// faithful JSON array. Extracted from `run_cal` to keep it under the line lint.
+fn emit_year(
+    y: i16,
+    zone: &RenderZone,
+    ws: timeglyph::cal::WeekStart,
+    json: bool,
+    color: timeglyph::cal_color::ColorMode,
+    cals: &timeglyph::cal_render::CalendarSel,
+    today: jiff::civil::Date,
+) -> u8 {
+    let mut months = Vec::new();
+    for m in 1..=12 {
+        match timeglyph::cal::build_month(y, m, zone, ws) {
+            Ok(month) => months.push(month),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return EXIT_ERR;
             }
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&months).unwrap_or_default()
-                );
-            } else {
-                #[cfg(feature = "lunisolar")]
-                {
-                    use timeglyph::cal::{hemisphere_for, season_markers};
-                    print!(
-                        "{}",
-                        timeglyph::cal_art::season_strip(
-                            y,
-                            &season_markers(y),
-                            hemisphere_for(zone)
-                        )
-                    );
-                    println!();
-                }
-                for month in &months {
-                    print!(
-                        "{}",
-                        timeglyph::cal_render::render_month_text(month, Some(today), color)
-                    );
-                    println!();
-                }
-            }
-            EXIT_OK
         }
     }
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&months).unwrap_or_default()
+        );
+    } else {
+        #[cfg(feature = "lunisolar")]
+        {
+            use timeglyph::cal::{hemisphere_for, season_markers};
+            print!(
+                "{}",
+                timeglyph::cal_art::season_strip(y, &season_markers(y), hemisphere_for(zone))
+            );
+            println!();
+        }
+        for month in &months {
+            print!(
+                "{}",
+                timeglyph::cal_render::render_month_text_with_calendars(
+                    month,
+                    Some(today),
+                    color,
+                    cals
+                )
+            );
+            println!();
+        }
+    }
+    EXIT_OK
 }
 
 /// `carve` subcommand: hex bytes → bounded carve → text / JSONL / ImHex bookmarks.

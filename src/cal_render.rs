@@ -8,6 +8,30 @@ use crate::cal::{CalDay, CalMonth};
 use crate::cal_color::{self, ColorMode, Ink};
 use jiff::civil::Date;
 
+/// Which alternative-calendar overlays a `cal` render includes. `All` is the
+/// default (every overlay); `Only` restricts to the given stable keys — the
+/// [`crate::cal::ExtraCal`] keys (`roc`/`japanese`/`buddhist`/`hebrew`/`islamic`/
+/// `persian`) plus `lunisolar` for the 農曆+干支 block. An empty `Only` shows none.
+/// The core grid, moon, and season always render regardless.
+#[derive(Debug, Clone)]
+pub enum CalendarSel {
+    /// Every overlay (the default).
+    All,
+    /// Only the overlays whose key is in this set.
+    Only(std::collections::HashSet<String>),
+}
+
+impl CalendarSel {
+    /// Whether the overlay with this stable `key` renders.
+    #[must_use]
+    pub fn shows(&self, key: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Only(keys) => keys.contains(key),
+        }
+    }
+}
+
 /// The palette [`Ink`] for a day's marker (`None` for `today`, which is reverse
 /// video, and for an unmarked day). Mirrors [`day_marker`]'s precedence.
 fn marker_ink(day: &CalDay) -> Option<Ink> {
@@ -77,7 +101,21 @@ const MONTHS: [&str; 12] = [
 /// coloured per `color` (today = reverse video); [`ColorMode::Mono`] is plain.
 #[must_use]
 pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) -> String {
+    render_month_text_with_calendars(m, today, color, &CalendarSel::All)
+}
+
+/// As [`render_month_text`], but only the alternative-calendar footer overlays
+/// whose key is selected by `cals` render (the `干支`/solar-term hint is gated on
+/// `lunisolar`). The grid, legend, and moon always render.
+#[must_use]
+pub fn render_month_text_with_calendars(
+    m: &CalMonth,
+    today: Option<Date>,
+    color: ColorMode,
+    cals: &CalendarSel,
+) -> String {
     use std::fmt::Write as _;
+    let _ = &cals; // used by the lunisolar/altcal-gated footer below
     let name = MONTHS[(m.month as usize).clamp(1, 12) - 1];
     // Build the calendar block (title + weekday header + week rows) as lines, then
     // optionally compose it right of the season scene tile.
@@ -127,7 +165,7 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
     #[cfg(feature = "lunisolar")]
     if let Some(mid) = m.days.get(m.days.len() / 2) {
         result.push('\n');
-        if let Some(c) = &mid.alt_chinese {
+        if let Some(c) = mid.alt_chinese.as_ref().filter(|_| cals.shows("lunisolar")) {
             let _ = writeln!(
                 result,
                 "  {}年 · {} · lunar month {}",
@@ -145,13 +183,16 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
         // A compact alt-calendar hint (the mid-month year in each), full detail
         // lives in the single-day view.
         #[cfg(feature = "altcal")]
-        if !mid.extra_calendars.is_empty() {
+        {
             let hint: Vec<String> = mid
                 .extra_calendars
                 .iter()
+                .filter(|e| cals.shows(&e.key))
                 .map(|e| format!("{} {}", e.name, e.year_label))
                 .collect();
-            let _ = writeln!(result, "  {}", hint.join(" · "));
+            if !hint.is_empty() {
+                let _ = writeln!(result, "  {}", hint.join(" · "));
+            }
         }
     }
     result
@@ -160,10 +201,10 @@ pub fn render_month_text(m: &CalMonth, today: Option<Date>, color: ColorMode) ->
 /// Append the day's alternative-calendar and season overlays (Chinese/干支,
 /// Hebrew, Islamic, the season name + its scene tile) to the day card.
 #[cfg(feature = "lunisolar")]
-fn append_day_overlays(out: &mut String, d: &CalDay) {
+fn append_day_overlays(out: &mut String, d: &CalDay, cals: &CalendarSel) {
     use std::fmt::Write as _;
     out.push('\n');
-    if let Some(c) = &d.alt_chinese {
+    if let Some(c) = d.alt_chinese.as_ref().filter(|_| cals.shows("lunisolar")) {
         use crate::calfmt;
         let _ = writeln!(
             out,
@@ -190,16 +231,16 @@ fn append_day_overlays(out: &mut String, d: &CalDay) {
     #[cfg(feature = "altcal")]
     let label_w = {
         use unicode_width::UnicodeWidthStr as _;
-        if !d.extra_calendars.is_empty() {
-            out.push('\n');
-        }
-        let w = d
+        let shown: Vec<_> = d
             .extra_calendars
             .iter()
-            .map(|e| e.name.width())
-            .max()
-            .unwrap_or(0);
-        for e in &d.extra_calendars {
+            .filter(|e| cals.shows(&e.key))
+            .collect();
+        if !shown.is_empty() {
+            out.push('\n');
+        }
+        let w = shown.iter().map(|e| e.name.width()).max().unwrap_or(0);
+        for e in &shown {
             let pad = " ".repeat(w.saturating_sub(e.name.width()) + 2);
             let _ = writeln!(out, "  {}{}{}", e.name, pad, e.formatted);
         }
@@ -262,8 +303,16 @@ pub fn render_day_text(d: &CalDay) -> String {
 /// the moon disc and season tile tinted per `color`.
 #[must_use]
 pub fn render_day_text_with(d: &CalDay, color: ColorMode) -> String {
+    render_day_text_with_calendars(d, color, &CalendarSel::All)
+}
+
+/// As [`render_day_text_with`], but only the alt-calendar/干支 overlays selected
+/// by `cals` render (the core facts, moon, and season always do).
+#[must_use]
+pub fn render_day_text_with_calendars(d: &CalDay, color: ColorMode, cals: &CalendarSel) -> String {
     use std::fmt::Write as _;
     let _ = &color; // used by the lunisolar-gated blocks below
+    let _ = &cals; // used by the lunisolar-gated overlay block below
     let mut out = String::new();
     let _ = writeln!(out, "{}  {}", d.date, d.weekday);
     let _ = writeln!(
@@ -316,7 +365,7 @@ pub fn render_day_text_with(d: &CalDay, color: ColorMode) -> String {
         }
     }
     #[cfg(feature = "lunisolar")]
-    append_day_overlays(&mut out, d);
+    append_day_overlays(&mut out, d, cals);
     if !d.artifacts.is_empty() {
         out.push('\n');
     }
