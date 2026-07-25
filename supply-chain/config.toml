@@ -17,7 +17,7 @@ url = "https://raw.githubusercontent.com/google/rust-crate-audits/main/audits.to
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
 [policy.timeglyph]
-audit-as-crates-io = true
+audit-as-crates-io = false
 
 [[exemptions.aho-corasick]]
 version = "1.1.4"
@@ -402,10 +402,6 @@ criteria = "safe-to-run"
 [[exemptions.time-core]]
 version = "0.1.9"
 criteria = "safe-to-run"
-
-[[exemptions.timeglyph]]
-version = "0.7.1"
-criteria = "safe-to-deploy"
 
 [[exemptions.tinystr]]
 version = "0.8.3"

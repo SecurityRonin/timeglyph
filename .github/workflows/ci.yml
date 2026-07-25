@@ -181,19 +181,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install maturin pytest
-      # One v* tag ships the crate AND the wheel, so the two versions must move in
-      # lockstep. This guard fails the build if bindings/ drifts from the crate —
-      # the exact gap that left bindings at 0.3.0 while the crate went to 0.4.0.
-      - name: bindings version must match the crate
-        run: |
-          CRATE=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          PYCARGO=$(grep -m1 '^version' bindings/python/Cargo.toml | cut -d'"' -f2)
-          PYPROJ=$(grep -m1 '^version' bindings/python/pyproject.toml | cut -d'"' -f2)
-          echo "crate=$CRATE  bindings/Cargo=$PYCARGO  pyproject=$PYPROJ"
-          if [ "$CRATE" != "$PYCARGO" ] || [ "$CRATE" != "$PYPROJ" ]; then
-            echo "::error::bindings/python version must equal the crate version ($CRATE)"
-            exit 1
-          fi
+      # One v* tag ships the crate AND the wheel, so the wheel version must equal
+      # the crate version. release-plz bumps ONLY the root crate on a release, so an
+      # equality *check* here can never pass on a release PR (bindings/ would still
+      # lag). Instead stamp the bindings from the crate — the single source of truth —
+      # making drift impossible by construction (this closes the 0.3.0-vs-0.4.0 gap
+      # without a guard release-plz can't satisfy). The same stamp runs in the wheel
+      # build (release.yml) so published wheels are always at the crate version.
+      - name: sync bindings version to the crate
+        run: ./bindings/python/sync-version.sh
       - name: Build + test the Python wheel
         working-directory: bindings/python
         run: |

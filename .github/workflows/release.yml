@@ -264,7 +264,8 @@ jobs:
   # Python wheels — built and published on the SAME v* tag as the crate/binaries,
   # so ONE tag ships every channel (crate + binaries + brew/apt/winget + PyPI).
   # A separate py-v* tag used to be required and was silently forgotten at 0.4.0;
-  # a ci.yml check keeps bindings/ pinned to the crate version so it can't drift.
+  # the sync-version step below stamps bindings/ from the crate so the wheel can't
+  # drift (the same stamp ci.yml runs).
   wheels:
     needs: build
     strategy:
@@ -274,6 +275,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # Stamp the wheel with the crate version (single source of truth) before
+      # building, so a v* tag always ships wheels matching the crate — the same
+      # stamp ci.yml runs. Portable POSIX sh + awk; bash on the Windows runner.
+      - name: sync bindings version to the crate
+        shell: bash
+        run: ./bindings/python/sync-version.sh
       - uses: PyO3/maturin-action@v1 # renovate: pin digest
         with:
           command: build
