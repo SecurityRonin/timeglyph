@@ -6,6 +6,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.7.1...timeglyph-v0.8.0) - 2026-07-25
+
+### Added
+
+- *(release)* install the Lens with an icon — Windows MSI + macOS .app (Homebrew Cask)
+- *(cal)* GREEN — append today's day card to the current-month view
+- *(cal)* 孟仲季×春夏秋冬 season name; left-align the alt-calendar columns
+
+### Documentation
+
+- correct capabilities to the shipped code; drop stale/wrong claims
+
+### Fixed
+
+- *(vet)* declare own crates first-party so version bumps don't break supply-chain audit
+- *(deps)* cap jiff below 0.2.33 (panic regression); refresh lock to forensicnomicon 1.8.1
+- *(cal)* month footer shows each calendar's year in its proper era form
+- *(cal)* align complex-script alt-calendar labels (compensate combining marks)
+
+### Other
+
+- *(cal)* extract append_today_card to keep run_cal under the line lint
+- *(cli)* scope conversion flags to the value-interpreting commands
+
 ## [0.7.0] - 2026-07-14
 
 ### Added
