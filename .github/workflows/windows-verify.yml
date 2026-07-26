@@ -46,9 +46,11 @@ jobs:
         run: cargo install cargo-wix --version 0.3.9 --locked
 
       # --no-build packages the exes just built (unsigned — signing is a release-only
-      # concern, irrelevant to install-layout correctness). Same flags as release.yml.
+      # concern, irrelevant to install-layout correctness). No --include: cargo-wix
+      # auto-discovers wix/main.wxs, so passing it explicitly compiles main.wxs twice
+      # and candle fails CNDL0351 (same output .wixobj). Same flags as release.yml.
       - name: Build MSI (unsigned)
-        run: cargo wix --no-build --nocapture -p timeglyph --include wix/main.wxs --target x86_64-pc-windows-msvc --output timeglyph-verify-x86_64-pc-windows-msvc.msi
+        run: cargo wix --no-build --nocapture -p timeglyph --target x86_64-pc-windows-msvc --output timeglyph-verify-x86_64-pc-windows-msvc.msi
 
       - name: Install MSI silently and assert layout
         shell: pwsh
