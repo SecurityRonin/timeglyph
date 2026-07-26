@@ -39,7 +39,7 @@ directories = "6"
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and
 # without embedded fonts egui builds no glyph atlas and renders an all-black
 # window (no error). Do not remove it.
-eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
+eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
 
 # UI Automation (element-under-cursor) + a layered Win32 overlay. The `windows`
 # crate compiles to an empty shim off-Windows, so the lib + scan tests build
