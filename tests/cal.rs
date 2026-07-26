@@ -674,6 +674,18 @@ fn extra_calendars_persian_buddhist_japanese() {
         !jp_line.contains("中華民國"),
         "footer is vertical — one calendar per line, not a · -joined row: {month}"
     );
+    // A straddling calendar shows its month(s) + the Gregorian transition date:
+    // in March 2025 the Hebrew calendar rolls Adar → Nisan on 2025-03-30.
+    let heb_line = month
+        .lines()
+        .find(|l| l.contains("Hebrew"))
+        .expect("month footer has a Hebrew calendar line");
+    assert!(
+        heb_line.contains("Adar 5785")
+            && heb_line.contains("Nisan 5785")
+            && heb_line.contains("from 2025-03-30"),
+        "month transition with Gregorian date: {month}"
+    );
     // Shown in the day card (bilingual name + the Japanese era value).
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("Persian") && card.contains("令和"), "{card}");

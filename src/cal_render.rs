@@ -184,18 +184,74 @@ pub fn render_month_text_with_calendars(
         // lives in the single-day view.
         #[cfg(feature = "altcal")]
         {
-            let hint: Vec<String> = mid
+            // One aligned row per selected calendar: the alt-month(s) this
+            // Gregorian month spans, with the Gregorian date a new one begins.
+            let owned: Vec<(String, String)> = mid
                 .extra_calendars
                 .iter()
                 .filter(|e| cals.shows(&e.key))
-                .map(|e| format!("{} {}", e.name, e.year_label))
+                .filter_map(|e| month_calendar_value(m, &e.key))
                 .collect();
-            if !hint.is_empty() {
-                let _ = writeln!(result, "  {}", hint.join(" · "));
-            }
+            let rows: Vec<(&str, &str)> = owned
+                .iter()
+                .map(|(n, v)| (n.as_str(), v.as_str()))
+                .collect();
+            append_calendar_block(&mut result, &rows);
         }
     }
     result
+}
+
+/// Render alternative calendars as a vertical, monospace-width-aligned two-column
+/// block (`name` padded to a shared label column, then `value`). Returns the label
+/// width so a caller can align a following line (the day card's season row). The
+/// single renderer shared by the day card (value = the full date) and the month
+/// footer (value = the year in each calendar), so the two views agree by
+/// construction — CJK counts 2-wide, Devanagari combining marks 0-wide, etc.
+#[cfg(all(feature = "lunisolar", feature = "altcal"))]
+fn append_calendar_block(out: &mut String, rows: &[(&str, &str)]) -> usize {
+    use std::fmt::Write as _;
+    use unicode_width::UnicodeWidthStr as _;
+    if rows.is_empty() {
+        return 0;
+    }
+    out.push('\n');
+    let w = rows.iter().map(|(name, _)| name.width()).max().unwrap_or(0);
+    for (name, value) in rows {
+        let pad = " ".repeat(w.saturating_sub(name.width()) + 2);
+        let _ = writeln!(out, "  {name}{pad}{value}");
+    }
+    w
+}
+
+/// Build the month-footer value for one alternative calendar across the displayed
+/// Gregorian month: the alt-calendar month it opens in, then — for each new
+/// alt-month that begins during the month — `→ <month> from <Gregorian date>`
+/// (e.g. `Tammuz 5786 → Av 5786 from 2026-07-15`). Gregorian-aligned calendars
+/// (ROC/Japanese/Buddhist) span one month, so they render just that label.
+/// Returns `(display name, value)`, or `None` if the calendar isn't present.
+#[cfg(all(feature = "lunisolar", feature = "altcal"))]
+fn month_calendar_value(m: &CalMonth, key: &str) -> Option<(String, String)> {
+    use std::fmt::Write as _;
+    let mut name: Option<String> = None;
+    let mut spans: Vec<(String, String)> = Vec::new(); // (month_label, Gregorian start)
+    let mut last: Option<(i32, u8)> = None;
+    for day in &m.days {
+        if let Some(e) = day.extra_calendars.iter().find(|e| e.key == key) {
+            name.get_or_insert_with(|| e.name.clone());
+            let ym = (e.year, e.month);
+            if last != Some(ym) {
+                spans.push((e.month_label.clone(), day.date.clone()));
+                last = Some(ym);
+            }
+        }
+    }
+    let (first, rest) = spans.split_first()?;
+    let mut value = first.0.clone();
+    for (label, date) in rest {
+        let _ = write!(value, " → {label} from {date}");
+    }
+    Some((name?, value))
 }
 
 /// Append the day's alternative-calendar and season overlays (Chinese/干支,
@@ -230,21 +286,13 @@ fn append_day_overlays(out: &mut String, d: &CalDay, cals: &CalendarSel) {
     // combining marks 0-wide, etc.). `label_w` is reused to align the season line.
     #[cfg(feature = "altcal")]
     let label_w = {
-        use unicode_width::UnicodeWidthStr as _;
-        let shown: Vec<_> = d
+        let rows: Vec<(&str, &str)> = d
             .extra_calendars
             .iter()
             .filter(|e| cals.shows(&e.key))
+            .map(|e| (e.name.as_str(), e.formatted.as_str()))
             .collect();
-        if !shown.is_empty() {
-            out.push('\n');
-        }
-        let w = shown.iter().map(|e| e.name.width()).max().unwrap_or(0);
-        for e in &shown {
-            let pad = " ".repeat(w.saturating_sub(e.name.width()) + 2);
-            let _ = writeln!(out, "  {}{}{}", e.name, pad, e.formatted);
-        }
-        w
+        append_calendar_block(out, &rows)
     };
     // Without the alt-calendars, the season keeps its own 4-space gap (label_w 8).
     #[cfg(not(feature = "altcal"))]
