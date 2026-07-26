@@ -662,8 +662,18 @@ fn extra_calendars_persian_buddhist_japanese() {
         timeglyph::cal::build_month(2025, 3, &RenderZone::Utc, timeglyph::cal::WeekStart::Monday)
             .unwrap();
     let month = timeglyph::cal_render::render_month_text(&m, None, ColorMode::Mono);
-    assert!(month.contains("和暦 Japanese 令和7年"), "{month}");
-    assert!(!month.contains("和暦 Japanese 7 "), "{month}");
+    // The month footer renders the alt-calendars vertically, aligned like the day
+    // card: each calendar on its OWN line, and the Japanese line carries the
+    // era-qualified year (令和7年), not a bare number.
+    let jp_line = month
+        .lines()
+        .find(|l| l.contains("和暦 Japanese"))
+        .expect("month footer has a Japanese calendar line");
+    assert!(jp_line.contains("令和7年"), "era-qualified year: {month}");
+    assert!(
+        !jp_line.contains("中華民國"),
+        "footer is vertical — one calendar per line, not a · -joined row: {month}"
+    );
     // Shown in the day card (bilingual name + the Japanese era value).
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("Persian") && card.contains("令和"), "{card}");
