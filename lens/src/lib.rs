@@ -20,6 +20,7 @@ pub mod fonts;
 pub mod ganzhi;
 pub mod ocr;
 pub mod settings;
+pub mod shot;
 pub mod text;
 pub mod theme;
 pub mod tzinfo;

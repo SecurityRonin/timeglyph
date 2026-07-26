@@ -82,3 +82,8 @@ unsafe_code = "allow"
 # Read font cmaps to assert the overlay's fallback stack covers every UI symbol
 # (regression guard against tofu). Pure-safe parser; dev-only.
 ttf-parser = "0.25"
+# Decode a captured screenshot PNG for the `shotcheck` example (the automated
+# half of GUI screenshot validation). Dev-only + confined to the example, so the
+# decoder never links into the shipped lens binary. png feature only — that is
+# all a screen capture is.
+image = { version = "0.25", default-features = false, features = ["png"] }
