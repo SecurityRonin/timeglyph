@@ -141,7 +141,7 @@ jobs:
         run: cargo install cargo-wix --version 0.3.9 --locked
       - name: Build MSI (Windows)
         if: runner.os == 'Windows'
-        run: cargo wix --no-build --nocapture -p timeglyph --include wix/main.wxs --target ${{ matrix.target }} --output timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi
+        run: cargo wix --no-build --nocapture -p timeglyph --target ${{ matrix.target }} --output timeglyph-${{ steps.version.outputs.version }}-${{ matrix.target }}.msi
 
       # Sign the MSI itself (verified publisher Security Ronin Ltd) so the
       # installer clears SmartScreen, not just the exes inside it.
