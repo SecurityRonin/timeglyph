@@ -1,0 +1,71 @@
+name: deb-verify
+
+# Build the amd64 `gui` .deb the same way release.yml does, then ASSERT it ships
+# the lens binary + .desktop launcher + icon. This regression guard exists because
+# cargo-deb silently dropped `merge-assets.append`, so the gui .deb shipped
+# CLI-only — undetected until a manual amd64 install test on real hardware. Runs
+# on demand, and automatically when the packaging surface changes. Uploads the
+# .deb as an artifact so it can be pulled for a real install/launch test.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - packaging/**
+      - lens/**
+      - .github/workflows/deb-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  gui-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install GUI build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev libgl1-mesa-dev libwayland-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config \
+            desktop-file-utils
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --version 2.11.2 --locked
+
+      # Same recipe as release.yml's deb job: build the CLI and the (separate,
+      # non-workspace) lens crate into the ROOT target dir, then package with
+      # --no-build so cargo-deb only assembles the gui variant.
+      - name: Build CLI + lens + package (amd64 gui variant)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu
+          cargo build --release --target x86_64-unknown-linux-gnu --manifest-path lens/Cargo.toml
+          cargo deb --no-build --variant gui --target x86_64-unknown-linux-gnu
+
+      - name: Assert the gui .deb ships lens + launcher + icon
+        run: |
+          DEB=$(find target -name 'timeglyph_*_amd64.deb' | head -1)
+          echo "Inspecting $DEB"
+          dpkg-deb -c "$DEB"
+          for f in usr/bin/timeglyph \
+                   usr/bin/timeglyph-lens \
+                   usr/share/applications/timeglyph-lens.desktop \
+                   usr/share/icons/hicolor/256x256/apps/timeglyph-lens.png; do
+            dpkg-deb -c "$DEB" | grep -q "$f" || { echo "::error::gui .deb is MISSING $f"; exit 1; }
+          done
+          echo "gui .deb ships CLI + lens + .desktop + icon"
+          echo "--- Depends ---"; dpkg-deb -f "$DEB" Depends
+          # Launcher must be a valid desktop entry.
+          rm -rf /tmp/tgx && dpkg-deb -x "$DEB" /tmp/tgx
+          desktop-file-validate /tmp/tgx/usr/share/applications/timeglyph-lens.desktop
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: timeglyph-gui-deb-amd64
+          path: target/**/timeglyph_*_amd64.deb
+          if-no-files-found: error
