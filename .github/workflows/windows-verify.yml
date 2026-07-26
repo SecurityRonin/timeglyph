@@ -1,0 +1,112 @@
+name: windows-verify
+
+# Build the Windows MSI the same way release.yml does (minus Authenticode signing)
+# on a NATIVE x86_64 windows-latest runner, then INSTALL it silently and ASSERT it
+# lands both binaries, puts the CLI on the system PATH, and creates the Start Menu
+# shortcut for the Lens overlay — then uninstall and assert clean removal. This is
+# the install-correctness a subscription-gated cloud VM can't verify: the free
+# GitHub runner is authoritative native x86. Mirrors deb-verify.yml (its Linux
+# sibling): on demand + automatically when the Windows packaging surface changes.
+# Uploads the MSI so it can be pulled for a manual interactive/GUI look.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - wix/**
+      - lens/**
+      - src/main.rs
+      - .github/workflows/windows-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  msi-verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      # Match the pinned release toolchain (rust-toolchain.toml / release.yml) so
+      # the verified MSI is built with the exact toolchain that ships it.
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # Same recipe as release.yml: CLI in the root target dir, then the lens (a
+      # non-workspace crate) forced into that SAME root target dir via
+      # CARGO_TARGET_DIR so cargo-wix's $(var.CargoTargetBinDir) finds both exes.
+      - name: Build CLI + lens (release, x86_64-pc-windows-msvc)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path lens/Cargo.toml
+
+      - name: Install cargo-wix
+        run: cargo install cargo-wix --version 0.3.9 --locked
+
+      # --no-build packages the exes just built (unsigned — signing is a release-only
+      # concern, irrelevant to install-layout correctness). Same flags as release.yml.
+      - name: Build MSI (unsigned)
+        run: cargo wix --no-build --nocapture -p timeglyph --include wix/main.wxs --target x86_64-pc-windows-msvc --output timeglyph-verify-x86_64-pc-windows-msvc.msi
+
+      - name: Install MSI silently and assert layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = Get-ChildItem -Filter 'timeglyph-verify-*.msi' | Select-Object -First 1
+          if (-not $msi) { throw "no MSI produced by cargo-wix" }
+          Write-Host "Installing $($msi.Name)"
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 40; throw "msiexec install failed with exit code $($p.ExitCode)" }
+
+          $installDir = Join-Path $env:ProgramFiles 'TimeGlyph'
+          $cli  = Join-Path $installDir 'timeglyph.exe'
+          $lens = Join-Path $installDir 'timeglyph-lens.exe'
+          foreach ($f in @($cli, $lens)) {
+            if (-not (Test-Path $f)) { throw "MISSING installed binary: $f" }
+          }
+          Write-Host "OK: both binaries installed to $installDir"
+
+          # The CLI runs. Invoke by FULL PATH — the MSI's PATH edit is a system-env
+          # change not visible to this already-started process.
+          $ver = & $cli --version
+          if ($LASTEXITCODE -ne 0) { throw "timeglyph --version exited $LASTEXITCODE" }
+          Write-Host "OK: timeglyph --version => $ver"
+
+          # The MSI added the install dir to the *system* PATH — prove it via the
+          # machine environment registry (not this shell's stale %PATH%).
+          $sysPath = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path
+          if ($sysPath -notlike '*TimeGlyph*') { throw "system PATH does not contain the TimeGlyph install dir" }
+          Write-Host "OK: system PATH contains the install dir"
+
+          # Start Menu shortcut for the Lens (all-users, perMachine install).
+          $lnk = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\TimeGlyph\TimeGlyph Lens.lnk'
+          if (-not (Test-Path $lnk)) { throw "MISSING Start Menu shortcut: $lnk" }
+          Write-Host "OK: Start Menu shortcut present => $lnk"
+
+          # …and it points at the lens exe.
+          $sh = New-Object -ComObject WScript.Shell
+          $target = $sh.CreateShortcut($lnk).TargetPath
+          if ($target -inotlike '*timeglyph-lens.exe') { throw "shortcut target is '$target', expected the lens exe" }
+          Write-Host "OK: shortcut target => $target"
+
+      - name: Uninstall MSI and assert clean removal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = Get-ChildItem -Filter 'timeglyph-verify-*.msi' | Select-Object -First 1
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$($msi.FullName)`" /qn /norestart /l*v uninstall.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 40; throw "msiexec uninstall failed with exit code $($p.ExitCode)" }
+
+          $installDir = Join-Path $env:ProgramFiles 'TimeGlyph'
+          if (Test-Path (Join-Path $installDir 'timeglyph.exe')) { throw "CLI still present after uninstall" }
+          $lnk = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\TimeGlyph\TimeGlyph Lens.lnk'
+          if (Test-Path $lnk) { throw "Start Menu shortcut still present after uninstall" }
+          Write-Host "OK: uninstall removed both binaries + the shortcut"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: timeglyph-msi-x86_64
+          path: timeglyph-verify-*.msi
+          if-no-files-found: error
