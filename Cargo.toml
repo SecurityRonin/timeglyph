@@ -109,14 +109,12 @@ altcal = ["dep:icu_calendar", "dep:unicode-width"]
 # this feature only toggles the artifact-hint BEHAVIOUR, not the dependency.
 artifact-hints = []
 
-# Debian packaging (the `deb` release job). The base package is CLI-only
-# (`$auto` picks up the `timeglyph` binary), which is what the aarch64 .deb
-# ships — the GUI lens can't be cross-compiled for arm64 without an arm64
-# multiarch GUI sysroot, which the release job's simple cross setup doesn't
-# provide. The `gui` variant (x86_64/amd64 only) appends the pre-built
-# `timeglyph-lens` overlay binary; `name = "timeglyph"` keeps the package name
-# unchanged so the apt/Cloudsmith globs still match. The literal `target/release`
-# prefix is cargo-deb's convention — it rewrites it to the real per-target dir.
+# Debian packaging (the `deb` release job). Both amd64 AND arm64 ship the `gui`
+# variant (CLI + the timeglyph-lens overlay) — each builds NATIVELY on its own
+# runner (arm64 on ubuntu-24.04-arm), so the lens links the host's own GUI libs
+# with no cross-sysroot. `name = "timeglyph"` keeps the package name unchanged so
+# the apt/Cloudsmith globs still match. The literal `target/release` prefix is
+# cargo-deb's convention — it rewrites it to the real per-target dir.
 [package.metadata.deb]
 
 [package.metadata.deb.variants.gui]

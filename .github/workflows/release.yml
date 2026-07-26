@@ -380,11 +380,11 @@ jobs:
           fork-user: securityronin-bot
 
   # apt: build .deb packages (cargo-deb) for amd64/arm64, attach to the release,
-  # and push to the Cloudsmith apt repo. The amd64 .deb also ships the
-  # timeglyph-lens GUI overlay (built on the gnu target with system GUI libs
-  # available on the native x86_64 runner); the arm64 .deb stays CLI-only
-  # because cross-compiling the eframe/egui GUI for arm64 needs an arm64
-  # multiarch GUI sysroot this job's simple gcc cross-linker setup can't supply.
+  # and push to the Cloudsmith apt repo. BOTH arches ship the timeglyph-lens GUI
+  # overlay via the `gui` variant — each builds NATIVELY on its own runner
+  # (amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm, GA since 2025-08), so the
+  # eframe/egui GUI links the host's own system GUI libs. No cross-sysroot needed;
+  # feature parity across arches. (If ubuntu-24.04-arm is flaky, ubuntu-22.04-arm.)
   deb:
     strategy:
       matrix:
@@ -393,7 +393,7 @@ jobs:
             os: ubuntu-latest
             arch: amd64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
@@ -402,18 +402,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-
-      # GUI build system libs for the timeglyph-lens overlay (eframe/egui + glow
-      # + wayland/x11). These are HOST libs for the native x86_64 runner — the
-      # arm64 build skips them and ships CLI-only (see the job comment).
-      - name: Install GUI build deps (amd64 only)
-        if: matrix.arch == 'amd64'
+      # GUI build/system libs for the timeglyph-lens overlay (eframe/egui + glow +
+      # wayland/x11), installed natively on each arch's own runner.
+      - name: Install GUI build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -423,25 +414,18 @@ jobs:
       - name: Install cargo-deb
         run: cargo install cargo-deb --version 2.11.2 --locked
 
-      # amd64: build the CLI and the lens GUI ourselves, then let cargo-deb only
-      # package them (`--no-build`) via the `gui` variant, which appends the
-      # pre-built timeglyph-lens as an asset. The lens is a separate, non-workspace
-      # crate → explicit --manifest-path. CARGO_TARGET_DIR forces its output into
-      # the ROOT target dir (it defaults to lens/target/) so cargo-deb's gui merge
-      # asset (target/release/timeglyph-lens) resolves.
-      - name: Build .deb package (amd64, CLI + lens)
-        if: matrix.arch == 'amd64'
+      # Both arches build NATIVELY on their own runner: the CLI, then the lens GUI
+      # (a separate, non-workspace crate → explicit --manifest-path), then cargo-deb
+      # assembles them (`--no-build`) via the `gui` variant. CARGO_TARGET_DIR forces
+      # the lens output into the ROOT target dir (it defaults to lens/target/) so the
+      # gui variant's `target/release/timeglyph-lens` asset resolves.
+      - name: Build .deb package (CLI + lens)
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           cargo build --release --target ${{ matrix.target }}
           cargo build --release --target ${{ matrix.target }} --manifest-path lens/Cargo.toml
           cargo deb --no-build --variant gui --target ${{ matrix.target }}
-
-      # arm64: CLI-only .deb (cargo-deb builds the timeglyph binary itself).
-      - name: Build .deb package (arm64, CLI only)
-        if: matrix.arch == 'arm64'
-        run: cargo deb --target ${{ matrix.target }}
 
       - name: Find .deb file
         id: find_deb
