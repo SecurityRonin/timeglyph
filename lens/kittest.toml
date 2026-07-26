@@ -1,0 +1,18 @@
+# egui_kittest snapshot config for the offscreen overlay render gate.
+# The reference PNGs are generated on macOS; a tolerant threshold absorbs
+# anti-aliasing and platform font differences. See lens/src/overlay_snapshot_test.rs.
+output_path = "tests/snapshots"
+threshold = 0.8
+failed_pixel_count_threshold = 0
+
+[mac]
+threshold = 0.8
+failed_pixel_count_threshold = 0
+
+[linux]
+threshold = 0.8
+failed_pixel_count_threshold = 0
+
+[windows]
+threshold = 0.8
+failed_pixel_count_threshold = 0

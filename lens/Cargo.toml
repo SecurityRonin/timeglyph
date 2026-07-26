@@ -87,3 +87,9 @@ ttf-parser = "0.25"
 # decoder never links into the shipped lens binary. png feature only — that is
 # all a screen capture is.
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Offscreen (headless wgpu) GUI render gate: drives the real `LensApp` through
+# eframe and snapshots the rendered frame, catching the all-black / missing-font
+# (tofu) / broken-layout regressions the shipped overlay must never ship. The
+# `wgpu` renderer is independent of eframe's runtime `glow` backend — it only
+# renders the test frames offscreen (Metal on macOS, Vulkan/GL on CI).
+egui_kittest = { version = "0.35", features = ["eframe", "snapshot", "wgpu"] }

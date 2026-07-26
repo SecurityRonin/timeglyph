@@ -1589,3 +1589,9 @@ fn hsv(h: f64, s: f64, v: f64) -> Color32 {
     let c = |x: f64| (x * 255.0).round().clamp(0.0, 255.0) as u8;
     Color32::from_rgb(c(r), c(g), c(b))
 }
+
+// Offscreen (headless wgpu) egui_kittest render gate for `LensApp`. In-crate so
+// it can reach the private app + font/theme helpers; see the module's own docs.
+#[cfg(test)]
+#[path = "overlay_snapshot_test.rs"]
+mod overlay_snapshot_test;

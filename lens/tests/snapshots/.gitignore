@@ -1,0 +1,4 @@
+# Transient egui_kittest artifacts from a test run; only the reference *.png
+# (committed) is the checked-in baseline.
+*.new.png
+*.diff.png
