@@ -121,7 +121,15 @@ artifact-hints = []
 
 [package.metadata.deb.variants.gui]
 name = "timeglyph"
-merge-assets.append = [["target/release/timeglyph-lens", "usr/bin/", "755"]]
+# GUI runtime libs the eframe/egui lens links (X11 + GL + xkbcommon). `$auto` keeps
+# cargo-deb's shlibdeps auto-detection; the explicit libs cover what it may miss on
+# a merge-asset binary (validate the full set with `ldd` on a real amd64 install).
+depends = "$auto, libgl1, libxkbcommon0, libx11-6"
+merge-assets.append = [
+    ["target/release/timeglyph-lens", "usr/bin/", "755"],
+    ["packaging/linux/timeglyph-lens.desktop", "usr/share/applications/", "644"],
+    ["lens/assets/icon.png", "usr/share/icons/hicolor/256x256/apps/timeglyph-lens.png", "644"],
+]
 
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and
