@@ -6,7 +6,10 @@
 # identity across versions.
 #
 # Usage: bundle-lens-app.sh <lens-binary> <version> [output-dir]
-#   -> writes <output-dir>/timeglyph-lens.app  (default output-dir: cwd)
+#   -> writes "<output-dir>/TimeGlyph Lens.app"  (default output-dir: cwd)
+# The bundle uses the display-style name macOS GUI apps conventionally carry
+# ("TimeGlyph Lens.app", like "Google Chrome.app"); the executable inside stays
+# the hyphenated CLI name (timeglyph-lens).
 set -euo pipefail
 
 BIN="$1"
@@ -15,7 +18,7 @@ OUTDIR="${3:-.}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICON_PNG="$REPO_ROOT/lens/assets/icon.png"
 
-APP="$OUTDIR/timeglyph-lens.app"
+APP="$OUTDIR/TimeGlyph Lens.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 

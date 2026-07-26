@@ -201,6 +201,7 @@ jobs:
           NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
+          APP="TimeGlyph Lens.app"
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KCPW="$(uuidgen)"
           security create-keychain -p "$KCPW" "$KEYCHAIN"
@@ -210,17 +211,17 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KEYCHAIN" >/dev/null
           security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/[",]//g' | xargs)
-          codesign --deep --force --options runtime --timestamp --sign "$SIGN_IDENTITY" timeglyph-lens.app
-          codesign --verify --deep --strict --verbose=2 timeglyph-lens.app
+          codesign --deep --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           echo "$NOTARY_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/notary.p8"
-          ditto -c -k --keepParent timeglyph-lens.app "$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
-          xcrun stapler staple timeglyph-lens.app
+          xcrun stapler staple "$APP"
 
       - name: Zip lens .app for the cask (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent timeglyph-lens.app "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
+        run: ditto -c -k --keepParent "TimeGlyph Lens.app" "timeglyph-lens-${{ steps.version.outputs.version }}-${{ matrix.target }}.app.zip"
 
       - name: Package (Windows, CLI + lens)
         if: runner.os == 'Windows'
