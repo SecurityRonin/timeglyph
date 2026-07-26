@@ -121,10 +121,11 @@ artifact-hints = []
 
 [package.metadata.deb.variants.gui]
 name = "timeglyph"
-# GUI runtime libs for the eframe/egui lens (glow + wayland + x11). These are
-# dlopen'd, so shlibdeps/`$auto` can't see them — they MUST be declared explicitly
-# or the lens installs but fails to launch on a minimal system.
-depends = "$auto, libgl1, libegl1, libx11-6, libxcb1, libxkbcommon0, libwayland-client0"
+# GUI runtime libs for the eframe/egui lens (glow + wayland + x11) — dlopen'd, so
+# shlibdeps/`$auto` can't see them; declare explicitly or the lens fails to launch.
+# Plus the Noto fonts the calendar overlays render: the lens loads OS fonts at
+# runtime, so without these CJK/Devanagari/Hebrew/Arabic show as tofu boxes.
+depends = "$auto, libgl1, libegl1, libx11-6, libxcb1, libxkbcommon0, libwayland-client0, fonts-noto-cjk, fonts-noto-core"
 # Explicit `assets` (NOT `merge-assets.append`, which cargo-deb 2.11 silently drops
 # here — the gui .deb shipped CLI-only until an amd64 install test caught it). A
 # variant's `assets` replaces the auto bin asset, so list the CLI too. cargo-deb
