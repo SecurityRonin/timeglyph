@@ -20,3 +20,4 @@ and are reflected in the shipped v0.3.0 code.
 | [0007](0007-clean-room-validation.md) | Clean-room validation: specs + `time_decode` oracle; never decompile DCode |
 | [0008](0008-convention-relative-lunisolar.md) | Lunisolar conversion is convention-relative — `--tz` required |
 | [0009](0009-lens-zone-display-conventions.md) | timeglyph-lens zone & time display conventions (amber chip, no ⚠, `Local (…)`, `etc.`) |
+| [0010](0010-alt-calendar-default-per-surface.md) | Alt-calendar visibility default per surface — lens GUI opt-out (all on), CLI `cal` opt-in (none) |
