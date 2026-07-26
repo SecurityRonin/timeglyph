@@ -24,6 +24,53 @@ pub struct Verdict {
 /// `width * height * 4` bytes. Errors on a size mismatch (fail loud, never guess
 /// past a truncated capture).
 pub fn pixels_are_meaningful(rgba: &[u8], width: usize, height: usize) -> Result<Verdict, String> {
-    let _ = (rgba, width, height);
-    todo!("implemented in the GREEN commit")
+    let n = width
+        .checked_mul(height)
+        .ok_or_else(|| "image dimensions overflow".to_string())?;
+    if n == 0 {
+        return Err("empty image (zero width or height)".to_string());
+    }
+    let need = n
+        .checked_mul(4)
+        .ok_or_else(|| "image buffer size overflows usize".to_string())?;
+    if rgba.len() < need {
+        return Err(format!(
+            "rgba buffer is {} bytes, need {need} for {width}x{height} (truncated capture?)",
+            rgba.len()
+        ));
+    }
+
+    // Rec. 601 luma; a pixel counts as non-black only well above sensor/JPEG-style
+    // noise so a truly black frame reads as ~0% non-black, not a few stray pixels.
+    const NEAR_BLACK_LUMA: f64 = 24.0;
+    let mut non_black = 0usize;
+    let mut sum = 0.0f64;
+    let mut sum_sq = 0.0f64;
+    for i in 0..n {
+        let p = i * 4;
+        let luma = 0.299 * f64::from(rgba[p])
+            + 0.587 * f64::from(rgba[p + 1])
+            + 0.114 * f64::from(rgba[p + 2]);
+        if luma > NEAR_BLACK_LUMA {
+            non_black += 1;
+        }
+        sum += luma;
+        sum_sq += luma * luma;
+    }
+
+    let count = n as f64;
+    let mean = sum / count;
+    let luma_stddev = (sum_sq / count - mean * mean).max(0.0).sqrt();
+    let non_black_fraction = non_black as f64 / count;
+
+    // Real content needs BOTH: some genuinely lit pixels AND luminance spread. The
+    // AND rejects an all-black frame (no lit pixels) and a uniform fill of any
+    // shade (no spread) — both failed renders.
+    let meaningful = non_black_fraction > 0.01 && luma_stddev > 5.0;
+
+    Ok(Verdict {
+        non_black_fraction,
+        luma_stddev,
+        meaningful,
+    })
 }
