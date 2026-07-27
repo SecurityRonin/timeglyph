@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.8.0...timeglyph-v0.8.1) - 2026-07-26
+
+### Added
+
+- *(lens)* screenshot-validate harness — shotcheck + capture scripts
+
 ## [0.8.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.7.1...timeglyph-v0.8.0) - 2026-07-25
 
 ### Added
