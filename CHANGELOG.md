@@ -6,6 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.0...timeglyph-v0.9.1) - 2026-07-28
+
+### Documentation
+
+- *(cal)* finish the reference-calendar rename in cal.rs module doc
+
+### Fixed
+
+- *(cal)* capitalize the weekday name in the text day view
+
 ## [0.9.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.8.2...timeglyph-v0.9.0) - 2026-07-28
 
 ### Added
