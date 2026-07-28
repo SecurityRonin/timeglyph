@@ -29,7 +29,7 @@ The goal is tier 1 wherever reachable; tier-2 rows are labelled honestly.
 
 "Tier-3 avoided" is a **gate**, not prose. [`docs/validation-tiers.tsv`](validation-tiers.tsv)
 records every registry format's highest-trust independent oracle and tier;
-[`tests/validation_tiers.rs`](../tests/validation_tiers.rs) proves — on every build —
+[`tests/validation_tiers.rs`](https://github.com/SecurityRonin/timeglyph/blob/main/tests/validation_tiers.rs) proves — on every build —
 that (1) every format is audited, (2) **none is tier-3-only**, (3) each tier claim is
 **bound** to the oracle file that actually references the format (a citation can't be
 faked), and (4) formats leaning on a single independent oracle are a *tracked,
@@ -38,7 +38,7 @@ shrinking* allowlist (19 today) so a new format can't silently ship single-ancho
 ### Reliability is reported PER FAMILY, never one global number
 
 A single global top-3 (~92%, n=336) **hides** that some families' true format *label*
-is systematically out-ranked. [`tests/calibration.rs`](../tests/calibration.rs)
+is systematically out-ranked. [`tests/calibration.rs`](https://github.com/SecurityRonin/timeglyph/blob/main/tests/calibration.rs)
 `per_family_reliability_is_reported_and_floored` measures top-1/top-3 for each of the
 36 families and floors each at 80% top-3 — **except** five families where the decoded
 *instant is still correct* but a more-common same-instant/same-window format wins the
