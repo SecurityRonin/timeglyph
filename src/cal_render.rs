@@ -362,7 +362,14 @@ pub fn render_day_text_with_calendars(d: &CalDay, color: ColorMode, cals: &Calen
     let _ = &color; // used by the lunisolar-gated blocks below
     let _ = &cals; // used by the lunisolar-gated overlay block below
     let mut out = String::new();
-    let _ = writeln!(out, "{}  {}", d.date, d.weekday);
+    // `weekday` is stored lowercase (canonical, for `--json` round-trip); capitalize
+    // it for the human text view — a day name is a proper noun, and this matches the
+    // month grid's `Mo`/`Tu`/… abbreviations.
+    let mut weekday = d.weekday.clone();
+    if let Some(first) = weekday.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    let _ = writeln!(out, "{}  {}", d.date, weekday);
     let _ = writeln!(
         out,
         "  iso {}-W{:02}-{}   doy {}/{}   jdn {}   mjd {}",
