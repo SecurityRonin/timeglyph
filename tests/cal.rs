@@ -380,6 +380,26 @@ mod art {
             "full-moon day card should show a lit disc:\n{card}"
         );
     }
+
+    #[test]
+    fn day_card_capitalizes_the_weekday_name() {
+        use timeglyph::cal::build_day;
+        use timeglyph::cal_render::render_day_text;
+        use timeglyph::RenderZone;
+        // Human text view: a day name is a proper noun. The `weekday` field itself
+        // stays lowercase for `--json` round-tripping; capitalization happens only
+        // at the text render site.
+        let card =
+            render_day_text(&build_day(jiff::civil::date(2026, 7, 28), &RenderZone::Utc).unwrap());
+        assert!(
+            card.contains("Tuesday"),
+            "weekday should be capitalized:\n{card}"
+        );
+        assert!(
+            !card.contains("tuesday"),
+            "weekday must not render lowercase:\n{card}"
+        );
+    }
 }
 
 // --- Cycle 10: season strip (year timeline) -----------------------------------

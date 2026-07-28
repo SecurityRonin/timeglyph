@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>timeglyph playground — identify any timestamp</title>
+<title>TimeGlyph playground — identify any timestamp</title>
 <meta name="description" content="Paste any timestamp value and see every plausible reading, ranked, scored, and cited — runs entirely in your browser, nothing leaves the page." />
 <style>
   :root { --bg:#14120f; --card:#1f1c16; --ink:#f0e9dc; --amber:#e0a458; --mute:#b7ac97; --faint:#8a8069; --line:#342f26; }
@@ -15,7 +15,12 @@
   main { max-width: 820px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
   h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
   h1 .g { color: var(--amber); }
-  p.tag { color: var(--mute); margin:.25rem 0 1.5rem; }
+  p.tag { color: var(--mute); margin:.25rem 0 1rem; }
+  p.wasm { display:flex; gap:.55rem; align-items:baseline; margin:.25rem 0 1.5rem; padding:.6rem .8rem;
+           background:var(--card); border:1px solid var(--line); border-left:3px solid var(--amber);
+           border-radius:8px; color:var(--mute); font-size:.9rem; }
+  p.wasm strong { color:var(--ink); font-weight:600; }
+  p.wasm .zap { color:var(--amber); }
   input { width:100%; padding:.85rem 1rem; font-size:1.05rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
           background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; }
   input:focus { outline:2px solid var(--amber); outline-offset:1px; }
@@ -35,8 +40,9 @@
 </head>
 <body>
 <main>
-  <h1>time<span class="g">glyph</span> playground</h1>
-  <p class="tag">Paste any timestamp. See <strong>every plausible reading</strong> — ranked, scored, and cited. Runs entirely in your browser; nothing leaves this page.</p>
+  <h1>Time<span class="g">Glyph</span> playground</h1>
+  <p class="tag">Paste any timestamp. See <strong>every plausible reading</strong> — ranked, scored, and cited.</p>
+  <p class="wasm"><span class="zap">⚡</span> <span><strong>No server — the real timeglyph engine, compiled to WebAssembly.</strong> The exact code the CLI runs, executing entirely in your browser: nothing you type is uploaded, and it keeps working offline once the page has loaded.</span></p>
   <input id="v" type="text" placeholder="e.g. 133801920000000000  ·  1712345678.001200  ·  D:20260709123456+08'00'" autocomplete="off" autofocus />
   <div class="hint">Try:
     <code data-v="1577836800">1577836800</code> ·
