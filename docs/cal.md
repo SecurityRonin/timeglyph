@@ -1,7 +1,8 @@
-# The forensic calendar (`cal`)
+# The reference calendar (`cal`)
 
-`timeglyph cal` is a calendar for digital-forensics work. Where the Unix `cal`
-prints day numbers, `cal` surfaces the temporal detail an examiner reasons
+`timeglyph cal` is a timezone/DST/leap-aware reference calendar for interpreting
+timestamps. Where the Unix `cal` prints day numbers, `cal` surfaces the temporal
+detail an examiner reasons
 about — timezone offsets and DST fold/gap days, leap-second days, ISO week and
 Julian Day numbering, GPS week, timestamp-format epoch boundaries, alternative
 calendars, and the moon's phase — for a day, a month, or a whole year.

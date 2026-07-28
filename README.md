@@ -18,7 +18,7 @@ an artifact — that you need in human-readable time. `timeglyph` reads that val
 every way a system might have written it and reports the results **ranked, scored,
 and cited** — honest about the ambiguity instead of guessing one answer. Convert
 in bulk from a CSV, hover the number on screen and read the time live, or lay a
-month out as a **forensic calendar** — DST fold/gap days, leap seconds, GPS week,
+month out as a **timezone/DST/leap-aware reference calendar** — DST fold/gap days, leap seconds, GPS week,
 format epochs, and the moon's phase, all flagged. No more copying each value into a
 converter app. One static Rust binary, plus a live overlay that decodes whatever is
 under your cursor.
@@ -62,8 +62,9 @@ winget install SecurityRonin.timeglyph
 cargo install timeglyph
 ```
 
-On macOS and Windows this also installs the
-[`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data) overlay.
+On macOS, Windows, and the Debian/Ubuntu `.deb` (amd64 and arm64) this also
+installs the [`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data)
+overlay; the portable musl archive is CLI-only.
 
 ---
 
@@ -108,7 +109,7 @@ score-thresholded — and exports JSONL, ImHex bookmarks, or Timesketch events.
 
 [CSV enrichment →](docs/csv.md)
 
-### See time itself — the forensic calendar
+### See time in context — the reference calendar
 
 ```bash
 timeglyph cal                     # this month, with DST/leap/epoch markers
@@ -124,7 +125,7 @@ lunisolar with the 干支 four pillars, plus ROC, Japanese, Buddhist, Hebrew, Is
 and Persian), and the moon's phase — every value computed and oracle-validated
 (`date`, `zdump`, USNO, IERS, JPL).
 
-[The forensic calendar →](docs/cal.md)
+[The reference calendar →](docs/cal.md)
 
 ### Use it from an LLM / agent
 
@@ -147,7 +148,7 @@ a converter. Each row carries its confidence, the weekday, and the public holida
 for that date in the chosen zone. Pick any display timezone from the footer.
 
 <p align="center">
-  <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="640" />
+  <img src="assets/lens-demo.gif" alt="timeglyph-lens decoding a timestamp live as the cursor hovers a value on screen" width="640" />
 </p>
 
 It installs with the CLI on macOS and Windows and reads the element under the

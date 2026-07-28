@@ -263,7 +263,7 @@ enum Commands {
         #[arg(long, allow_hyphen_values = true)]
         longitude: Option<f64>,
     },
-    /// Forensic calendar: per-day UTC offset & DST folds/gaps, leap-second days,
+    /// Reference calendar: per-day UTC offset & DST folds/gaps, leap-second days,
     /// ISO week / day-of-year / JDN / GPS week / Unix, alt-calendar overlays,
     /// moon phase, and timestamp-format epoch markers. Honors `--tz`.
     Cal {
@@ -1326,7 +1326,7 @@ fn resolve_cal_color(color_arg: &str, json: bool) -> timeglyph::cal_color::Color
     )
 }
 
-/// `cal` subcommand: render a forensic calendar (year / month / single day).
+/// `cal` subcommand: render a reference calendar (year / month / single day).
 fn run_cal(
     when: Option<&str>,
     week_start: &str,

@@ -15,7 +15,7 @@ copy-paste, no switching windows. Point at a Unix time in a log, a FILETIME in a
 registry viewer, or a column in a database browser, and the decodings appear.
 
 <p align="center">
-  <img src="assets/lens-in-action.png" alt="timeglyph-lens decoding a SQLite timestamp column live over DB Browser for SQLite" width="720" />
+  <img src="assets/lens-demo.gif" alt="timeglyph-lens decoding a timestamp live as the cursor hovers a value on screen" width="720" />
 </p>
 
 ## What each reading shows
