@@ -339,6 +339,7 @@ jobs:
           subject-path: |
             artifacts/*.tar.gz
             artifacts/*.zip
+            artifacts/*.msi
             artifacts/checksums.txt
 
       - name: Create release
@@ -347,6 +348,7 @@ jobs:
           files: |
             artifacts/*.tar.gz
             artifacts/*.zip
+            artifacts/*.msi
             artifacts/checksums.txt
           generate_release_notes: true
 
