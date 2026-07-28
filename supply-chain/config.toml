@@ -111,10 +111,6 @@ criteria = "safe-to-deploy"
 version = "1.0.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.displaydoc]]
-version = "0.2.6"
-criteria = "safe-to-deploy"
-
 [[exemptions.dos-date-time]]
 version = "0.3.0"
 criteria = "safe-to-run"
