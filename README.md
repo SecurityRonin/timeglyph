@@ -13,6 +13,12 @@
 
 **Decode any timestamp. Identify the unknown ones. See time itself.**
 
+<p align="center">
+  <img src="assets/lens-demo.gif" alt="timeglyph-lens decoding a timestamp live as the cursor hovers a value on screen" width="760" />
+  <br />
+  <em>TimeGlyph Lens — hover any number on screen and read its time live, ranked and cited.</em>
+</p>
+
 Every examination throws raw timestamps at you — a `133801920000000000` buried in
 an artifact — that you need in human-readable time. `timeglyph` reads that value
 every way a system might have written it and reports the results **ranked, scored,
@@ -146,10 +152,6 @@ always-on-top overlay follows your cursor and shows timeglyph's ranked readings
 for the number in the UI element under the pointer, so you never copy a value into
 a converter. Each row carries its confidence, the weekday, and the public holiday
 for that date in the chosen zone. Pick any display timezone from the footer.
-
-<p align="center">
-  <img src="assets/lens-demo.gif" alt="timeglyph-lens decoding a timestamp live as the cursor hovers a value on screen" width="640" />
-</p>
 
 It installs with the CLI on macOS and Windows and reads the element under the
 cursor through the platform accessibility layer — the Accessibility API on macOS,
