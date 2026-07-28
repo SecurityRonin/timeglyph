@@ -33,7 +33,7 @@ pub struct PersistedSettings {
     pub longitude: Option<f64>,
     /// Which alternative calendars are shown in the calendar expansion.
     /// `#[serde(default)]` so a settings file predating this key loads with all
-    /// calendars enabled.
+    /// calendars hidden (the opt-in default).
     #[serde(default)]
     pub calendars: CalendarVisibility,
 }
@@ -51,48 +51,29 @@ impl Default for PersistedSettings {
     }
 }
 
-/// A default of `true` for each calendar toggle, so a partial settings file
-/// (missing one key) still enables that calendar rather than hiding it.
-fn enabled() -> bool {
-    true
-}
-
 /// Which alternative calendars the overlay shows in its calendar expansion. Each
-/// toggle defaults to on, so enabling the expansion shows every calendar until
-/// the user hides individual ones.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// toggle defaults to off (via `#[serde(default)]` = `false`), so the user opts
+/// into the calendars they want; the expansion shows only the enabled ones.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarVisibility {
     /// 中華民國 (ROC / Minguo).
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub roc: bool,
     /// Japanese era (令和/平成/…).
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub japanese: bool,
     /// Buddhist (BE).
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub buddhist: bool,
     /// Hebrew.
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub hebrew: bool,
     /// Islamic (tabular civil).
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub islamic: bool,
     /// Persian (Solar Hijri).
-    #[serde(default = "enabled")]
+    #[serde(default)]
     pub persian: bool,
-}
-
-impl Default for CalendarVisibility {
-    fn default() -> Self {
-        Self {
-            roc: true,
-            japanese: true,
-            buddhist: true,
-            hebrew: true,
-            islamic: true,
-            persian: true,
-        }
-    }
 }
 
 impl CalendarVisibility {

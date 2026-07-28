@@ -37,6 +37,26 @@ pub const SYMBOL_FONTS: &[&str] = &[
     "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf", // Linux
 ];
 
+/// Per-script faces for scripts a single CJK face doesn't cover. Linux ships one
+/// Noto font per script (its CJK face carries no Devanagari/Hebrew/Arabic), so
+/// each is loaded separately. macOS's Arial Unicode (via [`CJK_FONTS`]) already
+/// covers these, so on macOS/Windows these Linux paths simply aren't found —
+/// harmless. Each readable one is appended to the fallback stack under its own key.
+pub const SCRIPT_FONTS: &[(&str, &str)] = &[
+    (
+        "deva",
+        "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+    ), // बौद्ध Buddhist
+    (
+        "hebr",
+        "/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf",
+    ), // עברי Hebrew
+    (
+        "arab",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+    ), // هجري Islamic / خورشیدی Persian
+];
+
 /// The first path that reads, as owned bytes.
 fn first_readable(paths: &[&str]) -> Option<Vec<u8>> {
     paths.iter().find_map(|p| std::fs::read(p).ok())
@@ -53,6 +73,13 @@ pub fn fallback_fonts() -> Vec<(&'static str, Vec<u8>)> {
     }
     if let Some(bytes) = first_readable(SYMBOL_FONTS) {
         stack.push(("sym", bytes));
+    }
+    // Per-script faces (Linux ships these separately; macOS/Windows cover them via
+    // the CJK/pan-Unicode face above, so these paths simply won't exist there).
+    for (key, path) in SCRIPT_FONTS {
+        if let Ok(bytes) = std::fs::read(path) {
+            stack.push((key, bytes));
+        }
     }
     stack
 }

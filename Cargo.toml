@@ -109,19 +109,31 @@ altcal = ["dep:icu_calendar", "dep:unicode-width"]
 # this feature only toggles the artifact-hint BEHAVIOUR, not the dependency.
 artifact-hints = []
 
-# Debian packaging (the `deb` release job). The base package is CLI-only
-# (`$auto` picks up the `timeglyph` binary), which is what the aarch64 .deb
-# ships — the GUI lens can't be cross-compiled for arm64 without an arm64
-# multiarch GUI sysroot, which the release job's simple cross setup doesn't
-# provide. The `gui` variant (x86_64/amd64 only) appends the pre-built
-# `timeglyph-lens` overlay binary; `name = "timeglyph"` keeps the package name
-# unchanged so the apt/Cloudsmith globs still match. The literal `target/release`
-# prefix is cargo-deb's convention — it rewrites it to the real per-target dir.
+# Debian packaging (the `deb` release job). Both amd64 AND arm64 ship the `gui`
+# variant (CLI + the timeglyph-lens overlay) — each builds NATIVELY on its own
+# runner (arm64 on ubuntu-24.04-arm), so the lens links the host's own GUI libs
+# with no cross-sysroot. `name = "timeglyph"` keeps the package name unchanged so
+# the apt/Cloudsmith globs still match. The literal `target/release` prefix is
+# cargo-deb's convention — it rewrites it to the real per-target dir.
 [package.metadata.deb]
 
 [package.metadata.deb.variants.gui]
 name = "timeglyph"
-merge-assets.append = [["target/release/timeglyph-lens", "usr/bin/", "755"]]
+# GUI runtime libs for the eframe/egui lens (glow + wayland + x11) — dlopen'd, so
+# shlibdeps/`$auto` can't see them; declare explicitly or the lens fails to launch.
+# Plus the Noto fonts the calendar overlays render: the lens loads OS fonts at
+# runtime, so without these CJK/Devanagari/Hebrew/Arabic show as tofu boxes.
+depends = "$auto, libgl1, libegl1, libx11-6, libxcb1, libxkbcommon0, libwayland-client0, fonts-noto-cjk, fonts-noto-core"
+# Explicit `assets` (NOT `merge-assets.append`, which cargo-deb 2.11 silently drops
+# here — the gui .deb shipped CLI-only until an amd64 install test caught it). A
+# variant's `assets` replaces the auto bin asset, so list the CLI too. cargo-deb
+# rewrites `target/release/…` to the --target triple dir when one is given.
+assets = [
+    ["target/release/timeglyph", "usr/bin/", "755"],
+    ["target/release/timeglyph-lens", "usr/bin/", "755"],
+    ["packaging/linux/timeglyph-lens.desktop", "usr/share/applications/", "644"],
+    ["lens/assets/icon.png", "usr/share/icons/hicolor/256x256/apps/timeglyph-lens.png", "644"],
+]
 
 [dev-dependencies]
 # Differential oracle harness (env-gated): the MIT-licensed `time_decode` and

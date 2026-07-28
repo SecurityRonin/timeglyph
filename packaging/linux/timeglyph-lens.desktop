@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TimeGlyph Lens
+GenericName=Timestamp overlay
+Comment=Hover any on-screen number and decode its time
+Exec=timeglyph-lens
+Icon=timeglyph-lens
+Terminal=false
+Categories=Utility;
+Keywords=timestamp;forensic;time;decode;epoch;
+StartupNotify=true

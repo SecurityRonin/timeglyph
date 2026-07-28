@@ -24,6 +24,60 @@ fn bare_value_back_compat_identifies() {
     assert!(out.contains("unix") && out.contains("2020-01-01"), "{out}");
 }
 
+#[cfg(all(feature = "lunisolar", feature = "altcal"))]
+#[test]
+fn cal_calendars_selector_filters_overlays() {
+    // Mirrors the lens: the alt-calendar + 干支 overlays are selectable. Default
+    // is ALL (unchanged output); `--calendars` narrows; `none` suppresses; an
+    // unknown key is rejected (fail loud, names the offender).
+    let (all, _) = run(&["cal", "2024-09-18"]);
+    assert!(
+        all.contains("中華民國") && all.contains("農曆+干支暦"),
+        "default shows every overlay: {all}"
+    );
+
+    let (roc, _) = run(&["cal", "2024-09-18", "--calendars", "roc"]);
+    assert!(roc.contains("中華民國"), "roc shown: {roc}");
+    assert!(!roc.contains("和暦"), "japanese hidden: {roc}");
+    assert!(!roc.contains("農曆+干支暦"), "干支 block hidden: {roc}");
+
+    let (lun, _) = run(&["cal", "2024-09-18", "--calendars", "lunisolar"]);
+    assert!(lun.contains("農曆+干支暦"), "干支 block shown: {lun}");
+    assert!(!lun.contains("中華民國"), "roc hidden: {lun}");
+
+    let (none, _) = run(&["cal", "2024-09-18", "--calendars", "none"]);
+    assert!(
+        !none.contains("中華民國") && !none.contains("農曆+干支暦"),
+        "none suppresses every overlay: {none}"
+    );
+
+    let (bad, code) = run(&["cal", "2024-09-18", "--calendars", "bogus"]);
+    assert_ne!(code, 0, "an unknown calendar key is rejected: {bad}");
+    assert!(bad.contains("bogus"), "the error names the bad key: {bad}");
+}
+
+#[test]
+fn style_flag_replaces_format_no_alias() {
+    // Pre-release rename: the date-display flag is `--style`, not `--format`
+    // (which collided with the *timestamp* format-id concept). No back-compat
+    // alias — `--style` is the only spelling and `--format` is rejected.
+    let (style_out, _) = run(&["--style", "us", "1577836800"]);
+    assert!(
+        !style_out.contains("unexpected argument"),
+        "--style must be accepted: {style_out}"
+    );
+    assert!(
+        style_out.contains("01/01/2020 12:00:00 AM"),
+        "--style us must render the US display style: {style_out}"
+    );
+
+    let (format_out, _) = run(&["--format", "us", "1577836800"]);
+    assert!(
+        format_out.contains("unexpected argument"),
+        "--format must be rejected (renamed to --style): {format_out}"
+    );
+}
+
 #[test]
 fn decode_subcommand() {
     let (out, code) = run(&["decode", "filetime", "132223104000000000"]);

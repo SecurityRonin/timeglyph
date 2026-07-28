@@ -146,9 +146,12 @@ pub struct ExtraCal {
     /// A human-readable rendering (month names / era resolved).
     pub formatted: String,
     /// The year alone in display form — era/qualifier resolved to match the
-    /// day-view (`令和8年`, `115年`, `2569 BE`, `5786`). The month-view footer
-    /// shows this, since a whole month has no single day to render.
+    /// day-view (`令和8年`, `115年`, `2569 BE`, `5786`).
     pub year_label: String,
+    /// The month + year in display form, without the day (`令和8年7月`, `115年7月`,
+    /// `Tammuz 5786`, `Jul 2569 BE`). The month-view footer renders this, with the
+    /// Gregorian transition date when a new alt-month begins mid-month.
+    pub month_label: String,
 }
 
 /// Hemisphere for mapping a solar longitude to a season name.
@@ -615,6 +618,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         day: rd,
         formatted: format!("{ry}年{rm}月{rd}日"),
         year_label: format!("{ry}年"),
+        month_label: format!("{ry}年{rm}月"),
     });
 
     // 2. Japanese era.
@@ -629,6 +633,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         day: jd,
         formatted: format!("{}{jy}年{jm}月{jd}日", japanese_era(jey.era.as_str())),
         year_label: format!("{}{jy}年", japanese_era(jey.era.as_str())),
+        month_label: format!("{}{jy}年{jm}月", japanese_era(jey.era.as_str())),
     });
 
     // 3. Buddhist (Gregorian months, +543 BE).
@@ -642,6 +647,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         day: bd,
         formatted: format!("{bd} {} {by} BE", greg_month_abbr(bm)),
         year_label: format!("{by} BE"),
+        month_label: format!("{} {by} BE", greg_month_abbr(bm)),
     });
 
     // 4. Hebrew, 5. Islamic (from the typed converters, formatted for display).
@@ -654,6 +660,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
             day: h.day,
             formatted: format!("{} {} {}", h.day, hebrew_month(&h.month_code), h.year),
             year_label: h.year.to_string(),
+            month_label: format!("{} {}", hebrew_month(&h.month_code), h.year),
         });
     }
     if let Some(i) = islamic_date(date) {
@@ -665,6 +672,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
             day: i.day,
             formatted: format!("{} {} {}", i.day, islamic_month(i.month), i.year),
             year_label: i.year.to_string(),
+            month_label: format!("{} {}", islamic_month(i.month), i.year),
         });
     }
 
@@ -679,6 +687,7 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         day: pd,
         formatted: format!("{pd} {} {py}", persian_month(pm)),
         year_label: py.to_string(),
+        month_label: format!("{} {}", persian_month(pm), py),
     });
 
     out

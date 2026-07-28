@@ -1,6 +1,6 @@
 # macOS code signing + notarization (for the Homebrew Cask)
 
-The `timeglyph-lens.app` shipped via the Homebrew Cask **must** be Developer-ID-signed
+The `TimeGlyph Lens.app` shipped via the Homebrew Cask **must** be Developer-ID-signed
 and notarized, or macOS Gatekeeper blocks it ("app is damaged") and Homebrew drops the
 cask (unsigned casks lose support 2026-09-01). See ronin-issen ADR 0002. The CLI
 (`brew install timeglyph`, a Formula) needs none of this.
@@ -53,7 +53,7 @@ base64 -i AuthKey_XXXX.p8 | pbcopy     # → MACOS_NOTARY_KEY_P8_BASE64
 
 ## What the CI does (per release, macOS legs)
 
-1. Build `timeglyph-lens.app` (`scripts/bundle-lens-app.sh`).
+1. Build `TimeGlyph Lens.app` (`scripts/bundle-lens-app.sh`).
 2. Import the `.p12` into a temporary keychain; `codesign --options runtime --timestamp`
    with the Developer ID identity; `codesign --verify`.
 3. `xcrun notarytool submit … --wait` (Apple scans it, ~1–5 min).
@@ -70,7 +70,7 @@ installs a clean, Gatekeeper-passing app.
 Verify a shipped release locally:
 
 ```sh
-codesign --verify --deep --strict --verbose=2 /Applications/timeglyph-lens.app
-spctl -a -t exec -vvv /Applications/timeglyph-lens.app   # → "accepted, source=Notarized Developer ID"
-xcrun stapler validate /Applications/timeglyph-lens.app
+codesign --verify --deep --strict --verbose=2 "/Applications/TimeGlyph Lens.app"
+spctl -a -t exec -vvv "/Applications/TimeGlyph Lens.app"   # → "accepted, source=Notarized Developer ID"
+xcrun stapler validate "/Applications/TimeGlyph Lens.app"
 ```

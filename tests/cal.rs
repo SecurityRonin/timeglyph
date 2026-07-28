@@ -662,8 +662,30 @@ fn extra_calendars_persian_buddhist_japanese() {
         timeglyph::cal::build_month(2025, 3, &RenderZone::Utc, timeglyph::cal::WeekStart::Monday)
             .unwrap();
     let month = timeglyph::cal_render::render_month_text(&m, None, ColorMode::Mono);
-    assert!(month.contains("和暦 Japanese 令和7年"), "{month}");
-    assert!(!month.contains("和暦 Japanese 7 "), "{month}");
+    // The month footer renders the alt-calendars vertically, aligned like the day
+    // card: each calendar on its OWN line, and the Japanese line carries the
+    // era-qualified year (令和7年), not a bare number.
+    let jp_line = month
+        .lines()
+        .find(|l| l.contains("和暦 Japanese"))
+        .expect("month footer has a Japanese calendar line");
+    assert!(jp_line.contains("令和7年"), "era-qualified year: {month}");
+    assert!(
+        !jp_line.contains("中華民國"),
+        "footer is vertical — one calendar per line, not a · -joined row: {month}"
+    );
+    // A straddling calendar shows its month(s) + the Gregorian transition date:
+    // in March 2025 the Hebrew calendar rolls Adar → Nisan on 2025-03-30.
+    let heb_line = month
+        .lines()
+        .find(|l| l.contains("Hebrew"))
+        .expect("month footer has a Hebrew calendar line");
+    assert!(
+        heb_line.contains("Adar 5785")
+            && heb_line.contains("Nisan 5785")
+            && heb_line.contains("from 2025-03-30"),
+        "month transition with Gregorian date: {month}"
+    );
     // Shown in the day card (bilingual name + the Japanese era value).
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("Persian") && card.contains("令和"), "{card}");

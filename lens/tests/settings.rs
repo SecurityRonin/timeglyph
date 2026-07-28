@@ -17,9 +17,10 @@ fn default_theme_preference_is_system() {
     assert_eq!(s.date_style, DateStyle::Iso8601);
     assert_eq!(s.zone_spec, "UTC");
     assert_eq!(s.longitude, None);
-    // Every alternative calendar is on by default.
+    // Every alternative calendar is OFF by default — the user opts into each.
     assert_eq!(s.calendars, CalendarVisibility::default());
-    assert!(s.calendars.roc && s.calendars.japanese && s.calendars.persian);
+    assert!(!s.calendars.any());
+    assert!(!s.calendars.roc && !s.calendars.japanese && !s.calendars.persian);
 }
 
 #[test]
@@ -31,34 +32,35 @@ fn round_trips_through_json() {
         zone_spec: "Asia/Shanghai".to_string(),
         longitude: Some(120.5),
         calendars: CalendarVisibility {
-            islamic: false,
-            persian: false,
+            roc: true,
+            hebrew: true,
             ..CalendarVisibility::default()
         },
     };
     let json = serde_json::to_string(&s).unwrap();
     let back: PersistedSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(back, s);
-    assert!(!back.calendars.islamic && back.calendars.roc);
+    // A mix of on/off round-trips faithfully.
+    assert!(back.calendars.roc && !back.calendars.islamic);
 }
 
 #[test]
-fn missing_calendars_field_enables_all() {
-    // A settings file predating the per-calendar toggles (no `calendars` key)
-    // loads with every alternative calendar enabled — current behaviour preserved.
+fn missing_calendars_field_hides_all() {
+    // A settings file with no `calendars` key loads with every alternative
+    // calendar hidden — the opt-in default (the user enables the ones they want).
     let json = r#"{"show_lunar":true,"date_style":"Iso8601","zone_spec":"UTC","longitude":null}"#;
     let s: PersistedSettings = serde_json::from_str(json).unwrap();
     assert_eq!(s.calendars, CalendarVisibility::default());
     // The stable key → toggle mapping the renderer filters by (not the display
-    // name, so relabelling never breaks a saved choice).
-    assert!(s.calendars.shows("roc") && s.calendars.shows("persian"));
-    let hidden = CalendarVisibility {
-        japanese: false,
+    // name, so relabelling never breaks a saved choice): all off by default.
+    assert!(!s.calendars.shows("roc") && !s.calendars.shows("persian"));
+    let shown = CalendarVisibility {
+        hebrew: true,
         ..CalendarVisibility::default()
     };
-    assert!(!hidden.shows("japanese") && hidden.shows("hebrew"));
+    assert!(shown.shows("hebrew") && !shown.shows("japanese"));
     // An unknown key defaults to shown.
-    assert!(hidden.shows("gregorian"));
+    assert!(shown.shows("gregorian"));
 }
 
 #[test]
