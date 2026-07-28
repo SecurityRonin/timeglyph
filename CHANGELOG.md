@@ -6,6 +6,26 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.8.2...timeglyph-v0.9.0) - 2026-07-28
+
+### Added
+
+- *(release)* arm64 Linux ships the GUI too — feature parity
+- *(deb)* GUI variant ships a .desktop launcher + icon + GUI deps
+- *(cal)* GREEN — month footer shows alt-calendar month + transition, vertically
+- *(cal)* GREEN — cal --calendars selects which overlays render
+- *(cli)* GREEN — rename date-display flag --format to --style
+
+### Documentation
+
+- *(cli)* cross-reference sibling commands in --help
+
+### Fixed
+
+- *(lens)* load per-script Noto faces on Linux + depend on Noto fonts
+- *(deb)* single main Categories in the lens .desktop
+- *(deb)* gui variant ships lens + launcher + icon (explicit assets)
+
 ## [0.8.2](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.8.1...timeglyph-v0.8.2) - 2026-07-28
 
 ### Documentation
