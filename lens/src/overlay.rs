@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eframe::egui;
-use egui::{Color32, FontId, Frame, Margin, RichText, Rounding, Stroke};
+use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
@@ -96,6 +96,11 @@ pub fn run(verbose: u8) -> Result<(), String> {
                     "sr-light",
                     include_bytes!("../assets/securityronin-light.png"),
                 ),
+                // Load persisted preferences (a missing/corrupt file degrades to
+                // defaults). Injected here rather than inside `new` so the render
+                // gate can pass a fixed, hermetic settings snapshot instead of
+                // reading the host's config.
+                persist::load(),
             )))
         }),
     )
@@ -174,7 +179,7 @@ fn install_fonts(ctx: &egui::Context) {
     for (key, bytes) in stack {
         fonts
             .font_data
-            .insert(key.to_owned(), egui::FontData::from_owned(bytes));
+            .insert(key.to_owned(), egui::FontData::from_owned(bytes).into());
         keys.push(key.to_owned());
     }
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
@@ -199,7 +204,12 @@ fn install_theme(ctx: &egui::Context, pal: &Palette) {
     visuals.override_text_color = Some(pal.ink);
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, pal.hairline);
     ctx.set_visuals(visuals);
-    ctx.style_mut(|s| s.spacing.item_spacing = egui::vec2(8.0, 6.0));
+    // `style_mut` was removed in egui 0.35 (styles are now per-theme). Apply the
+    // spacing to both themes so it holds whichever theme egui renders with,
+    // matching the old single global style.
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        ctx.style_mut_of(theme, |s| s.spacing.item_spacing = egui::vec2(8.0, 6.0));
+    }
 }
 
 /// Map egui's reported OS theme to the overlay's own [`Theme`].
@@ -324,7 +334,7 @@ impl LensApp {
                 let img = egui::Image::new(egui::load::SizedTexture::from_handle(sr))
                     .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
                 if ui
-                    .add(egui::ImageButton::new(img).frame(false))
+                    .add(egui::Button::image(img).frame(false))
                     .on_hover_text("About TimeGlyph Lens")
                     .clicked()
                 {
@@ -341,9 +351,8 @@ impl LensApp {
         logo: Option<egui::TextureHandle>,
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
+        saved: persist::PersistedSettings,
     ) -> Self {
-        // Load persisted preferences; a missing/corrupt file degrades to defaults.
-        let saved = persist::load();
         let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
         let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
         Self {
@@ -412,7 +421,14 @@ impl LensApp {
 }
 
 impl eframe::App for LensApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // egui 0.35 replaced `App::update(ctx, frame)` with a required
+    // `ui(&mut self, ui, frame)` (plus a provided `logic`). The given `ui` covers
+    // the full central area with no margin/background, so the app's own panels are
+    // shown into it with `show_inside` — layout-equivalent to the old top-level
+    // `show(ctx, …)`. `ctx` is cloned (cheap Arc) to keep it usable while `ui` is
+    // borrowed mutably by the panels.
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         // Resolve the concrete palette theme from the preference + the OS setting
         // each frame: `System` follows the OS live; `Dark`/`Light` are fixed.
         let system = ctx.system_theme().map(from_egui_theme);
@@ -421,7 +437,7 @@ impl eframe::App for LensApp {
         }
         let cur = self.settings();
         let pal = cur.theme.palette();
-        install_theme(ctx, &pal);
+        install_theme(&ctx, &pal);
 
         self.sync_native_menu();
 
@@ -445,25 +461,25 @@ impl eframe::App for LensApp {
 
         // Footer first (egui requires panels before the central region). The zone
         // control sits at the bottom so the source caption stays prominent.
-        egui::TopBottomPanel::bottom("zone_bar")
+        egui::containers::Panel::bottom("zone_bar")
             .frame(
-                Frame::none()
+                Frame::NONE
                     .fill(pal.bg_deep)
-                    .inner_margin(Margin::symmetric(16.0, 8.0)),
+                    .inner_margin(Margin::symmetric(16, 8)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 if self.zone_footer(ui, ref_instant) {
                     dirty = true;
                 }
             });
 
         // The clickable world map (floating window), if open.
-        if self.map_window(ctx) {
+        if self.map_window(&ctx) {
             dirty = true;
         }
         // The settings dialog (top-right), if open.
-        self.settings_window(ctx);
-        self.about_window(ctx);
+        self.settings_window(&ctx);
+        self.about_window(&ctx);
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
@@ -498,10 +514,10 @@ impl eframe::App for LensApp {
             self.sr_logo_light.clone()
         };
 
-        let panel = Frame::none()
+        let panel = Frame::NONE
             .fill(pal.bg_deep)
-            .inner_margin(Margin::symmetric(16.0, 14.0));
-        egui::CentralPanel::default().frame(panel).show(ctx, |ui| {
+            .inner_margin(Margin::symmetric(16, 14));
+        egui::CentralPanel::default().frame(panel).show(ui, |ui| {
             header(ui, &source, pal, logo.as_ref(), &show_settings, &frozen);
             ui.separator();
             ui.add_space(10.0);
@@ -523,7 +539,7 @@ impl eframe::App for LensApp {
             }
         });
 
-        self.render_branding(ctx, sr_logo.as_ref());
+        self.render_branding(&ctx, sr_logo.as_ref());
 
         self.hits = hits;
 
@@ -612,10 +628,10 @@ fn render_readings(
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for nr in hits {
-                Frame::none()
+                Frame::NONE
                     .fill(pal.bg_card)
-                    .rounding(Rounding::same(8.0))
-                    .inner_margin(Margin::symmetric(14.0, 12.0))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Margin::symmetric(14, 12))
                     .stroke(Stroke::new(1.0, pal.hairline))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
@@ -680,10 +696,10 @@ impl LensApp {
             // amber chip and the UTC/Local/Region controls make it self-evident.)
             let (fill, fg) = (pal.bg_chip, pal.amber);
             let summary = zone::zone_summary(&self.zone, at);
-            Frame::none()
+            Frame::NONE
                 .fill(fill)
-                .rounding(Rounding::same(4.0))
-                .inner_margin(Margin::symmetric(8.0, 3.0))
+                .corner_radius(CornerRadius::same(4))
+                .inner_margin(Margin::symmetric(8, 3))
                 .show(ui, |ui| {
                     ui.label(
                         RichText::new(summary)
@@ -711,7 +727,7 @@ impl LensApp {
         let is_local = self.zone.label == "Local";
         ui.horizontal(|ui| {
             let conts = self.continents.clone();
-            let max_h = (ui.ctx().screen_rect().height() - 48.0).max(160.0);
+            let max_h = (ui.ctx().content_rect().height() - 48.0).max(160.0);
             ui.menu_button("Region / Zone…", |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(max_h)
@@ -727,7 +743,7 @@ impl LensApp {
                                                     self.zone = zc;
                                                     changed = true;
                                                 }
-                                                ui.close_menu();
+                                                ui.close();
                                             }
                                         }
                                     });
@@ -762,7 +778,7 @@ impl LensApp {
                         .color(pal.faint),
                 );
                 // Width of exactly 8 monospace digits (enough for e.g. -179.999).
-                let box_w = ui.fonts(|f| f.glyph_width(&FontId::monospace(12.0), '0')) * 8.0;
+                let box_w = ui.fonts_mut(|f| f.glyph_width(&FontId::monospace(12.0), '0')) * 8.0;
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut self.longitude_input)
                         .hint_text("120")
@@ -818,7 +834,7 @@ impl LensApp {
         let mut settings_changed = false;
         // Cap the panel to the viewport so tall content (seven calendar toggles +
         // the zone / longitude section) scrolls instead of clipping the bottom.
-        let max_h = (ctx.screen_rect().height() - 90.0).max(180.0);
+        let max_h = (ctx.content_rect().height() - 90.0).max(180.0);
         // Anchor to the TOP so the title bar (with egui's ✕) is always on-screen —
         // a bottom anchor pushes the title bar off the top edge once the content
         // is tall (the six calendar toggles).
@@ -831,10 +847,10 @@ impl LensApp {
                 // A raised surface (bg_card) with a hairline border, so the panel
                 // reads as a distinct floating pane over the main window rather
                 // than blending into the same bg_deep background.
-                Frame::none()
+                Frame::NONE
                     .fill(pal.bg_card)
                     .stroke(egui::Stroke::new(1.0, pal.hairline))
-                    .inner_margin(Margin::same(16.0)),
+                    .inner_margin(Margin::same(16)),
             )
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
@@ -973,11 +989,7 @@ impl LensApp {
                     sr_light.as_ref()
                 };
                 egui::CentralPanel::default()
-                    .frame(
-                        Frame::none()
-                            .fill(pal.bg_deep)
-                            .inner_margin(Margin::same(20.0)),
-                    )
+                    .frame(Frame::NONE.fill(pal.bg_deep).inner_margin(Margin::same(20)))
                     .show(ctx, |ui| {
                         ui.vertical_centered(|ui| {
                             ui.add_space(6.0);
@@ -987,7 +999,7 @@ impl LensApp {
                                     egui::Image::new(egui::load::SizedTexture::from_handle(tex))
                                         .fit_to_exact_size(egui::vec2(h * 1505.0 / 721.0, h));
                                 if ui
-                                    .add(egui::ImageButton::new(img).frame(false))
+                                    .add(egui::Button::image(img).frame(false))
                                     .on_hover_text("Albert Hui on LinkedIn")
                                     .clicked()
                                 {
@@ -1105,10 +1117,10 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
         // Uniform row height (see `row_h`) so the format chip centers on the same
         // midline as every other cell and the dots stay evenly spaced.
         ui.set_min_height(row_h(ui));
-        Frame::none()
+        Frame::NONE
             .fill(pal.bg_chip)
-            .rounding(Rounding::same(4.0))
-            .inner_margin(Margin::symmetric(6.0, 2.0))
+            .corner_radius(CornerRadius::same(4))
+            .inner_margin(Margin::symmetric(6, 2))
             .show(ui, |ui| {
                 ui.add(
                     egui::Label::new(
@@ -1134,7 +1146,7 @@ fn chip_cell(ui: &mut egui::Ui, r: &Reading, pal: Palette) {
 /// little breathing room (content centered in the taller row); the local row's
 /// tag fills it exactly, its inter-line gap landing on the shared midline.
 fn row_h(ui: &egui::Ui) -> f32 {
-    ui.fonts(|f| {
+    ui.fonts_mut(|f| {
         f.row_height(&FontId::proportional(11.0)) + f.row_height(&FontId::proportional(10.0))
     })
 }
@@ -1485,7 +1497,7 @@ impl LensApp {
                 let (rect, resp) =
                     ui.allocate_exact_size(egui::vec2(w, w / 2.0), egui::Sense::click());
                 let p = ui.painter_at(rect);
-                p.rect_filled(rect, Rounding::same(4.0), pal.bg_deep);
+                p.rect_filled(rect, CornerRadius::same(4), pal.bg_deep);
                 let proj = |lon: f32, lat: f32| {
                     egui::pos2(
                         rect.left() + (lon + 180.0) / 360.0 * rect.width(),
@@ -1581,3 +1593,9 @@ fn hsv(h: f64, s: f64, v: f64) -> Color32 {
     let c = |x: f64| (x * 255.0).round().clamp(0.0, 255.0) as u8;
     Color32::from_rgb(c(r), c(g), c(b))
 }
+
+// Offscreen (headless wgpu) egui_kittest render gate for `LensApp`. In-crate so
+// it can reach the private app + font/theme helpers; see the module's own docs.
+#[cfg(test)]
+#[path = "overlay_snapshot_test.rs"]
+mod overlay_snapshot_test;

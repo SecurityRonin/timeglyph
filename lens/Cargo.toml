@@ -39,7 +39,7 @@ directories = "6"
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and
 # without embedded fonts egui builds no glyph atlas and renders an all-black
 # window (no error). Do not remove it.
-eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
+eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
 
 # UI Automation (element-under-cursor) + a layered Win32 overlay. The `windows`
 # crate compiles to an empty shim off-Windows, so the lib + scan tests build
@@ -87,3 +87,9 @@ ttf-parser = "0.25"
 # decoder never links into the shipped lens binary. png feature only — that is
 # all a screen capture is.
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Offscreen (headless wgpu) GUI render gate: drives the real `LensApp` through
+# eframe and snapshots the rendered frame, catching the all-black / missing-font
+# (tofu) / broken-layout regressions the shipped overlay must never ship. The
+# `wgpu` renderer is independent of eframe's runtime `glow` backend — it only
+# renders the test frames offscreen (Metal on macOS, Vulkan/GL on CI).
+egui_kittest = { version = "0.35", features = ["eframe", "snapshot", "wgpu"] }
