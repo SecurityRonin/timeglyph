@@ -96,6 +96,11 @@ pub fn run(verbose: u8) -> Result<(), String> {
                     "sr-light",
                     include_bytes!("../assets/securityronin-light.png"),
                 ),
+                // Load persisted preferences (a missing/corrupt file degrades to
+                // defaults). Injected here rather than inside `new` so the render
+                // gate can pass a fixed, hermetic settings snapshot instead of
+                // reading the host's config.
+                persist::load(),
             )))
         }),
     )
@@ -346,9 +351,8 @@ impl LensApp {
         logo: Option<egui::TextureHandle>,
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
+        saved: persist::PersistedSettings,
     ) -> Self {
-        // Load persisted preferences; a missing/corrupt file degrades to defaults.
-        let saved = persist::load();
         let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
         let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
         Self {

@@ -22,6 +22,8 @@
 use std::sync::{Arc, Mutex};
 
 use egui_kittest::Harness;
+use timeglyph_lens::settings::PersistedSettings;
+use timeglyph_lens::theme::ThemePreference;
 
 use super::{install_fonts, install_theme, load_logo, load_png_texture, LensApp, Theme};
 
@@ -53,6 +55,18 @@ fn gate(hovered: &str, name: &str) {
                     "sr-light",
                     include_bytes!("../assets/securityronin-light.png"),
                 ),
+                // Hermetic settings: a fixed snapshot so the footer zone, the
+                // decoded readings, and the alt-calendar columns render identically
+                // on every host — never the machine's persisted zone/theme/
+                // calendars (which is what made this gate fail off the authoring
+                // machine). Zone is UTC and calendars are the defaults; theme is
+                // pinned to Dark so it doesn't depend on the headless runner's
+                // reported system theme.
+                PersistedSettings {
+                    theme: ThemePreference::Dark,
+                    zone_spec: "UTC".to_string(),
+                    ..PersistedSettings::default()
+                },
             )
         });
 
