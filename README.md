@@ -47,9 +47,17 @@ $ timeglyph 1577836800
 
 ## Install
 
+One command per platform — each installs **both** the `timeglyph` CLI and the
+[**Lens**](#timeglyph-lens--hover-anything-decode-time-data) overlay app.
+
 **macOS**
 ```bash
-brew install securityronin/tap/timeglyph
+brew install --cask securityronin/tap/timeglyph-lens
+```
+
+**Windows**
+```powershell
+winget install SecurityRonin.timeglyph
 ```
 
 **Debian / Ubuntu**
@@ -58,19 +66,22 @@ curl -1sLf 'https://dl.cloudsmith.io/public/securityronin/timeglyph/setup.deb.sh
 sudo apt install timeglyph
 ```
 
-**Windows**
-```powershell
-winget install SecurityRonin.timeglyph
-```
+You get the CLI on your `PATH` plus a real launcher for the overlay — a
+Launchpad/Spotlight app on macOS (Developer-ID-signed and notarized), a Start Menu
+shortcut on Windows, a desktop entry on Debian/Ubuntu (amd64 and arm64).
 
-**Cargo**
+<details>
+<summary>CLI only (Cargo, or the portable Linux archive)</summary>
+
 ```bash
 cargo install timeglyph
 ```
 
-On macOS, Windows, and the Debian/Ubuntu `.deb` (amd64 and arm64) this also
-installs the [`timeglyph-lens`](#timeglyph-lens--hover-anything-decode-time-data)
-overlay; the portable musl archive is CLI-only.
+`cargo install` and the static musl archive ship the CLI alone — no overlay.
+On macOS you can also take the CLI by itself with
+`brew install securityronin/tap/timeglyph`.
+
+</details>
 
 ---
 
@@ -160,8 +171,8 @@ for the number in the UI element under the pointer, so you never copy a value in
 a converter. Each row carries its confidence, the weekday, and the public holiday
 for that date in the chosen zone. Pick any display timezone from the footer.
 
-It installs with the CLI on macOS and Windows and reads the element under the
-cursor through the platform accessibility layer — the Accessibility API on macOS,
+It comes with the [one-command install](#install) above, and reads the element under
+the cursor through the platform accessibility layer — the Accessibility API on macOS,
 UI Automation on Windows. (Linux support is in progress.)
 
 [Overlay guide →](docs/lens.md)
