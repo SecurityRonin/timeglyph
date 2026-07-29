@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.1...timeglyph-v0.9.2) - 2026-07-28
+
+### Documentation
+
+- *(readme)* brand the title as TimeGlyph
+
 ## [0.9.1](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.0...timeglyph-v0.9.1) - 2026-07-28
 
 ### Documentation
