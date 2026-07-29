@@ -90,7 +90,11 @@ privilege levels (UIPI).
 A single install brings both the `timeglyph` CLI and the `timeglyph-lens` overlay:
 
 - **Windows:** `winget install SecurityRonin.timeglyph`.
-- **macOS:** `brew install securityronin/tap/timeglyph`.
+- **macOS:** `brew tap securityronin/tap && brew trust securityronin/tap` once (Homebrew 6+
+  requires trusting a third-party tap), then
+  `brew install --cask securityronin/tap/timeglyph-lens` — the cask installs
+  `TimeGlyph Lens.app` into `/Applications` (Launchpad/Spotlight) and pulls the CLI
+  in as a dependency.
 
 Or download the `timeglyph-lens` binary from the
 [latest release](https://github.com/SecurityRonin/timeglyph/releases/latest), or

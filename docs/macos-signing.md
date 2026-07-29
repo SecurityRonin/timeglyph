@@ -60,12 +60,20 @@ base64 -i AuthKey_XXXX.p8 | pbcopy     # → MACOS_NOTARY_KEY_P8_BASE64
 4. `xcrun stapler staple` (embeds the ticket for offline Gatekeeper checks).
 5. `ditto`-zip the stapled `.app` → `timeglyph-lens-<ver>-<target>.app.zip`.
 
-## Activation
+## Status — live
 
-Until the secrets exist, the `.app.zip` ships **unsigned** and the cask is held as a
-**draft** (`SecurityRonin/homebrew-tap` PR). Once the secrets are set and a release
-signs the `.app`, mark the cask PR ready — then `brew install --cask timeglyph-lens`
-installs a clean, Gatekeeper-passing app.
+The six `MACOS_*` secrets are set, so every release signs, notarizes, and staples the
+`.app`, and the Homebrew cask is published (`Casks/timeglyph-lens.rb` in
+`SecurityRonin/homebrew-tap`). Verified on v0.9.2: `spctl -a -vv` reports
+*accepted … Notarized Developer ID*, and
+
+```sh
+brew tap securityronin/tap && brew trust securityronin/tap   # Homebrew 6+ requires this
+brew install --cask securityronin/tap/timeglyph-lens
+```
+
+installs a clean, Gatekeeper-passing `TimeGlyph Lens.app` into `/Applications` and
+pulls the `timeglyph` CLI in as a formula dependency.
 
 Verify a shipped release locally:
 
