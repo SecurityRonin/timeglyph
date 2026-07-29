@@ -8,3 +8,21 @@ criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2024-06-20"
 end = "2027-07-28"
+
+[[trusted.forensicnomicon]]
+criteria = "safe-to-deploy"
+user-id = 347968 # Albert Hui (h4x0r)
+start = "2026-06-05"
+end = "2027-07-29"
+
+[[trusted.forensicnomicon-core]]
+criteria = "safe-to-deploy"
+user-id = 347968 # Albert Hui (h4x0r)
+start = "2026-06-28"
+end = "2027-07-29"
+
+[[trusted.forensicnomicon-data]]
+criteria = "safe-to-deploy"
+user-id = 347968 # Albert Hui (h4x0r)
+start = "2026-06-28"
+end = "2027-07-29"

@@ -119,18 +119,6 @@ criteria = "safe-to-run"
 version = "1.1.9"
 criteria = "safe-to-deploy"
 
-[[exemptions.forensicnomicon]]
-version = "1.8.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.forensicnomicon-core]]
-version = "1.4.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.forensicnomicon-data]]
-version = "1.3.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.futures-core]]
 version = "0.3.33"
 criteria = "safe-to-deploy"
