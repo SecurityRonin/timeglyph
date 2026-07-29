@@ -1,0 +1,129 @@
+name: macos-verify
+
+# The macOS twin of windows-verify.yml (MSI) and deb-verify.yml (Linux): prove the
+# GUI actually ships as a FINDABLE app, not a bare binary on $PATH. This gate exists
+# because that exact bug shipped undetected — the lens was `bin.install`ed by the
+# Homebrew formula, so it was on $PATH but had no .app, hence no Launchpad/Spotlight/
+# Dock icon ("the app is nowhere to be found"). A vision tour of a hand-placed .app
+# proved "the bundle works when it exists", never "the install produces one", and the
+# formula's `test do` only asserted the CLI — so nothing caught it. Assert the
+# artifact the channel is supposed to PRODUCE.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - lens/**
+      - scripts/bundle-lens-app.sh
+      - .github/workflows/macos-verify.yml
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  # PR-time: build the .app the way release.yml does and assert its structure. Cheap,
+  # needs no release, and catches the regressions that break the cask — a renamed
+  # bundle, a missing icon (no icon ⇒ no Dock/Launchpad presence), a malformed plist,
+  # or a drifting CFBundleIdentifier (which would silently void the user's existing
+  # Accessibility grant for the AX element picker).
+  app-bundle-verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Build lens (release)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: cargo build --release --manifest-path lens/Cargo.toml
+
+      - name: Bundle the .app (same script release.yml uses)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: scripts/bundle-lens-app.sh target/release/timeglyph-lens "$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" .
+
+      - name: Assert the bundle is a findable, launchable app
+        run: |
+          set -euo pipefail
+          APP="TimeGlyph Lens.app"
+
+          # The exact name the published cask's `app` stanza moves into /Applications.
+          # A mismatch here makes `brew install --cask` fail outright ("Cask does not
+          # contain <name>.app") — it shipped once, so it is asserted.
+          [ -d "$APP" ] || { echo "::error::expected bundle '$APP' was not produced"; ls -la; exit 1; }
+
+          [ -x "$APP/Contents/MacOS/timeglyph-lens" ] \
+            || { echo "::error::missing/non-executable Contents/MacOS/timeglyph-lens"; exit 1; }
+
+          # No .icns ⇒ a generic icon and effectively no Dock/Launchpad identity.
+          ls "$APP"/Contents/Resources/*.icns >/dev/null 2>&1 \
+            || { echo "::error::no .icns in Contents/Resources (the app would have no icon)"; exit 1; }
+
+          plutil -lint "$APP/Contents/Info.plist"
+
+          ID=$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")
+          [ "$ID" = "com.securityronin.timeglyph-lens" ] \
+            || { echo "::error::CFBundleIdentifier drifted to '$ID' — changing it voids users' Accessibility grant"; exit 1; }
+
+          EXE=$(plutil -extract CFBundleExecutable raw "$APP/Contents/Info.plist")
+          [ "$EXE" = "timeglyph-lens" ] || { echo "::error::CFBundleExecutable is '$EXE'"; exit 1; }
+
+          echo "OK: '$APP' — executable, icon, plist and stable bundle id all present"
+
+      # Cross-repo consistency: the bundle name we just built must equal the name the
+      # PUBLISHED cask expects. These live in different repos, so nothing else couples
+      # them — and that decoupling is precisely how the mismatch shipped.
+      - name: Assert the published cask expects this bundle name
+        run: |
+          set -euo pipefail
+          CASK=$(curl -fsSL https://raw.githubusercontent.com/SecurityRonin/homebrew-tap/main/Casks/timeglyph-lens.rb || true)
+          if [ -z "$CASK" ]; then
+            echo "::notice::cask not published yet — skipping cross-repo name check"
+            exit 0
+          fi
+          echo "$CASK" | grep -qF 'app "TimeGlyph Lens.app"' \
+            || { echo "::error::cask app stanza does not match the built bundle name"; echo "$CASK" | grep -E '^\s*app '; exit 1; }
+          echo "OK: cask app stanza matches the built bundle"
+
+  # Post-release, on demand: install the PUBLISHED cask exactly as a user would and
+  # assert the end state. Not run on `release: published` because release.yml only
+  # *dispatches* the tap update — the regenerated cask lands asynchronously, so an
+  # automatic run would race it. Run this once the tap commit is in.
+  cask-verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - name: Install the cask the way the README tells users to
+        run: |
+          set -euo pipefail
+          # Homebrew 6 requires third-party taps to be trusted; without this the
+          # cask's `depends_on formula:` cannot load and the install ABORTS.
+          brew tap securityronin/tap
+          brew trust securityronin/tap
+          brew install --cask securityronin/tap/timeglyph-lens
+
+      - name: Assert a findable, notarized app AND the CLI came along
+        run: |
+          set -euo pipefail
+          APP="/Applications/TimeGlyph Lens.app"
+
+          [ -d "$APP" ] || { echo "::error::cask did not install $APP"; exit 1; }
+
+          # Gatekeeper: Homebrew quarantines cask downloads, so an unsigned or
+          # un-notarized bundle is blocked ("app is damaged"). Assert it is accepted.
+          spctl -a -vv "$APP" 2>&1 | tee /tmp/spctl.txt
+          grep -q 'accepted' /tmp/spctl.txt \
+            || { echo "::error::Gatekeeper did not accept the app (signing/notarization broken)"; exit 1; }
+
+          # depends_on formula: must bring the CLI — one command installs both.
+          command -v timeglyph >/dev/null \
+            || { echo "::error::the cask did not pull the timeglyph CLI dependency"; exit 1; }
+          timeglyph --version
+
+          echo "OK: app installed + notarized, and the CLI came with it"
+
+      - name: Clean up
+        if: always()
+        run: |
+          brew uninstall --cask timeglyph-lens || true
+          brew uninstall timeglyph || true
