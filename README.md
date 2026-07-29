@@ -143,6 +143,13 @@ timeglyph mcp                           # a Model Context Protocol stdio server
 DFIR workflow gets a cited, reproducible reading instead of a hallucinated epoch
 conversion.
 
+**Every reading is scored and checked against an independent oracle** — each names
+the spec it assumes, and correctness is validated against primary-spec worked examples
+and the MIT [`time_decode`](https://github.com/digitalsleuth/time_decode) tool, with
+calendar/astronomy values cross-checked against `date`, `zdump`, USNO, IERS, and JPL.
+So a reading on *your* weird timestamp is evidence you can cite, not a guess. See
+[validation](docs/validation.md).
+
 ---
 
 ## TimeGlyph Lens — hover anything, decode time data
@@ -161,7 +168,7 @@ UI Automation on Windows. (Linux support is in progress.)
 
 ---
 
-## Formats
+## 45 formats, every reading cited
 
 `timeglyph` decodes and auto-identifies **45 registered formats** plus the
 self-describing string forms:
@@ -180,11 +187,10 @@ self-describing string forms:
 - **Leap-aware scales** (`--features leap`) — GPS, TAI64, NTP, kept separate from
   the POSIX spine
 
-Every reading names the spec it assumes and is scored on window membership,
-granularity, magnitude, byte-width, endianness, artifact context, and neighbour
-monotonicity. Correctness is checked against primary-spec worked examples and the
-MIT [`time_decode`](https://github.com/digitalsleuth/time_decode) oracle — see
-[validation](docs/validation.md).
+Each reading is scored on window membership, granularity, magnitude, byte-width,
+endianness, artifact context, and neighbour monotonicity — so the ranking reflects
+the evidence, not format popularity. (Validated against an independent oracle — see
+the trust note above and [validation](docs/validation.md).)
 
 ---
 
@@ -197,6 +203,12 @@ POSIX-correct internal spine (never mislabelled UTC), the leap-second family kep
 separate, and **ambiguity as first-class, scored output**. Calendar and timezone
 math is reused (`jiff`), never reinvented. See
 [the design decisions](docs/decisions/).
+
+---
+
+**Point it at the timestamp you're stuck on.** → `cargo install timeglyph`, or
+[try it in your browser](https://securityronin.github.io/timeglyph/playground.html) —
+no install, nothing leaves the page.
 
 ---
 
