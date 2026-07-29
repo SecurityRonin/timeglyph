@@ -185,7 +185,7 @@ jobs:
       # the cask adds the .app. ditto is the macOS-correct zipper for a bundle.
       - name: Build lens .app (macOS)
         if: runner.os == 'macOS'
-        run: scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "${{ steps.version.outputs.version }}" .
+        run: scripts/bundle-lens-app.sh "target/${{ matrix.target }}/release/timeglyph-lens" "target/${{ matrix.target }}/release/timeglyph" "${{ steps.version.outputs.version }}" .
 
       # Developer-ID-sign + notarize + staple the .app so the Homebrew cask is not
       # Gatekeeper-blocked. Skipped until the MACOS_* secrets exist (see
@@ -211,6 +211,12 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KEYCHAIN" >/dev/null
           security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/[",]//g' | xargs)
+          # Sign INSIDE-OUT: the bundle carries a second executable
+          # (Contents/MacOS/timeglyph, the CLI the cask exposes so it needs no
+          # depends_on formula:). Notarization requires every Mach-O signed with the
+          # hardened runtime, and --deep alone is not a reliable substitute for
+          # signing nested code explicitly, so sign the extra binary first.
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/timeglyph"
           codesign --deep --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           echo "$NOTARY_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/notary.p8"

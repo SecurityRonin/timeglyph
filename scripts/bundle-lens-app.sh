@@ -5,18 +5,31 @@
 # gives the Accessibility-permission grant (the AX element picker) a stable
 # identity across versions.
 #
-# Usage: bundle-lens-app.sh <lens-binary> <version> [output-dir]
+# Usage: bundle-lens-app.sh <lens-binary> <cli-binary> <version> [output-dir]
 #   -> writes "<output-dir>/TimeGlyph Lens.app"  (default output-dir: cwd)
 # The bundle uses the display-style name macOS GUI apps conventionally carry
 # ("TimeGlyph Lens.app", like "Google Chrome.app"); the executable inside stays
 # the hyphenated CLI name (timeglyph-lens).
+#
+# The `timeglyph` CLI is bundled ALONGSIDE the GUI in Contents/MacOS. That lets the
+# cask expose both via `binary` stanzas and drop `depends_on formula:` — which is what
+# makes `brew install --cask …` a genuine ONE-command install: Homebrew 6 refuses to
+# load a formula the user did not name (an indirect `depends_on`) from an untrusted
+# tap, aborting the whole install, whereas the explicitly-named cask is trusted. Cost:
+# the CLI is duplicated (it also ships in the formula and the tarball).
 set -euo pipefail
 
 BIN="$1"
-VERSION="$2"
-OUTDIR="${3:-.}"
+CLI="$2"
+VERSION="$3"
+OUTDIR="${4:-.}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICON_PNG="$REPO_ROOT/lens/assets/icon.png"
+
+# Fail loud: a bundle missing the CLI would silently produce a cask that installs no
+# `timeglyph` at all (the cask no longer depends on the formula to supply it).
+[ -f "$BIN" ] || { echo "error: lens binary not found: $BIN" >&2; exit 1; }
+[ -f "$CLI" ] || { echo "error: CLI binary not found: $CLI" >&2; exit 1; }
 
 APP="$OUTDIR/TimeGlyph Lens.app"
 rm -rf "$APP"
@@ -24,6 +37,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN" "$APP/Contents/MacOS/timeglyph-lens"
 chmod +x "$APP/Contents/MacOS/timeglyph-lens"
+cp "$CLI" "$APP/Contents/MacOS/timeglyph"
+chmod +x "$APP/Contents/MacOS/timeglyph"
 
 # Multi-resolution .icns from the 256px source (no upscaling past the source).
 ICONSET="$(mktemp -d)/icon.iconset"

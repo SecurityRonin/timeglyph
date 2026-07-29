@@ -32,15 +32,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - uses: dtolnay/rust-toolchain@1.96.0
 
-      - name: Build lens (release)
+      # Both binaries, into one target dir: the bundle carries the GUI *and* the CLI
+      # (the cask exposes both, so it needs no depends_on formula:).
+      - name: Build CLI + lens (release)
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: cargo build --release --manifest-path lens/Cargo.toml
+        run: |
+          cargo build --release
+          cargo build --release --manifest-path lens/Cargo.toml
 
       - name: Bundle the .app (same script release.yml uses)
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: scripts/bundle-lens-app.sh target/release/timeglyph-lens "$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" .
+        run: scripts/bundle-lens-app.sh target/release/timeglyph-lens target/release/timeglyph "$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" .
 
       - name: Assert the bundle is a findable, launchable app
         run: |
@@ -54,6 +58,11 @@ jobs:
 
           [ -x "$APP/Contents/MacOS/timeglyph-lens" ] \
             || { echo "::error::missing/non-executable Contents/MacOS/timeglyph-lens"; exit 1; }
+
+          # The cask exposes this as its second `binary` and has NO depends_on
+          # formula:, so a bundle without it installs a GUI and no CLI at all.
+          [ -x "$APP/Contents/MacOS/timeglyph" ] \
+            || { echo "::error::missing Contents/MacOS/timeglyph — the cask would install no CLI"; exit 1; }
 
           # No .icns ⇒ a generic icon and effectively no Dock/Launchpad identity.
           ls "$APP"/Contents/Resources/*.icns >/dev/null 2>&1 \
@@ -93,14 +102,13 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
-      - name: Install the cask the way the README tells users to
-        run: |
-          set -euo pipefail
-          # Homebrew 6 requires third-party taps to be trusted; without this the
-          # cask's `depends_on formula:` cannot load and the install ABORTS.
-          brew tap securityronin/tap
-          brew trust securityronin/tap
-          brew install --cask securityronin/tap/timeglyph-lens
+      # Deliberately ONE command with NO `brew trust`: the cask carries the CLI itself
+      # and has no `depends_on formula:`, and an explicitly-named cask is implicitly
+      # trusted. If a future change re-introduces an indirect formula dependency, this
+      # step fails with "Refusing to load formula … from untrusted tap" — which is
+      # exactly the regression we want to catch.
+      - name: Install the cask the way the README tells users to (one command)
+        run: brew install --cask securityronin/tap/timeglyph-lens
 
       - name: Assert a findable, notarized app AND the CLI came along
         run: |
@@ -115,15 +123,14 @@ jobs:
           grep -q 'accepted' /tmp/spctl.txt \
             || { echo "::error::Gatekeeper did not accept the app (signing/notarization broken)"; exit 1; }
 
-          # depends_on formula: must bring the CLI — one command installs both.
+          # The cask's second `binary` stanza must put the CLI on PATH — one command
+          # installs both, with no formula involved.
           command -v timeglyph >/dev/null \
-            || { echo "::error::the cask did not pull the timeglyph CLI dependency"; exit 1; }
+            || { echo "::error::the cask did not expose the timeglyph CLI"; exit 1; }
           timeglyph --version
 
           echo "OK: app installed + notarized, and the CLI came with it"
 
       - name: Clean up
         if: always()
-        run: |
-          brew uninstall --cask timeglyph-lens || true
-          brew uninstall timeglyph || true
+        run: brew uninstall --cask timeglyph-lens || true
