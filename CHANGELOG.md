@@ -6,6 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.5](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.4...timeglyph-v0.9.5) - 2026-07-30
+
+### Documentation
+
+- fix the scan example — it silently did nothing
+
+### Fixed
+
+- *(csv)* use unsigned_abs so an i64::MIN CSV cell cannot panic
+
 ## [0.9.4](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.3...timeglyph-v0.9.4) - 2026-07-30
 
 ### Documentation
