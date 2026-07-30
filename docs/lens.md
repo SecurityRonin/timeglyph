@@ -101,8 +101,11 @@ pending fix. (Measured on macOS 15.7.8.)
 Two ways to read a value that sits behind a full-screen app:
 
 - Run the app you are reading **windowed**. Hover works as documented, and the
-  header **📋** button decodes whatever is on the clipboard, which covers values
-  the picker cannot reach (a canvas, an image, a VM guest).
+  header **🗐** button decodes whatever is on the clipboard, which covers values
+  the picker cannot reach (a canvas, an image, a VM guest). It reads the clipboard
+  once per press — nothing watches it — and the clipboard text is never drawn as the
+  source caption. A value that *does* decode is shown as the reading's subject, so
+  press it deliberately: a copied token that happens to decode will appear on screen.
 - Keep it full screen and use the CLI on the copied value:
 
   ```bash

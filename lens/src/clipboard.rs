@@ -10,7 +10,7 @@
 //! guest, because macOS excludes the overlay from a full-screen Space entirely — see
 //! `docs/lens.md`; for that case use the CLI (`pbpaste | timeglyph scan`).
 //!
-//! Reading is **pull-based**: the overlay's 📋 control reads the clipboard once, when
+//! Reading is **pull-based**: the overlay's 🗐 control reads the clipboard once, when
 //! pressed. Nothing watches or polls it, so there is no background access to the
 //! pasteboard and no surveillance state for the UI to disclose — the press is the
 //! consent boundary.
@@ -36,9 +36,14 @@ pub trait ClipboardRead {
 ///
 /// `Clipboard` deliberately carries **no text**. The overlay renders the source as a
 /// caption in an always-on-top window, and clipboard content is categorically more
-/// sensitive than a hovered element — a copied password, recovery code or OTP would
-/// otherwise be displayed. Making the variant incapable of holding text enforces that
-/// with the type system instead of a conditional that one missed branch could defeat.
+/// sensitive than a hovered element, so the variant is made incapable of holding text —
+/// the type enforces it, rather than a conditional one missed branch could defeat.
+///
+/// Scope, precisely: this protects the **caption**, not the reading. A value the engine
+/// recognises is still printed verbatim as the card's subject — that is the point of
+/// pressing the control — so a copied bearer token or hex recovery code that decodes
+/// *will* appear on screen. What this prevents is the surrounding raw context (and the
+/// non-decoding remainder of the clipboard) being drawn or logged as well.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceContext {
     /// Text read from the UI element under the cursor, safe to caption.
@@ -97,7 +102,7 @@ pub fn read_decodable(clipboard: &mut dyn ClipboardRead) -> Option<String> {
 /// that decodes.
 ///
 /// `None` means *leave the display alone*: the same rule the cursor path follows, so
-/// pressing 📋 with an unrelated value copied cannot wipe the reading being read.
+/// pressing 🗐 with an unrelated value copied cannot wipe the reading being read.
 ///
 /// The source and the readings are returned together, as one value, so a caller
 /// cannot show clipboard readings under a stale cursor caption.

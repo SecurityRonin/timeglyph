@@ -56,6 +56,12 @@ jobs:
       - name: Build lens (compiles + links the platform picker)
         working-directory: lens
         run: cargo build --all-targets
+      # Gate the lens's own tests, not just that it compiles. Without this the
+      # clipboard privacy/caption tests and the offscreen render gate are local-only,
+      # so a regression in them reaches main green.
+      - name: Test lens
+        working-directory: lens
+        run: cargo test
       - name: Clippy lens
         working-directory: lens
         run: cargo clippy --all-targets -- -D warnings

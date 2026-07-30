@@ -113,7 +113,8 @@ fn cursor_caption_truncates_by_character_not_byte() {
 #[test]
 fn clipboard_caption_renders_nothing() {
     // The privacy property one layer up from `source_caption`: the value the
-    // header would draw is absent, so no clipboard content can reach the screen.
+    // header would draw is absent, so no clipboard CONTEXT reaches the caption. (A
+    // value that decodes is still shown as the card's subject — that is the feature.)
     assert_eq!(caption(&SourceContext::Clipboard), None);
 }
 

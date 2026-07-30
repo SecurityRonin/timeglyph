@@ -259,7 +259,7 @@ struct LensApp {
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
-    /// The platform clipboard, for the 📋 control — or why it is unavailable, which
+    /// The platform clipboard, for the 🗐 control — or why it is unavailable, which
     /// the disabled button shows as its reason. Opened once at startup and read
     /// only when pressed; nothing polls it.
     clipboard: Result<SystemClipboard, ClipboardUnavailable>,
@@ -336,7 +336,7 @@ impl LensApp {
         }
     }
 
-    /// Decode the clipboard once, because the user pressed 📋.
+    /// Decode the clipboard once, because the user pressed 🗐.
     ///
     /// The way in for a value hovering cannot reach: the host accessibility tree
     /// stops at a VM guest window, but the clipboard crosses that boundary. One
@@ -421,7 +421,7 @@ impl LensApp {
                 date_style: saved.date_style,
             })),
             // Opening it can fail (no window server); `SystemClipboard::new` logs the
-            // named reason, and the 📋 button carries it as its disabled tooltip.
+            // named reason, and the 🗐 button carries it as its disabled tooltip.
             clipboard: SystemClipboard::new(),
             verbose,
             logo,
@@ -570,7 +570,7 @@ impl eframe::App for LensApp {
         // write back without the central closure borrowing `self`.
         let show_settings = self.show_settings.clone();
         let frozen = self.frozen.clone();
-        // Why 📋 is disabled, if it is. The reason travels to its tooltip so an
+        // Why 🗐 is disabled, if it is. The reason travels to its tooltip so an
         // unavailable clipboard reads as that, and not as an empty one.
         let no_clipboard = self.clipboard.as_ref().err().map(ToString::to_string);
         let sr_logo = if pal.base_dark {
