@@ -14,7 +14,7 @@
 **Decode any timestamp. Identify the unknown ones. See time itself.**
 
 <p align="center">
-  <img src="assets/lens-demo.gif" alt="timeglyph-lens decoding a timestamp live as the cursor hovers a value on screen" width="760" />
+  <img src="assets/lens-demo.gif" alt="TimeGlyph Lens decoding a timestamp live as the cursor hovers a value on screen" width="760" />
   <br />
   <em>TimeGlyph Lens — hover any number on screen and read its time live, ranked and cited.</em>
 </p>
@@ -22,12 +22,13 @@
 Every examination throws raw timestamps at you — a `133801920000000000` buried in
 an artifact — that you need in human-readable time. `timeglyph` reads that value
 every way a system might have written it and reports the results **ranked, scored,
-and cited** — honest about the ambiguity instead of guessing one answer. Convert
-in bulk from a CSV, hover the number on screen and read the time live, or lay a
-month out as a **timezone/DST/leap-aware reference calendar** — DST fold/gap days, leap seconds, GPS week,
-format epochs, and the moon's phase, all flagged. No more copying each value into a
-converter app. One static Rust binary, plus a live overlay that decodes whatever is
-under your cursor.
+and cited** — honest about the ambiguity instead of guessing one answer.
+
+Mostly you never type them at all: **hover the number and read its time live.** When
+you need more, the same engine converts a whole CSV in one pass, or lays a month out as
+a **timezone/DST/leap-aware reference calendar** — DST fold/gap days, leap seconds, GPS
+week, format epochs, and the moon's phase, all flagged. One static Rust binary and a
+live overlay, from a single install command.
 
 **[Try it in your browser →](https://securityronin.github.io/timeglyph/playground.html)** · **[Full documentation →](https://securityronin.github.io/timeglyph/)**
 
