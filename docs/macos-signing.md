@@ -68,7 +68,6 @@ The six `MACOS_*` secrets are set, so every release signs, notarizes, and staple
 *accepted … Notarized Developer ID*, and
 
 ```sh
-brew tap securityronin/tap && brew trust securityronin/tap   # Homebrew 6+ requires this
 brew install --cask securityronin/tap/timeglyph-lens
 ```
 

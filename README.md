@@ -52,7 +52,6 @@ One command per platform — each installs **both** the `timeglyph` CLI and the
 
 **macOS**
 ```bash
-brew tap securityronin/tap && brew trust securityronin/tap   # once — Homebrew 6+ requires it
 brew install --cask securityronin/tap/timeglyph-lens
 ```
 
