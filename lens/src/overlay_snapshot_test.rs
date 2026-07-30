@@ -22,10 +22,27 @@
 use std::sync::{Arc, Mutex};
 
 use egui_kittest::Harness;
+use timeglyph_lens::clipboard::{ClipboardRead, ClipboardUnavailable};
+
 use timeglyph_lens::settings::PersistedSettings;
 use timeglyph_lens::theme::ThemePreference;
 
 use super::{install_fonts, install_theme, load_logo, load_png_texture, LensApp, Theme};
+
+/// A clipboard that is always openable and always empty.
+///
+/// The 🗐 control renders enabled or greyed depending on whether the platform
+/// clipboard opened, and that changes the frame — so building the real one here made
+/// the reference PNGs depend on the HOST (a dev Mac has a pasteboard; a headless CI
+/// runner may not). Injecting this keeps the gate hermetic, exactly as the fixed
+/// `PersistedSettings` below does. Empty, because a press is never simulated.
+struct StubClipboard;
+
+impl ClipboardRead for StubClipboard {
+    fn text(&mut self) -> Option<String> {
+        None
+    }
+}
 
 /// Build the harness at the lens's window size, render until the decode + egui's
 /// two-pass layout settle, assert the frame is meaningful, and save/compare the
@@ -67,6 +84,8 @@ fn gate(hovered: &str, name: &str) {
                     zone_spec: "UTC".to_string(),
                     ..PersistedSettings::default()
                 },
+                // Deterministic: never the host's clipboard (see StubClipboard).
+                Ok::<_, ClipboardUnavailable>(Box::new(StubClipboard) as Box<dyn ClipboardRead>),
             )
         });
 

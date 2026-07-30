@@ -17,7 +17,9 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
-use timeglyph_lens::clipboard::{self, ClipboardUnavailable, SourceContext, SystemClipboard};
+use timeglyph_lens::clipboard::{
+    self, ClipboardRead, ClipboardUnavailable, SourceContext, SystemClipboard,
+};
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
@@ -102,6 +104,9 @@ pub fn run(verbose: u8) -> Result<(), String> {
                 // gate can pass a fixed, hermetic settings snapshot instead of
                 // reading the host's config.
                 persist::load(),
+                // The real platform clipboard; a failure to open is carried as the
+                // button's disabled reason rather than a startup abort.
+                SystemClipboard::new().map(|c| Box::new(c) as Box<dyn ClipboardRead>),
             )))
         }),
     )
@@ -262,7 +267,12 @@ struct LensApp {
     /// The platform clipboard, for the 🗐 control — or why it is unavailable, which
     /// the disabled button shows as its reason. Opened once at startup and read
     /// only when pressed; nothing polls it.
-    clipboard: Result<SystemClipboard, ClipboardUnavailable>,
+    /// Injected, never built here: the button's enabled/disabled state changes the
+    /// rendered frame, so constructing the platform clipboard inside `new` made the
+    /// offscreen render gate depend on whether the HOST had a usable pasteboard —
+    /// green on a dev Mac, red on a headless runner. Boxed behind the trait so the
+    /// gate can supply a deterministic one (the same reason `saved` is injected).
+    clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
     /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
     /// raw element text under the cursor in the panel (a debug caption).
     verbose: u8,
@@ -353,7 +363,7 @@ impl LensApp {
             return;
         };
         let Some((source, hits)) =
-            clipboard::decode(clipboard, timeglyph_lens::READINGS_SHOWN, &zone)
+            clipboard::decode(&mut **clipboard, timeglyph_lens::READINGS_SHOWN, &zone)
         else {
             tracing::info!("the clipboard held nothing decodable");
             return;
@@ -394,6 +404,7 @@ impl LensApp {
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
         saved: persist::PersistedSettings,
+        clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
     ) -> Self {
         let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
         let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
@@ -420,9 +431,7 @@ impl LensApp {
                 calendars: saved.calendars,
                 date_style: saved.date_style,
             })),
-            // Opening it can fail (no window server); `SystemClipboard::new` logs the
-            // named reason, and the 🗐 button carries it as its disabled tooltip.
-            clipboard: SystemClipboard::new(),
+            clipboard,
             verbose,
             logo,
             sr_logo_dark,
