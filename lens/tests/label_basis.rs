@@ -59,22 +59,37 @@ fn a_naive_reading_never_shifts_with_the_zone() {
 }
 
 #[test]
-fn the_basis_stays_iso_so_the_weekday_parser_can_read_it() {
-    // `scan::weekday` parses the first 10 chars as YYYY-MM-DD. The basis must remain
-    // ISO-anchored even when the user picked a non-ISO display style, or the labels
-    // would silently vanish instead of being right.
-    let r = unix_reading("1721000000");
+fn a_naive_basis_is_iso_even_when_the_reading_was_decoded_under_another_style() {
+    // Replaces an earlier version of this test that could not fail: it looped four
+    // DateStyles over a NON-local reading, whose branch is `instant.render(zone)` and
+    // therefore style-independent — all four iterations computed the same string, and
+    // it never touched the branch that actually breaks.
+    //
+    // The real risk is the LOCAL branch. A naive reading's `rendered` is baked at
+    // decode time in whatever style was used, and `scan::weekday` / the holiday lookup
+    // parse `YYYY-MM-DD` from the front — so returning that string would make the
+    // labels VANISH under a non-ISO style instead of being correct. Decoding with
+    // `inspect_text_opts` lets the style actually reach `rendered`, which
+    // `scan::inspect_text` (hard-coded to Iso8601) cannot.
     for style in [
         DateStyle::Iso8601,
         DateStyle::SpaceSeparated,
         DateStyle::Rfc2822,
         DateStyle::UsStyle,
     ] {
-        let basis = label_basis(&r, &RenderZone::Utc, style).unwrap();
+        let naive = scan::inspect_text_opts("1721000000", 8, 8, false, &RenderZone::Utc, style)
+            .into_iter()
+            .flat_map(|h| h.readings)
+            .find(|r| r.local)
+            .expect("a local-naive reading (exfat/fat) for this value");
+        let basis = label_basis(&naive, &RenderZone::Utc, style)
+            .expect("a rendered naive reading has a basis");
         assert_eq!(
             scan::weekday(&basis),
             Some("Sunday"),
-            "weekday must be derivable under style {style:?}: {basis}"
+            "the basis must stay ISO-parseable when decoded under {style:?}; \
+             got basis={basis:?} (rendered={:?})",
+            naive.rendered
         );
     }
 }
