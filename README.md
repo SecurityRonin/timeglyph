@@ -174,7 +174,8 @@ for that date in the chosen zone. Pick any display timezone from the footer.
 
 It comes with the [one-command install](#install) above, and reads the element under
 the cursor through the platform accessibility layer — the Accessibility API on macOS,
-UI Automation on Windows. (Linux support is in progress.)
+UI Automation on Windows, and AT-SPI on Linux (X11, with assistive technologies
+enabled).
 
 [Overlay guide →](docs/lens.md)
 

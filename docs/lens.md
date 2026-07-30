@@ -63,10 +63,16 @@ The **⚙** button (and, on macOS, the ⌘, menu item) opens Settings:
 |---|---|---|
 | macOS | supported | Accessibility API (`AXUIElementCopyElementAtPosition`) |
 | Windows | supported | UI Automation (`IUIAutomation::ElementFromPoint`) |
-| Linux | not supported | no picker backend |
+| Linux (X11) | supported | AT-SPI (`GetAccessibleAtPoint`, descended to the deepest element) |
 
 On macOS the picker narrows to the exact word under the cursor; on Windows it
-reads the hovered element's name.
+reads the hovered element's name; on Linux it descends the AT-SPI tree to the
+deepest element under the X11 pointer and reads its Text interface (falling back
+to the accessible name).
+
+Linux needs **assistive technologies enabled** so the AT-SPI accessibility bus is
+reachable (the Lens reports the bus as unavailable if not), and the picker reads the
+**X11** pointer — so run it under X11, not a pure Wayland session.
 
 ### First launch on macOS — grant Accessibility
 
