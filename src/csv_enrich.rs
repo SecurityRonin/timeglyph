@@ -168,7 +168,10 @@ fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<Str
             continue;
         }
         let value: i64 = cell.parse().ok()?; // any non-integer → not a time column
-        if value.abs() < AUTO_MIN_MAGNITUDE {
+                                             // `unsigned_abs`, not `abs`: the cell is untrusted, and `i64::MIN.abs()`
+                                             // panics ("attempt to negate with overflow"). Comparing magnitudes in u64
+                                             // is total for every i64 input.
+        if value.unsigned_abs() < AUTO_MIN_MAGNITUDE.unsigned_abs() {
             return None;
         }
         values.push(value);
