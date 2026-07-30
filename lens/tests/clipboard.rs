@@ -7,12 +7,12 @@
 #![allow(clippy::unwrap_used)]
 
 use timeglyph::RenderZone;
+use timeglyph_lens::clipboard::{
+    caption, decode, read_decodable, redecode_in_zone, source_caption, ClipboardRead,
+    ClipboardUnavailable, SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
+};
 use timeglyph_lens::scan;
 use timeglyph_lens::zone::parse_zone;
-use timeglyph_lens::clipboard::{
-    caption, decode, read_decodable, source_caption, ClipboardRead, ClipboardUnavailable,
-    SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
-};
 
 /// A fake clipboard. Tests own the content, so nothing reads the real pasteboard.
 struct Fake(Option<&'static str>);
@@ -205,23 +205,37 @@ fn a_zone_change_redecodes_from_the_displayed_numbers() {
     // re-decode from, so on a zone change its readings went stale and the labels
     // contradicted the date beside them — a forensic tool calling a Monday "Sunday".
     // The fix re-decodes from the numbers already on screen, retaining no text.
+    //
+    // Targets the `unix` reading by id, not by rank: the top-ranked reading for this
+    // value is a naive wall-clock format, and naive readings deliberately do NOT
+    // follow the display zone (`Reading::local`), so only a zone-anchored reading can
+    // demonstrate the defect.
+    fn unix_rendered(hits: &[timeglyph_lens::scan::NumberReadings]) -> String {
+        hits.iter()
+            .flat_map(|h| &h.readings)
+            .find(|r| r.format_id == "unix")
+            .expect("a unix reading for a 10-digit second count")
+            .rendered
+            .clone()
+    }
+
     let mut c = Fake(Some("1721000000"));
     let (_source, utc) = decode(&mut c, 8, &RenderZone::Utc).unwrap();
-    let utc_top = &utc[0].readings[0].rendered;
+    let utc_top = unix_rendered(&utc);
     assert!(utc_top.starts_with("2024-07-14"), "UTC baseline: {utc_top}");
-    assert_eq!(scan::weekday(utc_top), Some("Sunday"));
+    assert_eq!(scan::weekday(&utc_top), Some("Sunday"));
 
     // Asia/Tokyo puts the same instant on the NEXT day, so a stale `rendered` is
     // detectable rather than coincidentally right.
     let tokyo = parse_zone("Asia/Tokyo").unwrap();
     let tk = redecode_in_zone(&utc, 8, &tokyo.zone);
-    let tk_top = &tk[0].readings[0].rendered;
+    let tk_top = unix_rendered(&tk);
     assert!(
         tk_top.starts_with("2024-07-15"),
         "the re-decoded date must follow the new zone: {tk_top}"
     );
     assert_eq!(
-        scan::weekday(tk_top),
+        scan::weekday(&tk_top),
         Some("Monday"),
         "weekday is derived from `rendered`, so it must move with the zone"
     );

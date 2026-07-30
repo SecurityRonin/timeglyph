@@ -537,7 +537,14 @@ impl eframe::App for LensApp {
                     timeglyph_lens::READINGS_SHOWN,
                     &self.zone.zone,
                 )),
-                SourceContext::Clipboard => None,
+                // Retains no text, but the numbers are already on screen — re-read those
+                // so the weekday / holiday labels move with the zone instead of
+                // contradicting the date beside them.
+                SourceContext::Clipboard => Some(clipboard::redecode_in_zone(
+                    &self.hits,
+                    timeglyph_lens::READINGS_SHOWN,
+                    &self.zone.zone,
+                )),
             };
             if let Some(hits) = redecoded {
                 self.hits = hits;
