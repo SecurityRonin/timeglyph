@@ -205,8 +205,19 @@ fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<Str
 
 #[cfg(test)]
 mod tests {
-    use super::csv_err;
+    use super::{csv_err, detect_column_format};
     use crate::ChronoError;
+
+    #[test]
+    fn i64_min_cell_does_not_panic() {
+        // `detect_column_format` parses an untrusted CSV cell straight into i64 and
+        // took `value.abs()`, which panics for `i64::MIN` ("attempt to negate with
+        // overflow") in any overflow-checked build — a panic reachable from
+        // attacker-controlled input, against this crate's panic-free posture.
+        let rec = csv::StringRecord::from(vec![i64::MIN.to_string()]);
+        // Must return normally (whatever the verdict); the assertion is "no panic".
+        let _ = detect_column_format(std::slice::from_ref(&rec), 0);
+    }
 
     #[test]
     fn a_csv_error_is_mapped_with_its_own_message() {
