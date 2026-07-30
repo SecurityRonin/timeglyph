@@ -121,29 +121,6 @@ pub fn decode(
     Some((SourceContext::Clipboard, hits))
 }
 
-/// Re-decode readings in a new zone from the numbers **already on screen**.
-///
-/// A zone change re-renders each datetime cell from the reading's instant, but the
-/// weekday and public-holiday labels are derived from the baked `rendered` string — so
-/// readings that are not re-decoded end up labelled for the old zone, which in a
-/// forensic tool means a Monday captioned "Sunday".
-///
-/// The cursor path can re-decode from its element text; a clipboard source retains
-/// none. It does not need any: [`NumberReadings::number`] is the numeric run as it
-/// appeared, and it is already displayed, so re-reading *that* keeps the labels honest
-/// without stashing the clipboard text anywhere (which would merely relocate the leak
-/// this module exists to prevent).
-#[must_use]
-pub fn redecode_in_zone(
-    hits: &[NumberReadings],
-    max_per_number: usize,
-    zone: &RenderZone,
-) -> Vec<NumberReadings> {
-    hits.iter()
-        .flat_map(|hit| scan::inspect_text(&hit.number, max_per_number, zone))
-        .collect()
-}
-
 /// The platform clipboard could not be opened — a host with no window server or
 /// pasteboard has no clipboard at all.
 ///

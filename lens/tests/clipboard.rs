@@ -8,11 +8,9 @@
 
 use timeglyph::RenderZone;
 use timeglyph_lens::clipboard::{
-    caption, decode, read_decodable, redecode_in_zone, source_caption, ClipboardRead,
-    ClipboardUnavailable, SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
+    caption, decode, read_decodable, source_caption, ClipboardRead, ClipboardUnavailable,
+    SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
 };
-use timeglyph_lens::scan;
-use timeglyph_lens::zone::parse_zone;
 
 /// A fake clipboard. Tests own the content, so nothing reads the real pasteboard.
 struct Fake(Option<&'static str>);
@@ -196,61 +194,4 @@ fn an_unavailable_clipboard_names_the_platform_reason() {
         shown.contains("clipboard"),
         "and it says what failed: {shown:?}"
     );
-}
-
-#[test]
-fn a_zone_change_redecodes_from_the_displayed_numbers() {
-    // The bug this pins: the datetime cell re-renders from the reading's instant in
-    // the current zone every frame, but the weekday and public-holiday labels are
-    // derived from the BAKED `rendered` string. A clipboard source retains no text to
-    // re-decode from, so on a zone change its readings went stale and the labels
-    // contradicted the date beside them — a forensic tool calling a Monday "Sunday".
-    // The fix re-decodes from the numbers already on screen, retaining no text.
-    //
-    // Targets the `unix` reading by id, not by rank: the top-ranked reading for this
-    // value is a naive wall-clock format, and naive readings deliberately do NOT
-    // follow the display zone (`Reading::local`), so only a zone-anchored reading can
-    // demonstrate the defect.
-    fn unix_rendered(hits: &[timeglyph_lens::scan::NumberReadings]) -> String {
-        hits.iter()
-            .flat_map(|h| &h.readings)
-            .find(|r| r.format_id == "unix")
-            .expect("a unix reading for a 10-digit second count")
-            .rendered
-            .clone()
-    }
-
-    let mut c = Fake(Some("1721000000"));
-    let (_source, utc) = decode(&mut c, 8, &RenderZone::Utc).unwrap();
-    let utc_top = unix_rendered(&utc);
-    assert!(utc_top.starts_with("2024-07-14"), "UTC baseline: {utc_top}");
-    assert_eq!(scan::weekday(&utc_top), Some("Sunday"));
-
-    // Asia/Tokyo puts the same instant on the NEXT day, so a stale `rendered` is
-    // detectable rather than coincidentally right.
-    let tokyo = parse_zone("Asia/Tokyo").unwrap();
-    let tk = redecode_in_zone(&utc, 8, &tokyo.zone);
-    let tk_top = unix_rendered(&tk);
-    assert!(
-        tk_top.starts_with("2024-07-15"),
-        "the re-decoded date must follow the new zone: {tk_top}"
-    );
-    assert_eq!(
-        scan::weekday(&tk_top),
-        Some("Monday"),
-        "weekday is derived from `rendered`, so it must move with the zone"
-    );
-}
-
-#[test]
-fn redecoding_preserves_the_numbers_and_retains_no_source_text() {
-    // Re-decoding works from `NumberReadings.number`, which is already on screen, so
-    // no clipboard text has to be stashed anywhere to survive a zone change.
-    let mut c = Fake(Some("1721000000 and 133801920000000000"));
-    let (_source, hits) = decode(&mut c, 8, &RenderZone::Utc).unwrap();
-    let before: Vec<&str> = hits.iter().map(|h| h.number.as_str()).collect();
-    let after_hits = redecode_in_zone(&hits, 8, &RenderZone::Utc);
-    let after: Vec<&str> = after_hits.iter().map(|h| h.number.as_str()).collect();
-    assert_eq!(before, after, "the same numbers, re-read in the new zone");
-    assert!(after.len() >= 2, "both numbers survive: {after:?}");
 }
