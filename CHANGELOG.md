@@ -6,6 +6,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.3](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.2...timeglyph-v0.9.3) - 2026-07-30
+
+### Added
+
+- *(release)* bundle the CLI in the .app so the cask needs no formula dep
+
+### Documentation
+
+- *(readme)* lead the capability tour with the Lens (the common case)
+- Linux IS supported — AT-SPI over X11, not 'in progress'
+- *(readme)* macOS install needs the Homebrew 6 tap-trust step
+- *(readme)* one install command per platform, CLI + Lens together
+- *(readme)* add 5-min trust re-hook, closing CTA, sharpen Formats heading
+
 ## [0.9.2](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.1...timeglyph-v0.9.2) - 2026-07-28
 
 ### Documentation
