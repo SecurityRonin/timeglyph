@@ -52,12 +52,24 @@ pub fn ellipsize(s: &str, max: usize) -> String {
 ///   rather than be correct.
 ///
 /// `None` only when the instant is outside the civil range, the same contract as
-/// [`timeglyph::PosixNs::render`].
+/// [`timeglyph::PosixNs::render`]. In that case all three labels are simply omitted,
+/// which is honest: the cell itself reads `<out of civil range>`, so nothing is
+/// misstated. (Not reachable for a *confident* reading — `confident()` requires
+/// `in_window` — but kept as a defensive arm.)
 #[must_use]
-pub fn label_basis(r: &Reading, zone: &RenderZone, _style: DateStyle) -> Option<String> {
+pub fn label_basis(r: &Reading, zone: &RenderZone) -> Option<String> {
     if r.local {
-        // Never shifted — see above.
-        Some(r.rendered.clone())
+        // Never shifted — see above. Re-rendered ISO from the instant rather than
+        // reusing `r.rendered`, which is baked in whatever DateStyle decoded it: under
+        // a non-ISO style that string is unparseable by `scan::weekday`, so the labels
+        // would vanish instead of being right. `format_naive`'s ISO arm is
+        // `instant.render(&Utc)` with the trailing `Z` trimmed, and a naive reading's
+        // instant IS its wall-clock in UTC civil form — so this is byte-identical to
+        // `r.rendered` for an ISO decode while holding for every caller.
+        Some(timeglyph::datefmt::format_naive(
+            r.instant,
+            DateStyle::Iso8601,
+        ))
     } else {
         r.instant.render(zone)
     }

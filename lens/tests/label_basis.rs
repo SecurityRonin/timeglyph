@@ -27,14 +27,14 @@ fn unix_reading(text: &str) -> scan::Reading {
 fn a_zone_anchored_label_follows_the_display_zone() {
     let r = unix_reading("1721000000");
     // Baseline: UTC puts this instant on the 14th, a Sunday.
-    let utc = label_basis(&r, &RenderZone::Utc, DateStyle::Iso8601).unwrap();
+    let utc = label_basis(&r, &RenderZone::Utc).unwrap();
     assert!(utc.starts_with("2024-07-14"), "UTC basis: {utc}");
     assert_eq!(scan::weekday(&utc), Some("Sunday"));
 
     // Asia/Tokyo puts the SAME instant on the 15th, a Monday. The basis must move
     // with it, or the label contradicts the date in the cell.
     let tokyo = parse_zone("Asia/Tokyo").unwrap();
-    let tk = label_basis(&r, &tokyo.zone, DateStyle::Iso8601).unwrap();
+    let tk = label_basis(&r, &tokyo.zone).unwrap();
     assert!(tk.starts_with("2024-07-15"), "Tokyo basis: {tk}");
     assert_eq!(
         scan::weekday(&tk),
@@ -53,8 +53,8 @@ fn a_naive_reading_never_shifts_with_the_zone() {
         .find(|r| r.local)
         .expect("a local-naive reading (exfat/fat) for this value");
     let tokyo = parse_zone("Asia/Tokyo").unwrap();
-    let a = label_basis(&naive, &RenderZone::Utc, DateStyle::Iso8601).unwrap();
-    let b = label_basis(&naive, &tokyo.zone, DateStyle::Iso8601).unwrap();
+    let a = label_basis(&naive, &RenderZone::Utc).unwrap();
+    let b = label_basis(&naive, &tokyo.zone).unwrap();
     assert_eq!(a, b, "a naive reading's basis is zone-independent");
 }
 
@@ -82,8 +82,8 @@ fn a_naive_basis_is_iso_even_when_the_reading_was_decoded_under_another_style() 
             .flat_map(|h| h.readings)
             .find(|r| r.local)
             .expect("a local-naive reading (exfat/fat) for this value");
-        let basis = label_basis(&naive, &RenderZone::Utc, style)
-            .expect("a rendered naive reading has a basis");
+        let basis =
+            label_basis(&naive, &RenderZone::Utc).expect("a rendered naive reading has a basis");
         assert_eq!(
             scan::weekday(&basis),
             Some("Sunday"),
@@ -115,8 +115,7 @@ fn the_label_basis_always_agrees_with_the_datetime_the_cell_shows() {
             for hit in scan::inspect_text(value, 8, zone) {
                 for r in &hit.readings {
                     let shown = timeglyph_lens::text::copy_text_for(r, zone, DateStyle::Iso8601);
-                    let basis = label_basis(r, zone, DateStyle::Iso8601)
-                        .expect("a rendered reading has a label basis");
+                    let basis = label_basis(r, zone).expect("a rendered reading has a label basis");
                     assert_eq!(
                         shown.get(..10),
                         basis.get(..10),

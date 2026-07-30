@@ -1280,7 +1280,7 @@ fn datetime_cell(
     // from the date: weekday, public holiday, and the UTC designator. Deriving those
     // from the reading's baked `r.rendered` described whichever zone was active when
     // the reading was decoded.
-    let basis = text::label_basis(r, zone, style);
+    let basis = text::label_basis(r, zone);
     let datetime = || {
         RichText::new(&shown)
             .font(FontId::monospace(14.0))
