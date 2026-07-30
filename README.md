@@ -88,6 +88,22 @@ On macOS you can also take the CLI by itself with
 
 ## What you do with it
 
+### TimeGlyph Lens — hover anything, decode time data
+
+The way most people use it: **never type a timestamp again.** Hover any number on
+screen and read its time live. An always-on-top overlay follows your cursor and shows
+timeglyph's ranked readings for the number in the UI element under the pointer — so you
+never copy a value into a converter. Each row carries its confidence, the weekday, and
+the public holiday for that date in the chosen zone. Pick any display timezone from the
+footer.
+
+It comes with the [one-command install](#install) above, and reads the element under
+the cursor through the platform accessibility layer — the Accessibility API on macOS,
+UI Automation on Windows, and AT-SPI on Linux (X11, with assistive technologies
+enabled).
+
+[Overlay guide →](docs/lens.md)
+
 ### Identify an unknown value
 
 ```bash
@@ -161,23 +177,6 @@ and the MIT [`time_decode`](https://github.com/digitalsleuth/time_decode) tool, 
 calendar/astronomy values cross-checked against `date`, `zdump`, USNO, IERS, and JPL.
 So a reading on *your* weird timestamp is evidence you can cite, not a guess. See
 [validation](docs/validation.md).
-
----
-
-## TimeGlyph Lens — hover anything, decode time data
-
-Convert live: hover any number on screen and read its time in real time. An
-always-on-top overlay follows your cursor and shows timeglyph's ranked readings
-for the number in the UI element under the pointer, so you never copy a value into
-a converter. Each row carries its confidence, the weekday, and the public holiday
-for that date in the chosen zone. Pick any display timezone from the footer.
-
-It comes with the [one-command install](#install) above, and reads the element under
-the cursor through the platform accessibility layer — the Accessibility API on macOS,
-UI Automation on Windows, and AT-SPI on Linux (X11, with assistive technologies
-enabled).
-
-[Overlay guide →](docs/lens.md)
 
 ---
 

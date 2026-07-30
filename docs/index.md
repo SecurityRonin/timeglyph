@@ -121,5 +121,5 @@ your cursor and shows timeglyph's ranked readings for any number in the element
 under the pointer — with the weekday, the public holiday for that date in the
 chosen zone, and the opt-in 干支 pillars colored by 五行. macOS and Windows (the
 picker uses the Accessibility API / UI Automation respectively); see the
-[README](https://github.com/SecurityRonin/timeglyph#timeglyph-lens--hover-anything-read-the-time)
+[README](https://github.com/SecurityRonin/timeglyph#timeglyph-lens--hover-anything-decode-time-data)
 to install.
