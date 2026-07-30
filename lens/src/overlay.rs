@@ -1717,13 +1717,11 @@ fn hsv(h: f64, s: f64, v: f64) -> Color32 {
 // Offscreen (headless wgpu) egui_kittest render gate for `LensApp`. In-crate so
 // it can reach the private app + font/theme helpers; see the module's own docs.
 //
-// macOS-only, and that is a correctness statement rather than a convenience: the
-// committed reference PNGs in `tests/snapshots/` are rendered on macOS, and
-// `kittest.toml` allows `failed_pixel_count_threshold = 0` — zero deviating pixels.
-// Font rasterisation and the GPU backend differ per platform, so comparing a macOS
-// reference against a Linux or Windows render asserts nothing true; it would just red
-// the job. CI runs the lens tests on all three runners, so this gate still executes —
-// on the platform its references describe.
-#[cfg(all(test, target_os = "macos"))]
+// Compiled on EVERY platform on purpose: the all-black / tofu / uniform-frame
+// assertion is genuinely platform-independent, and the regression it catches is the
+// load-bearing one (`default_fonts` dropped ⇒ a silent all-black window — see
+// Cargo.toml). Only the *pixel compare* against the macOS-rendered reference PNG is
+// macOS-gated, inside the module.
+#[cfg(test)]
 #[path = "overlay_snapshot_test.rs"]
 mod overlay_snapshot_test;

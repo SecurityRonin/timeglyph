@@ -47,8 +47,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
+          # mesa-vulkan-drivers supplies the lavapipe software Vulkan ICD. The lens's
+          # offscreen render gate asks wgpu for an adapter, and a runner with no ICD has
+          # none — the gate would panic rather than check anything. The all-black /
+          # tofu frame regression it catches (see Cargo.toml on default_fonts) is
+          # platform-independent and worth running here, so give it an adapter.
           sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
-            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config \
+            mesa-vulkan-drivers
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt

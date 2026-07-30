@@ -111,10 +111,17 @@ fn gate(hovered: &str, name: &str) {
         verdict.non_black_fraction, verdict.luma_stddev
     );
 
-    // The visual regression reference. Threshold is set tolerantly in
-    // `kittest.toml`; see this test's module docs and the PR notes on the
-    // font/renderer divergence between the macOS reference and a Linux CI runner.
+    // The visual regression reference — macOS only, and that is a correctness bound
+    // rather than convenience: the committed PNGs are macOS-rendered and
+    // `kittest.toml` allows zero deviating pixels, so comparing them against a Linux
+    // or Windows render asserts nothing true and would simply red the job. The
+    // meaningful-frame assertion above runs everywhere, which is the half that
+    // actually generalises.
+    #[cfg(target_os = "macos")]
     harness.snapshot(name);
+    // Keep `name` used on the platforms that skip the compare.
+    #[cfg(not(target_os = "macos"))]
+    let _ = name;
 }
 
 /// The empty state: nothing under the cursor, so the overlay shows its hover
