@@ -17,7 +17,7 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
-use timeglyph_lens::clipboard::SourceContext;
+use timeglyph_lens::clipboard::{self, ClipboardUnavailable, SourceContext, SystemClipboard};
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
@@ -259,6 +259,10 @@ struct LensApp {
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
+    /// The platform clipboard, for the 📋 control — or why it is unavailable, which
+    /// the disabled button shows as its reason. Opened once at startup and read
+    /// only when pressed; nothing polls it.
+    clipboard: Result<SystemClipboard, ClipboardUnavailable>,
     /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
     /// raw element text under the cursor in the panel (a debug caption).
     verbose: u8,
@@ -332,6 +336,33 @@ impl LensApp {
         }
     }
 
+    /// Decode the clipboard once, because the user pressed 📋.
+    ///
+    /// The way in for a value hovering cannot reach: the host accessibility tree
+    /// stops at a VM guest window, but the clipboard crosses that boundary. One
+    /// read per press — no thread, no watcher, no polling.
+    ///
+    /// A clipboard holding nothing decodable leaves the display untouched, so a
+    /// misfired press cannot wipe the reading being read.
+    fn decode_clipboard_now(&mut self) {
+        // Cloned first: the decode borrows the clipboard mutably.
+        let zone = self.zone.zone.clone();
+        let Ok(clipboard) = &mut self.clipboard else {
+            // The button is disabled without a clipboard, so a press cannot reach
+            // here; the reason was named at startup.
+            return;
+        };
+        let Some((source, hits)) =
+            clipboard::decode(clipboard, timeglyph_lens::READINGS_SHOWN, &zone)
+        else {
+            tracing::info!("the clipboard held nothing decodable");
+            return;
+        };
+        self.source = source;
+        self.hits = hits;
+        tracing::info!(hits = self.hits.len(), "decoded the clipboard");
+    }
+
     /// The theme-matched Security Ronin wordmark in the lower-right corner, tall
     /// enough to span the footer's two rows and anchored so it stays put over any
     /// panel content. Click it for the About dialog, where the version lives — the
@@ -389,6 +420,9 @@ impl LensApp {
                 calendars: saved.calendars,
                 date_style: saved.date_style,
             })),
+            // Opening it can fail (no window server); `SystemClipboard::new` logs the
+            // named reason, and the 📋 button carries it as its disabled tooltip.
+            clipboard: SystemClipboard::new(),
             verbose,
             logo,
             sr_logo_dark,
@@ -529,23 +563,28 @@ impl eframe::App for LensApp {
         // write back without the central closure borrowing `self`.
         let show_settings = self.show_settings.clone();
         let frozen = self.frozen.clone();
+        // Why 📋 is disabled, if it is. The reason travels to its tooltip so an
+        // unavailable clipboard reads as that, and not as an empty one.
+        let no_clipboard = self.clipboard.as_ref().err().map(ToString::to_string);
         let sr_logo = if pal.base_dark {
             self.sr_logo_dark.clone()
         } else {
             self.sr_logo_light.clone()
         };
 
+        let mut decode_clipboard = false;
         let panel = Frame::NONE
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16, 14));
         egui::CentralPanel::default().frame(panel).show(ui, |ui| {
-            header(
+            decode_clipboard = header(
                 ui,
                 source.as_deref(),
                 pal,
                 logo.as_ref(),
                 &show_settings,
                 &frozen,
+                no_clipboard.as_deref(),
             );
             ui.separator();
             ui.add_space(10.0);
@@ -570,6 +609,12 @@ impl eframe::App for LensApp {
         self.render_branding(&ctx, sr_logo.as_ref());
 
         self.hits = hits;
+
+        // After the readings are back in place, so a successful clipboard decode
+        // replaces them (and a fruitless one leaves them alone).
+        if decode_clipboard {
+            self.decode_clipboard_now();
+        }
 
         // The background poll thread drives repaints when the cursor's element
         // changes; a slow heartbeat keeps the footer's live clock and hover
@@ -1074,7 +1119,8 @@ fn header(
     logo: Option<&egui::TextureHandle>,
     show_settings: &AtomicBool,
     frozen: &AtomicBool,
-) {
+    no_clipboard: Option<&str>,
+) -> bool {
     ui.horizontal(|ui| {
         if let Some(tex) = logo {
             ui.add(
@@ -1134,8 +1180,35 @@ fn header(
             if ui.button(glyph).on_hover_text(tip).clicked() {
                 frozen.store(!is_frozen, Ordering::Relaxed);
             }
-        });
-    });
+            // Clipboard decode, left of the freeze toggle. One read per press: the
+            // press is the consent, so nothing watches the clipboard between them.
+            //
+            // 🗐 U+1F5D0, not 📋 U+1F4CB: both are in egui's bundled fonts, but
+            // NotoEmoji wins the fallback order for U+1F4CB and its clipboard is
+            // drawn tilted — at 14 px it reads as a luggage tag. U+1F5D0 falls
+            // through to emoji-icon-font (the same face that draws ⏸ and ⚙) and
+            // renders the familiar overlapping-pages copy mark, identically on
+            // every platform because the font ships with egui.
+            let btn = egui::Button::new("🗐");
+            match no_clipboard {
+                None => ui
+                    .add(btn)
+                    .on_hover_text(
+                        "decode the clipboard — for a value hovering can't reach, \
+                         such as one inside a VM guest window",
+                    )
+                    .clicked(),
+                // No clipboard on this host: say so, rather than offering a button
+                // whose every press would look like an empty clipboard.
+                Some(reason) => {
+                    ui.add_enabled(false, btn).on_disabled_hover_text(reason);
+                    false
+                }
+            }
+        })
+        .inner
+    })
+    .inner
 }
 
 /// Grid column 1: the amber format chip. The verbose format name is a hover
