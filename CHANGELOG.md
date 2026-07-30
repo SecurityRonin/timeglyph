@@ -6,6 +6,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.4](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.3...timeglyph-v0.9.4) - 2026-07-30
+
+### Documentation
+
+- *(readme)* lead the value prose with hover, matching the hero
+- macOS install is now a true one-liner (v0.9.3 cask)
+
 ## [0.9.3](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.2...timeglyph-v0.9.3) - 2026-07-30
 
 ### Added
