@@ -1261,10 +1261,17 @@ fn datetime_cell(
 ) {
     // The displayed datetime, in the chosen style. Local-naive readings keep
     // their own wall-clock rendering (never shifted); the styled form is only for
-    // the zone-shiftable case. The ISO-anchored `r.rendered` still drives the
-    // weekday / holiday / `Z` designator logic below. `copy_text_for` owns this
-    // choice so the click-to-copy string always matches what is shown.
+    // the zone-shiftable case. `copy_text_for` owns this choice so the
+    // click-to-copy string always matches what is shown. The weekday / holiday
+    // labels derive from `text::label_basis`, an ISO rendering of the same instant
+    // in the SAME zone — deriving them from the reading's baked `r.rendered`
+    // labelled the date with whichever zone was active at decode time.
     let shown = text::copy_text_for(r, zone, style);
+    // The ISO rendering of the same instant in the SAME zone, for every label derived
+    // from the date: weekday, public holiday, and the UTC designator. Deriving those
+    // from the reading's baked `r.rendered` described whichever zone was active when
+    // the reading was decoded.
+    let basis = text::label_basis(r, zone, style);
     let datetime = || {
         RichText::new(&shown)
             .font(FontId::monospace(14.0))
@@ -1296,7 +1303,7 @@ fn datetime_cell(
                         .color(pal.faint),
                 );
             });
-            if let Some(wd) = scan::weekday(&r.rendered) {
+            if let Some(wd) = basis.as_deref().and_then(scan::weekday) {
                 ui.add_space(6.0);
                 ui.label(
                     RichText::new(wd)
@@ -1325,7 +1332,7 @@ fn datetime_cell(
                         .strong(),
                 );
             }
-        } else if r.rendered.ends_with('Z') {
+        } else if basis.as_deref().is_some_and(|b| b.ends_with('Z')) {
             // UTC display zone: show a "UTC" designator like a named zone shows
             // its abbreviation, for consistency — even though the value's own
             // `Z` already says UTC.
@@ -1338,7 +1345,7 @@ fn datetime_cell(
         }
         // Weekday of the displayed date — handy for spotting what day an event
         // fell on.
-        if let Some(wd) = scan::weekday(&r.rendered) {
+        if let Some(wd) = basis.as_deref().and_then(scan::weekday) {
             ui.add_space(6.0);
             ui.label(
                 RichText::new(wd)
@@ -1349,7 +1356,10 @@ fn datetime_cell(
         // Public holiday for this date in the display zone — only a named IANA
         // zone maps to a country. An annotation ("consistent with a public
         // holiday there"), in the country's own locale; not proof it was observed.
-        if let Some(name) = timeglyph::holiday::in_zone_rendered(zone, &r.rendered) {
+        if let Some(name) = basis
+            .as_deref()
+            .and_then(|b| timeglyph::holiday::in_zone_rendered(zone, b))
+        {
             ui.add_space(6.0);
             ui.label(
                 RichText::new(name)
