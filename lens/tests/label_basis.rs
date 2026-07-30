@@ -95,36 +95,93 @@ fn a_naive_basis_is_iso_even_when_the_reading_was_decoded_under_another_style() 
 }
 
 #[test]
-fn the_label_basis_always_agrees_with_the_datetime_the_cell_shows() {
-    // The invariant the whole fix exists to hold: whatever date the cell displays,
-    // the weekday / holiday labels describe THAT date. Checked across every reading
-    // of several values (zone-anchored, naive and offset-embedded alike) in a zone
-    // that crosses a date boundary relative to UTC.
+fn the_label_basis_is_iso_parseable_for_every_reading_and_decode_style() {
+    // Claim 1 of 2, checked across every style: whatever style baked the reading, the
+    // basis must remain ISO-parseable, because `scan::weekday` and the holiday lookup
+    // read `YYYY-MM-DD` off the front. This is the property the naive-branch fix
+    // delivers — it genuinely fails on the pre-fix code (Rfc2822 gave
+    // "Sun, 20 Apr 2031 12:02:00", weekday None).
     //
-    // Not a RED-first test: it pins an invariant the fix already satisfies, as a
-    // guard against future drift between `copy_text_for` (what is shown) and
-    // `label_basis` (what is labelled) — the two branched identically on `r.local`,
-    // and nothing but a test stops them diverging.
+    // A seen-counter guards against the loop passing VACUOUSLY if a fixture ever stops
+    // yielding readings (review caught that in the earlier version).
+    //
+    // Deliberately makes no claim about `TzSemantics::OffsetEmbedded`: a `Reading`
+    // carries only `local`, not tz semantics, so a test at this level structurally
+    // cannot distinguish that case.
     let tokyo = parse_zone("Asia/Tokyo").unwrap();
+    let mut seen = 0usize;
     for value in [
-        "1721000000",                // unix seconds + the naive packed formats
-        "133801920000000000",        // FILETIME
-        "2024-07-14T23:33:20+08:00", // offset-embedded string form
+        "1721000000",
+        "133801920000000000",
+        "2024-07-14T23:33:20+08:00",
+    ] {
+        for zone in [&RenderZone::Utc, &tokyo.zone] {
+            for style in [
+                DateStyle::Iso8601,
+                DateStyle::SpaceSeparated,
+                DateStyle::Rfc2822,
+                DateStyle::UsStyle,
+            ] {
+                for hit in scan::inspect_text_opts(value, 8, 8, false, zone, style) {
+                    for r in &hit.readings {
+                        let basis = label_basis(r, zone).expect("a rendered reading has a basis");
+                        assert!(
+                            scan::weekday(&basis).is_some(),
+                            "basis must stay ISO-parseable however the reading was decoded \
+                             ({} / {style:?}): basis={basis} rendered={:?}",
+                            r.format_id,
+                            r.rendered
+                        );
+                        seen += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        seen > 50,
+        "the loop must actually exercise readings, not pass vacuously; saw {seen}"
+    );
+}
+
+#[test]
+fn the_label_basis_names_the_same_date_the_cell_shows_at_iso() {
+    // Claim 2 of 2, scoped honestly to Iso8601. The earlier version asserted
+    // `shown.get(..10) == basis.get(..10)` for every style, which review showed is
+    // false by design off ISO — and not because the labels are wrong: under Rfc2822 a
+    // naive cell reads "Sun, 20 Apr 2031 12:02:00" while the basis is
+    // "2031-04-20T12:02:00". Same date, different shape, so the prefixes cannot match.
+    // (`copy_text_for` also ignores `style` for a local reading, returning the baked
+    // string, so there is no style-independent reference to compare against either.)
+    //
+    // At Iso8601 both are ISO and the comparison is meaningful — which is the case the
+    // lens actually ships, since `scan::inspect_text` hard-codes Iso8601.
+    let tokyo = parse_zone("Asia/Tokyo").unwrap();
+    let mut seen = 0usize;
+    for value in [
+        "1721000000",
+        "133801920000000000",
+        "2024-07-14T23:33:20+08:00",
     ] {
         for zone in [&RenderZone::Utc, &tokyo.zone] {
             for hit in scan::inspect_text(value, 8, zone) {
                 for r in &hit.readings {
                     let shown = timeglyph_lens::text::copy_text_for(r, zone, DateStyle::Iso8601);
-                    let basis = label_basis(r, zone).expect("a rendered reading has a label basis");
+                    let basis = label_basis(r, zone).expect("a rendered reading has a basis");
                     assert_eq!(
                         shown.get(..10),
                         basis.get(..10),
-                        "label basis must match the shown date for {} ({value}): \
+                        "the label must describe the date the cell shows for {} ({value}): \
                          shown={shown} basis={basis}",
                         r.format_id
                     );
+                    seen += 1;
                 }
             }
         }
     }
+    assert!(
+        seen > 20,
+        "must exercise readings, not pass vacuously; saw {seen}"
+    );
 }
