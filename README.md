@@ -131,7 +131,7 @@ timeglyph list                           # the format registry, with spec citati
 ### Mine artifacts at scale
 
 ```bash
-timeglyph scan app.log                  # find & decode every timestamp in text (or stdin)
+timeglyph scan < app.log                # find & decode every timestamp in a file (or stdin)
 timeglyph carve aabbcc… --from 2015 --to 2026 --json   # carve timestamps at every byte offset
 timeglyph csv events.csv                # enrich a CSV with human-readable timestamp columns
 ```
