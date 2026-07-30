@@ -34,6 +34,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # OS-standard config-dir path for the persisted settings file.
 directories = "6"
+# Read the clipboard for the 🗐 control (values hover cannot reach — above all
+# inside a VM guest, where the host accessibility tree stops at the guest window).
+# Already in the graph via egui-winit, so this adds no package.
+arboard = "3.6.1"
 # Cross-platform always-on-top overlay window (the same GUI on Windows + macOS);
 # the platform-specific part is only the element picker.
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and

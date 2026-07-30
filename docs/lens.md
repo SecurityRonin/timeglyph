@@ -85,6 +85,38 @@ grant it:
 2. Turn on **timeglyph-lens** (click **+** and add it if it isn't listed).
 3. Quit and relaunch timeglyph-lens.
 
+### macOS — the overlay cannot appear over a full-screen app
+
+When another application occupies a full-screen Space (the green-button full
+screen, not a maximised window), the overlay is invisible there. It is not merely
+behind the full-screen window: macOS omits it from that Space's window list
+altogether, alongside every other third-party window, including menu-bar accessory
+windows and windows raised to `NSScreenSaverWindowLevel`. The only overlays macOS
+admits onto a full-screen Space are its own — such as the Hover Text accessibility
+window, which carries a private entitlement. Getting a third-party window in
+requires private CGS/SkyLight calls and a weakened SIP, which is not an acceptable
+trade on an evidence workstation, so treat this as a platform limit rather than a
+pending fix. (Measured on macOS 15.7.8.)
+
+Two ways to read a value that sits behind a full-screen app:
+
+- Run the app you are reading **windowed**. Hover works as documented, and the
+  header **🗐** button decodes whatever is on the clipboard, which covers values
+  the picker cannot reach (a canvas, an image, a VM guest). It reads the clipboard
+  once per press — nothing watches it — and the clipboard text is never drawn as the
+  source caption. A value that *does* decode is shown as the reading's subject, so
+  press it deliberately: a copied token that happens to decode will appear on screen.
+- Keep it full screen and use the CLI on the copied value:
+
+  ```bash
+  pbpaste | timeglyph scan            # macOS
+  xclip -o | timeglyph scan           # Linux (X11)
+  Get-Clipboard | timeglyph scan      # Windows PowerShell
+  ```
+
+  The clipboard crosses a VM boundary that the accessibility picker does not, so
+  this also works for a value inside a full-screen guest.
+
 ### Windows
 
 No special permission is needed. To inspect an **elevated** (Run-as-administrator)

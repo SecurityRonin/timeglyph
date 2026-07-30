@@ -17,6 +17,9 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
+use timeglyph_lens::clipboard::{
+    self, ClipboardRead, ClipboardUnavailable, SourceContext, SystemClipboard,
+};
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
@@ -101,6 +104,9 @@ pub fn run(verbose: u8) -> Result<(), String> {
                 // gate can pass a fixed, hermetic settings snapshot instead of
                 // reading the host's config.
                 persist::load(),
+                // The real platform clipboard; a failure to open is carried as the
+                // button's disabled reason rather than a startup abort.
+                SystemClipboard::new().map(|c| Box::new(c) as Box<dyn ClipboardRead>),
             )))
         }),
     )
@@ -225,8 +231,11 @@ struct LensApp {
     /// render thread only reads this snapshot (never the AX/UIA API directly).
     latest: Arc<Mutex<String>>,
     last_text: String,
-    /// The raw element text under the cursor (shown as a de-emphasised caption).
-    source: String,
+    /// Where the decoded text came from. A [`SourceContext`] rather than a bare
+    /// `String` so what may be captioned is decided by the type: the cursor
+    /// variant carries its element text, and any future non-cursor source (the
+    /// clipboard) structurally cannot put content on screen.
+    source: SourceContext,
     /// The decoded model: numbers and their ranked readings.
     hits: Vec<NumberReadings>,
     /// The display timezone. Session-scoped, UTC by default: it never persists
@@ -255,6 +264,15 @@ struct LensApp {
     /// Session settings (theme, whether to show 干支). Shared with the settings
     /// viewport so its controls write back to the main window.
     settings: Arc<Mutex<Settings>>,
+    /// The platform clipboard, for the 🗐 control — or why it is unavailable, which
+    /// the disabled button shows as its reason. Opened once at startup and read
+    /// only when pressed; nothing polls it.
+    /// Injected, never built here: the button's enabled/disabled state changes the
+    /// rendered frame, so constructing the platform clipboard inside `new` made the
+    /// offscreen render gate depend on whether the HOST had a usable pasteboard —
+    /// green on a dev Mac, red on a headless runner. Boxed behind the trait so the
+    /// gate can supply a deterministic one (the same reason `saved` is injected).
+    clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
     /// Verbosity: 0 = quiet; ≥1 logs decoded readings to stderr; ≥2 also shows the
     /// raw element text under the cursor in the panel (a debug caption).
     verbose: u8,
@@ -303,12 +321,19 @@ impl LensApp {
         if new_hits.is_empty() {
             return;
         }
-        self.source = text;
+        self.source = SourceContext::Cursor(text);
         self.hits = new_hits;
         // Level does the -v/-vv gating: -v → the summary, -vv → the raw element
         // text and every reading.
         tracing::info!(hits = self.hits.len(), "decoded element under cursor");
-        tracing::debug!(source = ?self.source, "raw element text");
+        match &self.source {
+            SourceContext::Cursor(text) => tracing::debug!(source = ?text, "raw element text"),
+            // Never log content for a source whose text must not be displayed —
+            // a log line is as readable as the caption. Kind and size only.
+            SourceContext::Clipboard => {
+                tracing::debug!(source = "clipboard", "decoded a non-cursor source");
+            }
+        }
         for nr in &self.hits {
             for r in &nr.readings {
                 tracing::debug!(
@@ -319,6 +344,33 @@ impl LensApp {
                 );
             }
         }
+    }
+
+    /// Decode the clipboard once, because the user pressed 🗐.
+    ///
+    /// The way in for a value hovering cannot reach: the host accessibility tree
+    /// stops at a VM guest window, but the clipboard crosses that boundary. One
+    /// read per press — no thread, no watcher, no polling.
+    ///
+    /// A clipboard holding nothing decodable leaves the display untouched, so a
+    /// misfired press cannot wipe the reading being read.
+    fn decode_clipboard_now(&mut self) {
+        // Cloned first: the decode borrows the clipboard mutably.
+        let zone = self.zone.zone.clone();
+        let Ok(clipboard) = &mut self.clipboard else {
+            // The button is disabled without a clipboard, so a press cannot reach
+            // here; the reason was named at startup.
+            return;
+        };
+        let Some((source, hits)) =
+            clipboard::decode(&mut **clipboard, timeglyph_lens::READINGS_SHOWN, &zone)
+        else {
+            tracing::info!("the clipboard held nothing decodable");
+            return;
+        };
+        self.source = source;
+        self.hits = hits;
+        tracing::info!(hits = self.hits.len(), "decoded the clipboard");
     }
 
     /// The theme-matched Security Ronin wordmark in the lower-right corner, tall
@@ -352,13 +404,14 @@ impl LensApp {
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
         saved: persist::PersistedSettings,
+        clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
     ) -> Self {
         let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
         let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
         Self {
             latest,
             last_text: String::new(),
-            source: String::new(),
+            source: SourceContext::Cursor(String::new()),
             hits: Vec::new(),
             zone,
             continents: zone::continents(),
@@ -378,6 +431,7 @@ impl LensApp {
                 calendars: saved.calendars,
                 date_style: saved.date_style,
             })),
+            clipboard,
             verbose,
             logo,
             sr_logo_dark,
@@ -483,19 +537,29 @@ impl eframe::App for LensApp {
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
-            self.hits = scan::inspect_text(
-                &self.source,
-                timeglyph_lens::READINGS_SHOWN,
-                &self.zone.zone,
-            );
+            // A cursor source keeps its element text, so the zone change re-renders
+            // from it. A source that retains no text (the clipboard) has nothing to
+            // re-decode here — such a path re-reads its origin instead.
+            let redecoded = match &self.source {
+                SourceContext::Cursor(text) => Some(scan::inspect_text(
+                    text,
+                    timeglyph_lens::READINGS_SHOWN,
+                    &self.zone.zone,
+                )),
+                SourceContext::Clipboard => None,
+            };
+            if let Some(hits) = redecoded {
+                self.hits = hits;
+            }
         }
 
         // Snapshot into locals so the nested render closures capture no `self`.
-        // The raw element text is a debug caption — only in -vv.
+        // The source caption is a debug aid — only in -vv, and only for a source
+        // whose text is displayable at all.
         let source = if self.verbose >= 2 {
-            self.source.clone()
+            timeglyph_lens::clipboard::caption(&self.source)
         } else {
-            String::new()
+            None
         };
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
@@ -508,17 +572,29 @@ impl eframe::App for LensApp {
         // write back without the central closure borrowing `self`.
         let show_settings = self.show_settings.clone();
         let frozen = self.frozen.clone();
+        // Why 🗐 is disabled, if it is. The reason travels to its tooltip so an
+        // unavailable clipboard reads as that, and not as an empty one.
+        let no_clipboard = self.clipboard.as_ref().err().map(ToString::to_string);
         let sr_logo = if pal.base_dark {
             self.sr_logo_dark.clone()
         } else {
             self.sr_logo_light.clone()
         };
 
+        let mut decode_clipboard = false;
         let panel = Frame::NONE
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16, 14));
         egui::CentralPanel::default().frame(panel).show(ui, |ui| {
-            header(ui, &source, pal, logo.as_ref(), &show_settings, &frozen);
+            decode_clipboard = header(
+                ui,
+                source.as_deref(),
+                pal,
+                logo.as_ref(),
+                &show_settings,
+                &frozen,
+                no_clipboard.as_deref(),
+            );
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -542,6 +618,12 @@ impl eframe::App for LensApp {
         self.render_branding(&ctx, sr_logo.as_ref());
 
         self.hits = hits;
+
+        // After the readings are back in place, so a successful clipboard decode
+        // replaces them (and a fruitless one leaves them alone).
+        if decode_clipboard {
+            self.decode_clipboard_now();
+        }
 
         // The background poll thread drives repaints when the cursor's element
         // changes; a slow heartbeat keeps the footer's live clock and hover
@@ -1035,17 +1117,19 @@ impl LensApp {
     }
 }
 
-/// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
-/// source element — context, not the subject (and it keeps sensitive surrounding
-/// text from dominating the panel).
+/// Slim header: the wordmark plus a de-emphasised caption of the source element —
+/// context, not the subject (and it keeps sensitive surrounding text from
+/// dominating the panel). `caption` is already collapsed and bounded by
+/// [`timeglyph_lens::clipboard::caption`]; `None` draws no caption at all.
 fn header(
     ui: &mut egui::Ui,
-    source: &str,
+    caption: Option<&str>,
     pal: Palette,
     logo: Option<&egui::TextureHandle>,
     show_settings: &AtomicBool,
     frozen: &AtomicBool,
-) {
+    no_clipboard: Option<&str>,
+) -> bool {
     ui.horizontal(|ui| {
         if let Some(tex) = logo {
             ui.add(
@@ -1064,15 +1148,14 @@ fn header(
             .color(pal.amber)
             .strong(),
         );
-        if !source.is_empty() {
+        if let Some(caption) = caption {
             ui.add_space(10.0);
-            // Char-safe truncation + single-line Extend. egui 0.29's
+            // Single-line Extend over already char-safe text. egui 0.29's
             // Label::truncate() byte-slices the galley and PANICS on multi-byte
             // text (e.g. '·'), so we never use it on arbitrary hovered text.
-            let collapsed: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
             ui.add(
                 egui::Label::new(
-                    RichText::new(text::ellipsize(&collapsed, 120))
+                    RichText::new(caption)
                         .font(FontId::proportional(11.0))
                         .color(pal.faint),
                 )
@@ -1106,8 +1189,35 @@ fn header(
             if ui.button(glyph).on_hover_text(tip).clicked() {
                 frozen.store(!is_frozen, Ordering::Relaxed);
             }
-        });
-    });
+            // Clipboard decode, left of the freeze toggle. One read per press: the
+            // press is the consent, so nothing watches the clipboard between them.
+            //
+            // 🗐 U+1F5D0, not 📋 U+1F4CB: both are in egui's bundled fonts, but
+            // NotoEmoji wins the fallback order for U+1F4CB and its clipboard is
+            // drawn tilted — at 14 px it reads as a luggage tag. U+1F5D0 falls
+            // through to emoji-icon-font (the same face that draws ⏸ and ⚙) and
+            // renders the familiar overlapping-pages copy mark, identically on
+            // every platform because the font ships with egui.
+            let btn = egui::Button::new("🗐");
+            match no_clipboard {
+                None => ui
+                    .add(btn)
+                    .on_hover_text(
+                        "decode the clipboard — for a value hovering can't reach, \
+                         such as one inside a VM guest window",
+                    )
+                    .clicked(),
+                // No clipboard on this host: say so, rather than offering a button
+                // whose every press would look like an empty clipboard.
+                Some(reason) => {
+                    ui.add_enabled(false, btn).on_disabled_hover_text(reason);
+                    false
+                }
+            }
+        })
+        .inner
+    })
+    .inner
 }
 
 /// Grid column 1: the amber format chip. The verbose format name is a hover
@@ -1160,10 +1270,17 @@ fn datetime_cell(
 ) {
     // The displayed datetime, in the chosen style. Local-naive readings keep
     // their own wall-clock rendering (never shifted); the styled form is only for
-    // the zone-shiftable case. The ISO-anchored `r.rendered` still drives the
-    // weekday / holiday / `Z` designator logic below. `copy_text_for` owns this
-    // choice so the click-to-copy string always matches what is shown.
+    // the zone-shiftable case. `copy_text_for` owns this choice so the
+    // click-to-copy string always matches what is shown. The weekday / holiday
+    // labels derive from `text::label_basis`, an ISO rendering of the same instant
+    // in the SAME zone — deriving them from the reading's baked `r.rendered`
+    // labelled the date with whichever zone was active at decode time.
     let shown = text::copy_text_for(r, zone, style);
+    // The ISO rendering of the same instant in the SAME zone, for every label derived
+    // from the date: weekday, public holiday, and the UTC designator. Deriving those
+    // from the reading's baked `r.rendered` described whichever zone was active when
+    // the reading was decoded.
+    let basis = text::label_basis(r, zone);
     let datetime = || {
         RichText::new(&shown)
             .font(FontId::monospace(14.0))
@@ -1195,7 +1312,7 @@ fn datetime_cell(
                         .color(pal.faint),
                 );
             });
-            if let Some(wd) = scan::weekday(&r.rendered) {
+            if let Some(wd) = basis.as_deref().and_then(scan::weekday) {
                 ui.add_space(6.0);
                 ui.label(
                     RichText::new(wd)
@@ -1224,7 +1341,7 @@ fn datetime_cell(
                         .strong(),
                 );
             }
-        } else if r.rendered.ends_with('Z') {
+        } else if basis.as_deref().is_some_and(|b| b.ends_with('Z')) {
             // UTC display zone: show a "UTC" designator like a named zone shows
             // its abbreviation, for consistency — even though the value's own
             // `Z` already says UTC.
@@ -1237,7 +1354,7 @@ fn datetime_cell(
         }
         // Weekday of the displayed date — handy for spotting what day an event
         // fell on.
-        if let Some(wd) = scan::weekday(&r.rendered) {
+        if let Some(wd) = basis.as_deref().and_then(scan::weekday) {
             ui.add_space(6.0);
             ui.label(
                 RichText::new(wd)
@@ -1248,7 +1365,10 @@ fn datetime_cell(
         // Public holiday for this date in the display zone — only a named IANA
         // zone maps to a country. An annotation ("consistent with a public
         // holiday there"), in the country's own locale; not proof it was observed.
-        if let Some(name) = timeglyph::holiday::in_zone_rendered(zone, &r.rendered) {
+        if let Some(name) = basis
+            .as_deref()
+            .and_then(|b| timeglyph::holiday::in_zone_rendered(zone, b))
+        {
             ui.add_space(6.0);
             ui.label(
                 RichText::new(name)
@@ -1596,6 +1716,12 @@ fn hsv(h: f64, s: f64, v: f64) -> Color32 {
 
 // Offscreen (headless wgpu) egui_kittest render gate for `LensApp`. In-crate so
 // it can reach the private app + font/theme helpers; see the module's own docs.
+//
+// Compiled on EVERY platform on purpose: the all-black / tofu / uniform-frame
+// assertion is genuinely platform-independent, and the regression it catches is the
+// load-bearing one (`default_fonts` dropped ⇒ a silent all-black window — see
+// Cargo.toml). Only the *pixel compare* against the macOS-rendered reference PNG is
+// macOS-gated, inside the module.
 #[cfg(test)]
 #[path = "overlay_snapshot_test.rs"]
 mod overlay_snapshot_test;

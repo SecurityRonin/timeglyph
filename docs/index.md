@@ -84,7 +84,7 @@ $ timeglyph decode filetime 132223104000000000  # decode under one known format
 $ timeglyph encode unix 2020-01-01T00:00:00Z  # encode a datetime → a format
 $ timeglyph --as hex 0060947C58B2D501        # raw bytes only (LE/BE + packed on-disk)
 $ timeglyph --as string 20200101000000Z      # string forms only (ASN.1 / ISO / RFC)
-$ timeglyph scan app.log                     # find & decode every timestamp in text/stdin
+$ timeglyph scan < app.log                   # find & decode every timestamp in a file/stdin
 $ timeglyph cal 2026-11 --tz America/New_York  # reference calendar (DST/leap/epoch markers + moon)
 $ timeglyph decode gps 1261872018            # leap-aware (cargo build --features leap)
 $ timeglyph lunisolar 2020-01-25 --tz Asia/Shanghai  # Chinese calendar + 干支 (--features lunisolar)
