@@ -17,6 +17,7 @@ use std::time::Duration;
 use eframe::egui;
 use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
+use timeglyph_lens::clipboard::SourceContext;
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
@@ -225,8 +226,11 @@ struct LensApp {
     /// render thread only reads this snapshot (never the AX/UIA API directly).
     latest: Arc<Mutex<String>>,
     last_text: String,
-    /// The raw element text under the cursor (shown as a de-emphasised caption).
-    source: String,
+    /// Where the decoded text came from. A [`SourceContext`] rather than a bare
+    /// `String` so what may be captioned is decided by the type: the cursor
+    /// variant carries its element text, and any future non-cursor source (the
+    /// clipboard) structurally cannot put content on screen.
+    source: SourceContext,
     /// The decoded model: numbers and their ranked readings.
     hits: Vec<NumberReadings>,
     /// The display timezone. Session-scoped, UTC by default: it never persists
@@ -303,12 +307,19 @@ impl LensApp {
         if new_hits.is_empty() {
             return;
         }
-        self.source = text;
+        self.source = SourceContext::Cursor(text);
         self.hits = new_hits;
         // Level does the -v/-vv gating: -v → the summary, -vv → the raw element
         // text and every reading.
         tracing::info!(hits = self.hits.len(), "decoded element under cursor");
-        tracing::debug!(source = ?self.source, "raw element text");
+        match &self.source {
+            SourceContext::Cursor(text) => tracing::debug!(source = ?text, "raw element text"),
+            // Never log content for a source whose text must not be displayed —
+            // a log line is as readable as the caption. Kind and size only.
+            SourceContext::Clipboard => {
+                tracing::debug!(source = "clipboard", "decoded a non-cursor source");
+            }
+        }
         for nr in &self.hits {
             for r in &nr.readings {
                 tracing::debug!(
@@ -358,7 +369,7 @@ impl LensApp {
         Self {
             latest,
             last_text: String::new(),
-            source: String::new(),
+            source: SourceContext::Cursor(String::new()),
             hits: Vec::new(),
             zone,
             continents: zone::continents(),
@@ -483,19 +494,29 @@ impl eframe::App for LensApp {
 
         // Re-decode when either the hovered text OR the display zone changed.
         if dirty {
-            self.hits = scan::inspect_text(
-                &self.source,
-                timeglyph_lens::READINGS_SHOWN,
-                &self.zone.zone,
-            );
+            // A cursor source keeps its element text, so the zone change re-renders
+            // from it. A source that retains no text (the clipboard) has nothing to
+            // re-decode here — such a path re-reads its origin instead.
+            let redecoded = match &self.source {
+                SourceContext::Cursor(text) => Some(scan::inspect_text(
+                    text,
+                    timeglyph_lens::READINGS_SHOWN,
+                    &self.zone.zone,
+                )),
+                SourceContext::Clipboard => None,
+            };
+            if let Some(hits) = redecoded {
+                self.hits = hits;
+            }
         }
 
         // Snapshot into locals so the nested render closures capture no `self`.
-        // The raw element text is a debug caption — only in -vv.
+        // The source caption is a debug aid — only in -vv, and only for a source
+        // whose text is displayable at all.
         let source = if self.verbose >= 2 {
-            self.source.clone()
+            timeglyph_lens::clipboard::caption(&self.source)
         } else {
-            String::new()
+            None
         };
         let hits = std::mem::take(&mut self.hits);
         let zone = self.zone.zone.clone();
@@ -518,7 +539,14 @@ impl eframe::App for LensApp {
             .fill(pal.bg_deep)
             .inner_margin(Margin::symmetric(16, 14));
         egui::CentralPanel::default().frame(panel).show(ui, |ui| {
-            header(ui, &source, pal, logo.as_ref(), &show_settings, &frozen);
+            header(
+                ui,
+                source.as_deref(),
+                pal,
+                logo.as_ref(),
+                &show_settings,
+                &frozen,
+            );
             ui.separator();
             ui.add_space(10.0);
             if hits.is_empty() {
@@ -1035,12 +1063,13 @@ impl LensApp {
     }
 }
 
-/// Slim header: the wordmark plus a de-emphasised, truncated caption of the raw
-/// source element — context, not the subject (and it keeps sensitive surrounding
-/// text from dominating the panel).
+/// Slim header: the wordmark plus a de-emphasised caption of the source element —
+/// context, not the subject (and it keeps sensitive surrounding text from
+/// dominating the panel). `caption` is already collapsed and bounded by
+/// [`timeglyph_lens::clipboard::caption`]; `None` draws no caption at all.
 fn header(
     ui: &mut egui::Ui,
-    source: &str,
+    caption: Option<&str>,
     pal: Palette,
     logo: Option<&egui::TextureHandle>,
     show_settings: &AtomicBool,
@@ -1064,15 +1093,14 @@ fn header(
             .color(pal.amber)
             .strong(),
         );
-        if !source.is_empty() {
+        if let Some(caption) = caption {
             ui.add_space(10.0);
-            // Char-safe truncation + single-line Extend. egui 0.29's
+            // Single-line Extend over already char-safe text. egui 0.29's
             // Label::truncate() byte-slices the galley and PANICS on multi-byte
             // text (e.g. '·'), so we never use it on arbitrary hovered text.
-            let collapsed: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
             ui.add(
                 egui::Label::new(
-                    RichText::new(text::ellipsize(&collapsed, 120))
+                    RichText::new(caption)
                         .font(FontId::proportional(11.0))
                         .color(pal.faint),
                 )

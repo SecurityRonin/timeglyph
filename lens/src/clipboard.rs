@@ -46,6 +46,29 @@ pub fn source_caption(source: &SourceContext) -> Option<&str> {
     }
 }
 
+/// Longest source caption the overlay's header draws, in characters. The caption is
+/// context, not the subject, so it stays on one line and yields the panel to the
+/// readings.
+pub const CAPTION_MAX_CHARS: usize = 120;
+
+/// The source caption ready to draw: whitespace collapsed to single spaces and
+/// bounded to [`CAPTION_MAX_CHARS`] characters, or `None` when there is nothing to
+/// draw — the clipboard (which retains no text) or an element whose text is blank.
+///
+/// Bounding is by character, never by byte: hovered text is arbitrary, and a byte
+/// slice through CJK or emoji panics.
+#[must_use]
+pub fn caption(source: &SourceContext) -> Option<String> {
+    let collapsed = source_caption(source)?
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    Some(crate::text::ellipsize(&collapsed, CAPTION_MAX_CHARS))
+}
+
 /// Read the clipboard and return trimmed text worth decoding, or `None` when it is
 /// empty, non-text, or blank. Copying from a log or table usually drags padding
 /// along, so trimming is part of the contract rather than the caller's problem.
