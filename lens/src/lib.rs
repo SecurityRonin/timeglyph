@@ -16,6 +16,7 @@ pub use timeglyph::scan;
 pub const READINGS_SHOWN: usize = usize::MAX;
 
 pub mod altcal;
+pub mod clipboard;
 pub mod fonts;
 pub mod ganzhi;
 pub mod ocr;
