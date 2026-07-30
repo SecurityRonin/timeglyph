@@ -78,3 +78,39 @@ fn the_basis_stays_iso_so_the_weekday_parser_can_read_it() {
         );
     }
 }
+
+#[test]
+fn the_label_basis_always_agrees_with_the_datetime_the_cell_shows() {
+    // The invariant the whole fix exists to hold: whatever date the cell displays,
+    // the weekday / holiday labels describe THAT date. Checked across every reading
+    // of several values (zone-anchored, naive and offset-embedded alike) in a zone
+    // that crosses a date boundary relative to UTC.
+    //
+    // Not a RED-first test: it pins an invariant the fix already satisfies, as a
+    // guard against future drift between `copy_text_for` (what is shown) and
+    // `label_basis` (what is labelled) — the two branched identically on `r.local`,
+    // and nothing but a test stops them diverging.
+    let tokyo = parse_zone("Asia/Tokyo").unwrap();
+    for value in [
+        "1721000000",                // unix seconds + the naive packed formats
+        "133801920000000000",        // FILETIME
+        "2024-07-14T23:33:20+08:00", // offset-embedded string form
+    ] {
+        for zone in [&RenderZone::Utc, &tokyo.zone] {
+            for hit in scan::inspect_text(value, 8, zone) {
+                for r in &hit.readings {
+                    let shown = timeglyph_lens::text::copy_text_for(r, zone, DateStyle::Iso8601);
+                    let basis = label_basis(r, zone, DateStyle::Iso8601)
+                        .expect("a rendered reading has a label basis");
+                    assert_eq!(
+                        shown.get(..10),
+                        basis.get(..10),
+                        "label basis must match the shown date for {} ({value}): \
+                         shown={shown} basis={basis}",
+                        r.format_id
+                    );
+                }
+            }
+        }
+    }
+}
