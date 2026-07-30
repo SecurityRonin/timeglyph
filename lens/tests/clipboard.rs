@@ -6,8 +6,10 @@
 //! clipboard: doing so would be flaky and would clobber the developer's clipboard.
 #![allow(clippy::unwrap_used)]
 
+use timeglyph::RenderZone;
 use timeglyph_lens::clipboard::{
-    caption, read_decodable, source_caption, ClipboardRead, SourceContext, CAPTION_MAX_CHARS,
+    caption, decode, read_decodable, source_caption, ClipboardRead, ClipboardUnavailable,
+    SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
 };
 
 /// A fake clipboard. Tests own the content, so nothing reads the real pasteboard.
@@ -16,6 +18,19 @@ struct Fake(Option<&'static str>);
 impl ClipboardRead for Fake {
     fn text(&mut self) -> Option<String> {
         self.0.map(str::to_owned)
+    }
+}
+
+/// A fake that counts reads, so a test can prove the decode is one-shot.
+struct Counting {
+    content: Option<&'static str>,
+    reads: usize,
+}
+
+impl ClipboardRead for Counting {
+    fn text(&mut self) -> Option<String> {
+        self.reads += 1;
+        self.content.map(str::to_owned)
     }
 }
 
@@ -106,4 +121,76 @@ fn blank_cursor_text_captions_nothing() {
     // text (or only whitespace) draws no caption rather than an empty gap.
     assert_eq!(caption(&SourceContext::Cursor(String::new())), None);
     assert_eq!(caption(&SourceContext::Cursor(" \t\n ".to_owned())), None);
+}
+
+#[test]
+fn decoding_the_clipboard_yields_readings_and_a_textless_source() {
+    let mut c = Fake(Some("  1721000000  \n"));
+    let (source, hits) = decode(&mut c, 8, &RenderZone::Utc).unwrap();
+    // The value is decoded exactly as hovered text is, padding and all.
+    assert_eq!(hits.len(), 1, "one number in the clipboard, one card");
+    assert!(
+        !hits[0].readings.is_empty(),
+        "a unix second count has readings"
+    );
+    // The source the overlay will hold retains no clipboard content, so the
+    // header has nothing to draw — the privacy property at the seam that
+    // actually feeds the UI.
+    assert_eq!(source, SourceContext::Clipboard);
+    assert_eq!(caption(&source), None);
+}
+
+#[test]
+fn decoding_reads_the_clipboard_exactly_once() {
+    // Pull-based by construction: one press, one read. Nothing polls, so there is
+    // no continuous monitoring to disclose.
+    let mut c = Counting {
+        content: Some("1721000000"),
+        reads: 0,
+    };
+    decode(&mut c, 8, &RenderZone::Utc).unwrap();
+    assert_eq!(c.reads, 1);
+}
+
+#[test]
+fn an_empty_clipboard_decodes_to_nothing() {
+    // `None` tells the caller to keep whatever is on screen rather than blank it.
+    assert!(decode(&mut Fake(None), 8, &RenderZone::Utc).is_none());
+    assert!(decode(&mut Fake(Some("")), 8, &RenderZone::Utc).is_none());
+    assert!(decode(&mut Fake(Some(" \t\n")), 8, &RenderZone::Utc).is_none());
+}
+
+#[test]
+fn clipboard_text_with_no_timestamp_decodes_to_nothing() {
+    // Same non-clobber rule the cursor path uses: text that decodes to nothing
+    // must not wipe the reading the analyst is looking at.
+    assert!(decode(&mut Fake(Some("no numbers here")), 8, &RenderZone::Utc).is_none());
+}
+
+#[test]
+fn the_system_clipboard_is_a_readable_clipboard() {
+    // Compile-time proof that the platform clipboard satisfies the trait the
+    // decode path takes — without opening the real pasteboard, which would be
+    // flaky and would clobber the developer's clipboard.
+    fn assert_impl<C: ClipboardRead>() {}
+    assert_impl::<SystemClipboard>();
+}
+
+#[test]
+fn an_unavailable_clipboard_names_the_platform_reason() {
+    // A host with no window server has no clipboard. That must read as a named
+    // failure carrying the platform's own words — never as an empty clipboard,
+    // which is indistinguishable from a genuinely empty one.
+    let e = ClipboardUnavailable {
+        reason: "the clipboard contents were not available".to_owned(),
+    };
+    let shown = e.to_string();
+    assert!(
+        shown.contains("the clipboard contents were not available"),
+        "the reason is shown verbatim: {shown:?}"
+    );
+    assert!(
+        shown.contains("clipboard"),
+        "and it says what failed: {shown:?}"
+    );
 }
