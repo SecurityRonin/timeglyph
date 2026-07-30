@@ -209,6 +209,10 @@ fn parse_offset(s: &str) -> Option<jiff::tz::Offset> {
     let (sign, rest) = match s.as_bytes().first()? {
         b'+' => (1i32, &s[1..]),
         b'-' => (-1i32, &s[1..]),
+        // cov:unreachable: the only caller (`RenderZone::parse`) enters this
+        // function behind `matches!(s.as_bytes().first(), Some(b'+' | b'-'))`, so
+        // an unsigned spec never arrives. Kept so a second caller cannot smuggle
+        // one past the sign check.
         _ => return None,
     };
     let digits: String = rest.chars().filter(|c| *c != ':').collect();
@@ -431,6 +435,10 @@ impl Format {
             }
             Encoding::Packed(_) => match self.packed_codec()?.encode {
                 Some(f) => f(instant),
+                // cov:unreachable: every `PackedCodec` in the registry today sets
+                // `encode: Some(..)` (all 16 packed codecs are oracle-validated in
+                // both directions), so this arm is dead until a decode-only format
+                // is added — which is exactly what it exists to report.
                 None => Err(ChronoError::OutOfRange {
                     what: "packed format cannot yet be re-encoded from an instant",
                     value: 0,

@@ -451,6 +451,11 @@ pub fn inspect_text_opts(
             } else if let Ok(value) = number.parse::<f64>() {
                 interpret::interpret_float(value)
             } else {
+                // cov:unreachable: `scan_numbers_min` emits only ASCII digit runs
+                // with at most one INTERIOR '.', and every such string parses as
+                // f64 (an over-long run saturates to inf rather than failing), so
+                // no scanned token reaches here. Kept as the guard for a future
+                // extractor with a looser token shape.
                 return None;
             };
             let readings: Vec<Reading> = candidates

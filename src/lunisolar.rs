@@ -172,6 +172,8 @@ pub fn render(
         // cov:unreachable: only runs if the upstream conversion panics (out of
         // its supported range) — a defensive guard kept for graceful degradation.
         .map_err(|_| {
+            // cov:unreachable: as above — stem-branch does not panic for any
+            // civil date this function accepts, so the mapper never runs.
             ChronoError::Render(format!(
             "lunisolar conversion is outside the supported range for {year}-{month:02}-{day:02}"
         ))

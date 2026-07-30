@@ -41,8 +41,11 @@ pub struct EnrichOptions {
 /// years). ~1e8 ≈ Unix-seconds year 1973; ms/µs/ns timestamps are far larger.
 const AUTO_MIN_MAGNITUDE: i64 = 100_000_000;
 
-// cov:unreachable: only maps a `csv::Error`, which a flexible reader over a
-// valid-UTF-8 in-memory &str never produces (no Utf8/UnequalLengths/Io error).
+// Maps a `csv::Error` into the crate error. The reader/writer call sites below
+// stay fallible-by-construction so the source may one day be a real file; none
+// of them can error today (a flexible reader over a valid-UTF-8 in-memory `&str`
+// and a writer over a `Vec` produce no Utf8/UnequalLengths/Io variant), so each
+// call site carries its own `cov:unreachable`. The mapping itself is unit-tested.
 fn csv_err(e: &csv::Error) -> ChronoError {
     ChronoError::Render(format!("csv: {e}"))
 }
@@ -198,4 +201,22 @@ fn detect_column_format(records: &[csv::StringRecord], idx: usize) -> Option<Str
         }
     }
     chosen
+}
+
+#[cfg(test)]
+mod tests {
+    use super::csv_err;
+    use crate::ChronoError;
+
+    #[test]
+    fn a_csv_error_is_mapped_with_its_own_message() {
+        // No in-memory call site can produce one, so build it directly from the
+        // io::Error variant to prove the mapping (and its prefix) is right.
+        let e = csv::Error::from(std::io::Error::other("disk gone"));
+        let mapped = csv_err(&e);
+        assert!(
+            matches!(&mapped, ChronoError::Render(m) if m == "csv: disk gone"),
+            "{mapped:?}"
+        );
+    }
 }

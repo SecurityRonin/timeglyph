@@ -497,6 +497,10 @@ fn artifacts_on(date: Date) -> Vec<Artifact> {
         // Skip epochs outside the representable range up front, so the timestamp
         // below is always valid (no dead error arm).
         let Ok(ts) = jiff::Timestamp::from_nanosecond(epoch_ns) else {
+            // cov:unreachable: every `registry::FORMATS` epoch_ns is a real
+            // calendar epoch (1601-2001) well inside jiff's Timestamp range, so
+            // no registered format reaches this skip today. Kept so a future
+            // catalog entry with an extreme epoch degrades instead of erroring.
             continue;
         };
         if ts.to_zoned(jiff::tz::TimeZone::UTC).date() == date {
@@ -510,6 +514,10 @@ fn artifacts_on(date: Date) -> Vec<Artifact> {
     }
     for r in ROLLOVERS {
         let ts = jiff::Timestamp::from_second(r.unix_second);
+        // Every `Rollover` unix_second is a fixed-width limit (the i32::MAX /
+        // u32::MAX class), far inside jiff's second range, so the Err arm below
+        // is dead today; it is kept so a future rollover past that range is
+        // skipped rather than crashing.
         if let Ok(ts) = ts {
             if ts.to_zoned(jiff::tz::TimeZone::UTC).date() == date {
                 out.push(Artifact {
@@ -519,6 +527,7 @@ fn artifacts_on(date: Date) -> Vec<Artifact> {
                     citation: r.citation.to_string(),
                 });
             }
+            // cov:unreachable: no ROLLOVERS second is outside jiff's range.
         }
     }
     out
@@ -603,6 +612,10 @@ pub fn extra_calendars(date: Date) -> Vec<ExtraCal> {
         greg_month_abbr, hebrew_month, islamic_month, japanese_era, persian_month,
     };
     let Some(iso) = icu_iso(date) else {
+        // cov:unreachable: `icu_iso` only fails on an out-of-range month/day,
+        // which jiff's `Date` has already validated, and ICU4X's ISO calendar
+        // spans jiff's whole year range (-9999..=9999 confirmed). Kept so a
+        // narrower ICU4X range degrades to "no calendars" instead of panicking.
         return Vec::new();
     };
     let mut out = Vec::with_capacity(6);

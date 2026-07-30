@@ -64,6 +64,10 @@ pub fn resolve_local(naive: PosixNs, zone: &RenderZone) -> LocalResolution {
                 earlier: PosixNs(e.as_nanosecond()),
                 later: PosixNs(l.as_nanosecond()),
             },
+            // cov:unreachable: jiff reports `AmbiguousOffset::Fold` only for a
+            // civil time it can resolve at BOTH offsets, so `earlier()`/`later()`
+            // cannot fail here. Kept so an internal jiff error degrades to the
+            // naive instant rather than fabricating a fold.
             _ => LocalResolution::Unique(naive),
         },
     }

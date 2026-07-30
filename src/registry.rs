@@ -304,6 +304,7 @@ fn encode_bcd(instant: PosixNs) -> Result<i64, ChronoError> {
     s.parse().map_err(|_| ChronoError::OutOfRange {
         // cov:unreachable: six 2-digit fields always form a valid 12-digit i64.
         what: "BCD packed value",
+        // cov:unreachable: as above — the 12-digit parse cannot fail.
         value: i128::from(year),
     })
 }

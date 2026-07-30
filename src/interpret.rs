@@ -619,6 +619,9 @@ fn epoch_distance(strategy: Encoding, instant: PosixNs) -> f64 {
 fn granularity_match(strategy: Encoding, value: i64) -> f64 {
     let unit: Unit = match strategy {
         Encoding::LinearInt { unit, .. }
+        // cov:unreachable: the only caller is `score_components`, reached from
+        // `build_candidate` only after `decode_int` succeeded — and `decode_int`
+        // rejects every LinearFloat encoding, so this alternative never matches.
         | Encoding::LinearFloat { unit, .. }
         | Encoding::Embedded { unit, .. } => unit,
         // Packed civil fields have no linear sub-second unit to mismatch against.
@@ -674,6 +677,10 @@ fn overall_score(components: &[(&'static str, f64)]) -> f64 {
         (num + w * v, den + w)
     });
     if den == 0.0 {
+        // cov:unreachable: `prevalence` is the only weight-0 component and every
+        // candidate also carries in_window / magnitude_fit / not_sentinel /
+        // granularity_match, so the denominator is always >= 1. Kept so a future
+        // all-weight-0 component set yields 0.0 instead of a NaN.
         0.0
     } else {
         num / den
@@ -1672,9 +1679,10 @@ pub fn explain(id: &str) -> Option<String> {
     };
     let render = |ns: i128| match PosixNs(ns).to_rfc3339() {
         Some(s) => s,
-        // A plausible bound outside jiff's civil range degrades to a raw-ns
-        // display instead of vanishing (no registered format has such a bound
-        // today; the all-formats explain test renders every one).
+        // cov:unreachable: no registered format has a plausible bound outside
+        // jiff's civil range (the all-formats explain test renders every one), so
+        // this raw-ns degrade is dead today. Kept so such a bound would still
+        // print instead of vanishing.
         None => format!("{ns} ns"),
     };
     let sentinels: Vec<String> = [0_i64, -1, i64::MAX]
@@ -1682,6 +1690,9 @@ pub fn explain(id: &str) -> Option<String> {
         .filter_map(|v| sentinel_reason(v).map(|r| format!("{v} → {r}")))
         .collect();
     let sentinels = if sentinels.is_empty() {
+        // cov:unreachable: `sentinel_reason` is value-only (not format-aware) and
+        // matches all three probes 0 / -1 / i64::MAX, so the list is never empty
+        // for any format. Kept so a format-aware sentinel table would still read.
         "none".to_string()
     } else {
         sentinels.join("; ")
