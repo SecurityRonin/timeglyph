@@ -8,6 +8,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.9.5](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.4...timeglyph-v0.9.5) - 2026-07-30
 
+### Added
+
+- *(lens)* decode the clipboard from a header button, for values the accessibility
+  picker cannot reach — a VM guest window, a canvas, a rendered image, a
+  remote-desktop session. Read once per press, so nothing polls the pasteboard, and
+  the clipboard's contents are never drawn as the source caption.
+
 ### Documentation
 
 - fix the scan example — it silently did nothing

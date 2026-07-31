@@ -119,7 +119,10 @@ Optional, feature-gated layers extend the engine past raw instant↔instant mapp
 `timeglyph-lens` is the interactive front-end: an always-on-top window that follows
 your cursor and shows timeglyph's ranked readings for any number in the element
 under the pointer — with the weekday, the public holiday for that date in the
-chosen zone, and the opt-in 干支 pillars colored by 五行. macOS and Windows (the
-picker uses the Accessibility API / UI Automation respectively); see the
-[README](https://github.com/SecurityRonin/timeglyph#timeglyph-lens--hover-anything-decode-time-data)
-to install.
+chosen zone, and the opt-in 干支 pillars colored by 五行. macOS, Windows and Linux
+(the picker uses the Accessibility API, UI Automation and AT-SPI/X11 respectively).
+
+For values that are not in the accessibility tree at all — a VM guest, a canvas, a
+rendered image, a remote-desktop session — copy the value and press the header **🗐**
+button to decode the clipboard instead. It reads once per press, and the clipboard's
+contents are never drawn as the source caption. See [the overlay guide](lens.md).

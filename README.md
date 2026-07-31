@@ -102,6 +102,12 @@ the cursor through the platform accessibility layer — the Accessibility API on
 UI Automation on Windows, and AT-SPI on Linux (X11, with assistive technologies
 enabled).
 
+**Can't hover it? Copy it.** Some values aren't in the accessibility tree at all — a
+VM guest window is one opaque framebuffer to the host, and so is a canvas, a rendered
+image, or a remote-desktop session. Copy the value and press the header **🗐** button:
+same ranked readings, from the clipboard. It reads once per press — nothing polls your
+pasteboard — and the clipboard's contents are never drawn as the source caption.
+
 [Overlay guide →](docs/lens.md)
 
 ### Identify an unknown value

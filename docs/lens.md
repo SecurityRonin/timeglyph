@@ -49,6 +49,42 @@ offset); naive wall-clock readings are shown as-is and tagged *local time (not
 time-zone adjusted)*. The zone is session-scoped and never persisted — a prior
 case's zone can't silently carry into the next launch.
 
+## Decoding the clipboard
+
+The cursor picker reads the UI element under the pointer through the platform
+accessibility layer, and some values are simply not in that tree. A **VM guest
+window** is one opaque framebuffer to the host. So are a canvas, a rendered image, a
+remote-desktop session, and a PDF page drawn as graphics. Hovering those yields
+nothing, however the picker is configured.
+
+The clipboard crosses those boundaries. Copy the value, then press the header **🗐**
+button and the Lens decodes it into the same ranked readings, with the source shown
+as *clipboard*.
+
+Reading is **pull-based**: the clipboard is read once, when you press the button.
+Nothing watches or polls it, so there is no background access to your pasteboard and
+no surveillance state for the overlay to disclose — the press is the consent
+boundary. If the clipboard is empty, holds non-text, or holds nothing that decodes,
+the current readings are left alone rather than cleared.
+
+One thing to know before you press it: the **caption** never shows clipboard text —
+the type carrying the source is structurally incapable of holding it, so the raw
+contents cannot be drawn or logged. But a value the engine *recognises* is printed as
+the reading's subject, because that is the point of the button. A copied bearer token
+or recovery code that happens to decode will appear on screen, so press it
+deliberately.
+
+The button is greyed out when the platform has no clipboard to open (a headless host,
+or no window server).
+
+## The header controls
+
+| Control | What it does |
+|---|---|
+| **🗐** | Decode the clipboard once (see above) |
+| **⏸** / **▶** | Freeze the reading so it stops following the cursor while you read or copy it. **Space** toggles the same state |
+| **⚙** | Open Settings |
+
 ## Settings
 
 The **⚙** button (and, on macOS, the ⌘, menu item) opens Settings:
@@ -100,12 +136,9 @@ pending fix. (Measured on macOS 15.7.8.)
 
 Two ways to read a value that sits behind a full-screen app:
 
-- Run the app you are reading **windowed**. Hover works as documented, and the
-  header **🗐** button decodes whatever is on the clipboard, which covers values
-  the picker cannot reach (a canvas, an image, a VM guest). It reads the clipboard
-  once per press — nothing watches it — and the clipboard text is never drawn as the
-  source caption. A value that *does* decode is shown as the reading's subject, so
-  press it deliberately: a copied token that happens to decode will appear on screen.
+- Run the app you are reading **windowed**. Hover works as documented, and for
+  anything the picker cannot reach, copy the value and press **🗐** — see
+  [Decoding the clipboard](#decoding-the-clipboard).
 - Keep it full screen and use the CLI on the copied value:
 
   ```bash
