@@ -115,6 +115,72 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  msrv:
+    # timeglyph-core declares `rust-version = "1.75"` — a low floor downstreams
+    # (FOUNDATION crates, published low-MSRV parsers) pin against. An MSRV nobody
+    # enforces is an unbacked promise, so this job is what makes the number true.
+    # Raising the floor is near-breaking; do it deliberately, in both places the
+    # assert below names.
+    #
+    # It builds core/ COPIED OUT of the repo, and that is load-bearing rather
+    # than incidental. Two things in the tree would otherwise decide the outcome
+    # instead of the crate: the workspace Cargo.lock is version 4, which cargo
+    # 1.75 refuses to parse at all (it fails before ever reading core/), and
+    # rust-toolchain.toml pins 1.96.0, which would override the toolchain this
+    # job just installed. Outside the repo the crate is its own workspace with
+    # its own lockfile — exactly how a crates.io consumer builds it. Do NOT
+    # "simplify" this by downgrading or deleting the committed v4 lockfile.
+    name: MSRV 1.75 (timeglyph-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.75.0
+      - name: Assert the declared MSRV is the one this job checks
+        run: |
+          declared=$(grep -m1 '^rust-version' core/Cargo.toml | cut -d'"' -f2)
+          if [ "$declared" != "1.75" ]; then
+            echo "core/Cargo.toml declares rust-version = \"$declared\", but this job installs 1.75.0."
+            echo "The two must move together, or the floor stops being verified. Update both."
+            exit 1
+          fi
+      - name: Check + test timeglyph-core on its declared MSRV, standalone
+        run: |
+          dest="$RUNNER_TEMP/timeglyph-core-msrv"
+          cp -R core "$dest"
+          cd "$dest"
+          # `cargo +1.75.0`, not a bare `cargo`: the explicit +toolchain sits at
+          # the top of rustup's precedence chain, above RUSTUP_TOOLCHAIN, a
+          # directory override and any rust-toolchain.toml. A bare `cargo` here
+          # is silently hostage to ambient state — verified locally, where an
+          # exported RUSTUP_TOOLCHAIN=1.96.0 beat `rustup override set 1.75.0`
+          # and compiled the crate on 1.96 while the job looked green.
+          #
+          # Then assert the compiler rather than merely logging it. If the
+          # toolchain ever fails to resolve as intended, a newer cargo would
+          # build this crate happily and the job would pass having verified
+          # nothing — the vacuous-gate shape, same as a coverage report that
+          # contains no records for the file it claims to cover.
+          version=$(cargo +1.75.0 --version)
+          echo "$version"
+          case "$version" in
+            "cargo 1.75.0"*) ;;
+            *) echo "Expected cargo 1.75.0, got: $version — the MSRV was not actually exercised."; exit 1 ;;
+          esac
+          cargo +1.75.0 check --all-targets
+          cargo +1.75.0 test
+      - name: Assert zero dependencies
+        # The zero-dependency promise is what lets a downstream link this crate
+        # for free; enforce it rather than trust the manifest comment. The
+        # lockfile cargo just resolved must name exactly one package — itself.
+        run: |
+          dest="$RUNNER_TEMP/timeglyph-core-msrv"
+          count=$(grep -c '^\[\[package\]\]' "$dest/Cargo.lock")
+          if [ "$count" != "1" ]; then
+            echo "timeglyph-core resolved $count packages; it must resolve exactly 1 (itself):"
+            grep '^name = ' "$dest/Cargo.lock"
+            exit 1
+          fi
+
   secrets:
     name: Secret Scan (gitleaks)
     runs-on: ubuntu-latest
