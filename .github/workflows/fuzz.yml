@@ -32,7 +32,7 @@ jobs:
         run: cargo +nightly fuzz build --target x86_64-unknown-linux-gnu
       - name: Smoke-run each target (no-panic invariant)
         run: |
-          for t in interpret_int interpret_hex interpret_string csv_enrich; do
+          for t in interpret_int interpret_hex interpret_string csv_enrich core_epochs; do
             echo "::group::fuzz $t"
             cargo +nightly fuzz run "$t" --target x86_64-unknown-linux-gnu -- -max_total_time=30 -runs=200000
             echo "::endgroup::"

@@ -25,9 +25,12 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo test --all-features
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo fmt --check
+      # --workspace / --all are load-bearing: with a root package present, cargo's
+      # default selection is that package ALONE, so a bare `cargo test` would
+      # silently skip `core/` (timeglyph-core) and its tests would never gate.
+      - run: cargo test --workspace --all-features
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo fmt --all --check
 
   # The lens (GUI overlay) is a separate crate, excluded from the root workspace,
   # so the `test` job never touches it. Build it natively on each shipped
@@ -93,10 +96,17 @@ jobs:
       # those); main.rs (the Humble CLI shell) is excluded by the script.
       # The JSON carries per-function counts, the LCOV per-line `DA:` hits — the
       # gate needs both, and exits 2 if either is missing.
+      #
+      # BOTH commands must name every workspace member. `report` does not inherit
+      # the package selection of the run before it and rejects `--workspace`, so
+      # with a bare `report --lcov` the LCOV omits `core/` entirely — the LINE
+      # half of the gate then passes over timeglyph-core having measured nothing,
+      # while the JSON/function half still sees it. That asymmetry is what makes
+      # the hole quiet, so a new member must be added to the `-p` list here.
       - name: Coverage + 100% line/function gate
         run: |
-          cargo llvm-cov --all-features --json --output-path cov.json
-          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --all-features --json --output-path cov.json
+          cargo llvm-cov report -p timeglyph -p timeglyph-core --lcov --output-path lcov.info
           python3 scripts/coverage-gate.py cov.json lcov.info
       - name: Upload to Codecov
         uses: codecov/codecov-action@0f8570b1a125f4937846a11fcfa3bcd548bd8c97 # v4.6.0

@@ -13,6 +13,9 @@ libfuzzer-sys = "0.4"
 [dependencies.timeglyph]
 path = ".."
 
+[dependencies.timeglyph-core]
+path = "../core"
+
 # One target per parser strategy; the invariant for every target is: NO PANIC on
 # any input (timeglyph parses attacker-influenced forensic values — see SECURITY.md).
 [[bin]]
@@ -46,6 +49,13 @@ bench = false
 [[bin]]
 name = "inspect_text"
 path = "fuzz_targets/inspect_text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "core_epochs"
+path = "fuzz_targets/core_epochs.rs"
 test = false
 doc = false
 bench = false
