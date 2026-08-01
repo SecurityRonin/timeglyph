@@ -19,10 +19,6 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [policy.timeglyph]
 audit-as-crates-io = false
 
-# First-party workspace member, same as the root crate. Without this, every
-# version bump reds the vet job with `timeglyph-core:<ver> missing
-# ["safe-to-deploy"]`. ADR-0018: declare it first-party — never exempt the
-# version, which would re-break on the very next bump.
 [policy.timeglyph-core]
 audit-as-crates-io = false
 
