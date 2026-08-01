@@ -1,3 +1,16 @@
+# Two members: this package (the full engine + tool) and `core/` →
+# `timeglyph-core`, the zero-dependency, MSRV-1.75 epoch arithmetic a FOUNDATION
+# crate or a low-MSRV published parser can link without inheriting jiff,
+# forensicnomicon, or this package's 1.96 pin (ADR-0019).
+#
+# `lens/`, `wasm/`, `bindings/python` and `fuzz/` are built on their own manifests
+# by their own CI jobs and must stay OUT of the workspace — a package sitting
+# under a workspace root that is neither a member nor excluded fails to build.
+[workspace]
+members = ["core"]
+exclude = ["lens", "wasm", "bindings/python", "fuzz"]
+resolver = "2"
+
 [package]
 name = "timeglyph"
 version = "0.9.5"
@@ -13,12 +26,11 @@ keywords = ["forensics", "timestamp", "dfir", "epoch", "datetime"]
 categories = ["date-and-time", "command-line-utilities"]
 exclude = ["docs/", "fuzz/", "lens/", "wasm/", "bindings/", ".github/", "wix/", "mkdocs.yml", "site/"]
 
-# One crate: a library (the engine — importable, fully testable) plus a thin CLI
-# shell over it (Humble Object). No `-core` split: there is no lean-vs-heavy
-# library consumer to serve (the auto-detecting universal converter is an
-# analyst tool, not a parser primitive). Split to `chronoglyph-core` ONLY if a
-# fleet library ever wants to link the conversion primitive (the blazehash
-# precedent), never speculatively.
+# This package is the engine (importable, fully testable) plus a thin CLI shell
+# over it (Humble Object). The condition this manifest previously reserved the
+# `-core` split for — "a fleet library wants to link the conversion primitive" —
+# was met by ADR-0019, so `core/` → `timeglyph-core` now carries the epoch
+# arithmetic. Everything needing a calendar, a registry or a renderer stays here.
 [lib]
 name = "timeglyph"
 path = "src/lib.rs"
