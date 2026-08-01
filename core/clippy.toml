@@ -1,0 +1,6 @@
+# timeglyph-core is a published LIBRARY primitive, not the application: its
+# declared MSRV is a low, CI-verified floor that downstreams pin against, not the
+# repo's pinned dev toolchain. Point clippy's MSRV-aware lints at that floor so
+# they never suggest a construct newer than what this crate promises to compile
+# on. Without this file, clippy would inherit the repo-root `msrv = "1.96.0"`.
+msrv = "1.75"
