@@ -98,7 +98,7 @@ fn a_working_registration_reports_nothing_and_exposes_its_binding() {
         "a hotkey that works needs no explanation; it speaks by firing"
     );
     assert_eq!(
-        r.active_binding().map(HotkeySpec::display),
+        r.active_binding().map(|s| s.display()),
         Some(DEFAULT.display()),
         "the active binding must be readable, for the tooltip"
     );

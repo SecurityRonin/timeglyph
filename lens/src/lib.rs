@@ -19,6 +19,7 @@ pub mod altcal;
 pub mod clipboard;
 pub mod fonts;
 pub mod ganzhi;
+pub mod hotkey;
 pub mod ocr;
 pub mod settings;
 pub mod shot;
