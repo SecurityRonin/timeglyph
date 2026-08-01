@@ -13,7 +13,9 @@ repos:
     hooks:
       - id: fmt
       - id: clippy
-        args: ["--all-targets", "--all-features", "--", "-D", "warnings"]
+        # --workspace for parity with ci.yml: without it cargo lints the root
+        # package alone and core/ (timeglyph-core) never reaches clippy locally.
+        args: ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
