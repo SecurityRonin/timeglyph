@@ -97,28 +97,65 @@ pub fn read_decodable(clipboard: &mut dyn ClipboardRead) -> Option<String> {
     Some(trimmed.to_owned())
 }
 
-/// Read the clipboard **once** and decode it, returning the source to display
-/// alongside the readings — or `None` when the clipboard holds nothing, or nothing
-/// that decodes.
+/// What one clipboard press produced.
 ///
-/// `None` means *leave the display alone*: the same rule the cursor path follows, so
-/// pressing 🗐 with an unrelated value copied cannot wipe the reading being read.
+/// The two miss cases are kept apart from each other and from success on purpose. A
+/// press is a user action, and a user action must have a visible result. When these
+/// collapsed into a single "do nothing", the previous reading stayed on screen — and
+/// if it came from a hover, its hovered text stayed in the source caption too — so a
+/// press that found nothing was indistinguishable from one that decoded what you had
+/// just copied.
+#[derive(Debug)]
+pub enum ClipboardOutcome {
+    /// Text that decoded. The source and readings travel together, so a caller
+    /// cannot show clipboard readings under a stale cursor caption.
+    Decoded(SourceContext, Vec<NumberReadings>),
+    /// The clipboard held text, but nothing in it decoded.
+    NothingDecoded,
+    /// The clipboard was empty, held non-text, or held only whitespace.
+    Empty,
+}
+
+impl ClipboardOutcome {
+    /// A fixed note for a press that produced no readings; `None` when the press
+    /// decoded something and therefore speaks through its readings.
+    ///
+    /// Always a constant, never derived from what was read. This is drawn in an
+    /// always-on-top window, so the error path must not become a way for a secret
+    /// that failed to decode to reach the screen — the same reasoning that makes
+    /// [`SourceContext::Clipboard`] incapable of holding text.
+    #[must_use]
+    pub fn notice(&self) -> Option<&'static str> {
+        match self {
+            Self::Decoded(..) => None,
+            Self::NothingDecoded => Some("clipboard: nothing decoded"),
+            Self::Empty => Some("clipboard: empty"),
+        }
+    }
+}
+
+/// Read the clipboard **once** and decode it, reporting which of the three outcomes
+/// occurred.
 ///
-/// The source and the readings are returned together, as one value, so a caller
-/// cannot show clipboard readings under a stale cursor caption.
+/// A miss deliberately does **not** clear the readings on screen — a misfired press
+/// should not wipe the reading you were studying — so the caller is expected to draw
+/// [`ClipboardOutcome::notice`] instead, which is what stops those readings being
+/// mistaken for the answer.
 #[must_use]
 pub fn decode(
     clipboard: &mut dyn ClipboardRead,
     max_per_number: usize,
     zone: &RenderZone,
-) -> Option<(SourceContext, Vec<NumberReadings>)> {
-    let text = read_decodable(clipboard)?;
+) -> ClipboardOutcome {
+    let Some(text) = read_decodable(clipboard) else {
+        return ClipboardOutcome::Empty;
+    };
     let hits = scan::inspect_text(&text, max_per_number, zone);
     if hits.is_empty() {
-        return None;
+        return ClipboardOutcome::NothingDecoded;
     }
     // `text` dies here: only the readings and a textless source leave this function.
-    Some((SourceContext::Clipboard, hits))
+    ClipboardOutcome::Decoded(SourceContext::Clipboard, hits)
 }
 
 /// The platform clipboard could not be opened — a host with no window server or

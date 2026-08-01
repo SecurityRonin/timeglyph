@@ -18,7 +18,7 @@ use eframe::egui;
 use egui::{Color32, CornerRadius, FontId, Frame, Margin, RichText, Stroke};
 use timeglyph::{DateStyle, PosixNs, RenderZone};
 use timeglyph_lens::clipboard::{
-    self, ClipboardRead, ClipboardUnavailable, SourceContext, SystemClipboard,
+    self, ClipboardOutcome, ClipboardRead, ClipboardUnavailable, SourceContext, SystemClipboard,
 };
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
@@ -238,6 +238,14 @@ struct LensApp {
     source: SourceContext,
     /// The decoded model: numbers and their ranked readings.
     hits: Vec<NumberReadings>,
+    /// A fixed note from the last clipboard press that produced no readings, shown
+    /// until the next press or hover replaces the display.
+    ///
+    /// A miss deliberately leaves `hits` alone so a misfired press cannot wipe the
+    /// reading being studied — but silence would leave those readings looking like
+    /// the press's answer, so the miss says so instead. Always a constant from
+    /// [`ClipboardOutcome::notice`], never clipboard content.
+    clipboard_notice: Option<&'static str>,
     /// The display timezone. Session-scoped, UTC by default: it never persists
     /// across launches, so a prior case's zone can't silently apply to the next.
     zone: ZoneChoice,
@@ -323,6 +331,9 @@ impl LensApp {
         }
         self.source = SourceContext::Cursor(text);
         self.hits = new_hits;
+        // A hover result supersedes the last clipboard miss: the note explained why
+        // *those* readings were not from the press, and these are new readings.
+        self.clipboard_notice = None;
         // Level does the -v/-vv gating: -v → the summary, -vv → the raw element
         // text and every reading.
         tracing::info!(hits = self.hits.len(), "decoded element under cursor");
@@ -352,8 +363,9 @@ impl LensApp {
     /// stops at a VM guest window, but the clipboard crosses that boundary. One
     /// read per press — no thread, no watcher, no polling.
     ///
-    /// A clipboard holding nothing decodable leaves the display untouched, so a
-    /// misfired press cannot wipe the reading being read.
+    /// A clipboard holding nothing decodable leaves the readings untouched, so a
+    /// misfired press cannot wipe the reading being read — but it reports the miss,
+    /// because silence would leave those readings looking like the press's answer.
     fn decode_clipboard_now(&mut self) {
         // Cloned first: the decode borrows the clipboard mutably.
         let zone = self.zone.zone.clone();
@@ -362,15 +374,19 @@ impl LensApp {
             // here; the reason was named at startup.
             return;
         };
-        let Some((source, hits)) =
-            clipboard::decode(&mut **clipboard, timeglyph_lens::READINGS_SHOWN, &zone)
-        else {
-            tracing::info!("the clipboard held nothing decodable");
-            return;
-        };
-        self.source = source;
-        self.hits = hits;
-        tracing::info!(hits = self.hits.len(), "decoded the clipboard");
+        match clipboard::decode(&mut **clipboard, timeglyph_lens::READINGS_SHOWN, &zone) {
+            ClipboardOutcome::Decoded(source, hits) => {
+                self.source = source;
+                self.hits = hits;
+                self.clipboard_notice = None;
+                tracing::info!(hits = self.hits.len(), "decoded the clipboard");
+            }
+            miss => {
+                // Keep the readings; say that these are not what the press found.
+                self.clipboard_notice = miss.notice();
+                tracing::info!(outcome = ?miss, "the clipboard held nothing decodable");
+            }
+        }
     }
 
     /// The theme-matched Security Ronin wordmark in the lower-right corner, tall
@@ -413,6 +429,7 @@ impl LensApp {
             last_text: String::new(),
             source: SourceContext::Cursor(String::new()),
             hits: Vec::new(),
+            clipboard_notice: None,
             zone,
             continents: zone::continents(),
             longitude: saved.longitude,
@@ -562,6 +579,10 @@ impl eframe::App for LensApp {
             None
         };
         let hits = std::mem::take(&mut self.hits);
+        // Shown in every mode, unlike the -vv source caption: a press that found
+        // nothing has to be visible, or the readings still on screen read as its
+        // answer. `Option<&'static str>` is `Copy`, and never clipboard content.
+        let clipboard_notice = self.clipboard_notice;
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
@@ -597,6 +618,13 @@ impl eframe::App for LensApp {
             );
             ui.separator();
             ui.add_space(10.0);
+            if let Some(note) = clipboard_notice {
+                // Deliberately directly above the readings, because it is those
+                // readings it disclaims: the press found nothing, so whatever is
+                // below did not come from it.
+                ui.label(egui::RichText::new(note).color(pal.mute).italics());
+                ui.add_space(6.0);
+            }
             if hits.is_empty() {
                 render_empty(ui, pal, logo.as_ref());
             } else {

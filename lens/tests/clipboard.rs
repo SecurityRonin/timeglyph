@@ -8,8 +8,8 @@
 
 use timeglyph::RenderZone;
 use timeglyph_lens::clipboard::{
-    caption, decode, read_decodable, source_caption, ClipboardRead, ClipboardUnavailable,
-    SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
+    caption, decode, read_decodable, source_caption, ClipboardOutcome, ClipboardRead,
+    ClipboardUnavailable, SourceContext, SystemClipboard, CAPTION_MAX_CHARS,
 };
 
 /// A fake clipboard. Tests own the content, so nothing reads the real pasteboard.
@@ -127,7 +127,9 @@ fn blank_cursor_text_captions_nothing() {
 #[test]
 fn decoding_the_clipboard_yields_readings_and_a_textless_source() {
     let mut c = Fake(Some("  1721000000  \n"));
-    let (source, hits) = decode(&mut c, 8, &RenderZone::Utc).unwrap();
+    let ClipboardOutcome::Decoded(source, hits) = decode(&mut c, 8, &RenderZone::Utc) else {
+        panic!("a unix second count must decode");
+    };
     // The value is decoded exactly as hovered text is, padding and all.
     assert_eq!(hits.len(), 1, "one number in the clipboard, one card");
     assert!(
@@ -149,23 +151,35 @@ fn decoding_reads_the_clipboard_exactly_once() {
         content: Some("1721000000"),
         reads: 0,
     };
-    decode(&mut c, 8, &RenderZone::Utc).unwrap();
+    let _ = decode(&mut c, 8, &RenderZone::Utc);
     assert_eq!(c.reads, 1);
 }
 
 #[test]
-fn an_empty_clipboard_decodes_to_nothing() {
-    // `None` tells the caller to keep whatever is on screen rather than blank it.
-    assert!(decode(&mut Fake(None), 8, &RenderZone::Utc).is_none());
-    assert!(decode(&mut Fake(Some("")), 8, &RenderZone::Utc).is_none());
-    assert!(decode(&mut Fake(Some(" \t\n")), 8, &RenderZone::Utc).is_none());
+fn an_empty_clipboard_reports_empty() {
+    // The caller keeps whatever is on screen rather than blanking it — but it now
+    // learns *why* nothing changed, so it can say so. See `clipboard_outcome.rs`.
+    for content in [None, Some(""), Some(" \t\n")] {
+        assert!(
+            matches!(
+                decode(&mut Fake(content), 8, &RenderZone::Utc),
+                ClipboardOutcome::Empty
+            ),
+            "{content:?} is nothing at all, not a failed decode"
+        );
+    }
 }
 
 #[test]
-fn clipboard_text_with_no_timestamp_decodes_to_nothing() {
-    // Same non-clobber rule the cursor path uses: text that decodes to nothing
-    // must not wipe the reading the analyst is looking at.
-    assert!(decode(&mut Fake(Some("no numbers here")), 8, &RenderZone::Utc).is_none());
+fn clipboard_text_with_no_timestamp_reports_nothing_decoded() {
+    // Same non-clobber rule the cursor path uses: text that decodes to nothing must
+    // not wipe the reading the analyst is looking at. Distinct from `Empty`, because
+    // "you copied something and none of it is a timestamp" is a different thing to
+    // tell the analyst than "your clipboard is empty".
+    assert!(matches!(
+        decode(&mut Fake(Some("no numbers here")), 8, &RenderZone::Utc),
+        ClipboardOutcome::NothingDecoded
+    ));
 }
 
 #[test]
