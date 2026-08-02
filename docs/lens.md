@@ -77,6 +77,50 @@ deliberately.
 The button is greyed out when the platform has no clipboard to open (a headless host,
 or no window server).
 
+### The keyboard shortcut
+
+Reaching for the button with the mouse defeats the point when you are copying value
+after value, so the same one-shot decode is bound to a global shortcut:
+
+| Platform | Default |
+|---|---|
+| macOS | **⌃⌘T** |
+| Windows, Linux (X11) | **Alt+Shift+T** |
+
+**T for timestamp**, and only two modifiers — it has to stay pressable one-handed.
+The active binding is shown in the 🗐 button's tooltip, which is the authoritative
+place to read it.
+
+A *global* shortcut takes the combination away from **every** application on the
+machine, so the choice is really about finding a quiet corner of the keyboard rather
+than piling on modifiers until nothing else wants the chord. `V` looks like the
+obvious key and is the worst one available: it is the paste key, and therefore the
+most contested on the keyboard — ⌘V, ⌘⇧V for paste-and-match, ⌥⌘V for Finder's
+paste-move, `Win+V` for Windows clipboard history.
+
+Combinations already spoken for are refused outright rather than bound and left to
+fail invisibly. That includes the ones the OS owns (Spotlight, the application
+switcher, the screenshot keys), **⌃⌥ on macOS** — the modifier every VoiceOver
+command uses, which a global grab would take from screen-reader users — and on Linux
+`Ctrl+Alt+T` (open a terminal) and `Ctrl+Shift+T` (reopen a closed tab in every
+browser).
+
+If the combination is already claimed by another application, the Lens says so —
+naming the combination and the reason the platform gave — and carries on. The 🗐
+button is unaffected, so the shortcut failing costs you convenience, never access.
+
+| Platform | Global shortcut |
+|---|---|
+| macOS | supported (Carbon `RegisterEventHotKey`) — needs **no** Accessibility grant, so it works even if you have not granted the hover picker |
+| Windows | supported (`RegisterHotKey`) |
+| Linux — X11 | supported (`XGrabKey`) |
+| **Linux — Wayland** | **not available** |
+
+Wayland deliberately has no protocol for an application to grab a global shortcut; it
+is the compositor's to own, by design rather than oversight. There is no portable way
+to register one, so on a Wayland session the shortcut is simply absent and the 🗐
+button is the way in. Everything else about clipboard decoding behaves identically.
+
 ## The header controls
 
 | Control | What it does |

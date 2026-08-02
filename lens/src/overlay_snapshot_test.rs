@@ -27,7 +27,9 @@ use timeglyph_lens::clipboard::{ClipboardRead, ClipboardUnavailable};
 use timeglyph_lens::settings::PersistedSettings;
 use timeglyph_lens::theme::ThemePreference;
 
-use super::{install_fonts, install_theme, load_logo, load_png_texture, LensApp, Theme};
+use super::{
+    install_fonts, install_theme, load_logo, load_png_texture, HostResources, LensApp, Theme,
+};
 
 /// A clipboard that is always openable and always empty.
 ///
@@ -72,20 +74,31 @@ fn gate(hovered: &str, name: &str) {
                     "sr-light",
                     include_bytes!("../assets/securityronin-light.png"),
                 ),
-                // Hermetic settings: a fixed snapshot so the footer zone, the
-                // decoded readings, and the alt-calendar columns render identically
-                // on every host — never the machine's persisted zone/theme/
-                // calendars (which is what made this gate fail off the authoring
-                // machine). Zone is UTC and calendars are the defaults; theme is
-                // pinned to Dark so it doesn't depend on the headless runner's
-                // reported system theme.
-                PersistedSettings {
-                    theme: ThemePreference::Dark,
-                    zone_spec: "UTC".to_string(),
-                    ..PersistedSettings::default()
+                HostResources {
+                    // Hermetic settings: a fixed snapshot so the footer zone, the
+                    // decoded readings, and the alt-calendar columns render
+                    // identically on every host — never the machine's persisted
+                    // zone/theme/calendars (which is what made this gate fail off the
+                    // authoring machine). Zone is UTC and calendars are the defaults;
+                    // theme is pinned to Dark so it doesn't depend on the headless
+                    // runner's reported system theme.
+                    saved: PersistedSettings {
+                        theme: ThemePreference::Dark,
+                        zone_spec: "UTC".to_string(),
+                        ..PersistedSettings::default()
+                    },
+                    // Deterministic: never the host's clipboard (see StubClipboard).
+                    clipboard: Ok::<_, ClipboardUnavailable>(
+                        Box::new(StubClipboard) as Box<dyn ClipboardRead>
+                    ),
+                    // Never installed: the gate must not grab a real system-wide key.
+                    // Registering here would reach outside the process and take a
+                    // combination from the developer's machine for the length of the
+                    // test run — the same hermeticity rule as the clipboard and
+                    // settings above. It also reports no notice, so the panel renders
+                    // exactly as it does when the shortcut works.
+                    hotkey: timeglyph_lens::hotkey::Hotkey::none(),
                 },
-                // Deterministic: never the host's clipboard (see StubClipboard).
-                Ok::<_, ClipboardUnavailable>(Box::new(StubClipboard) as Box<dyn ClipboardRead>),
             )
         });
 

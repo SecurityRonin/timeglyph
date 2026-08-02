@@ -5,15 +5,23 @@
 //! when registration fails. Actually asking the platform to grab the key is a thin
 //! shell in the binary, because it cannot be tested without a window server.
 //!
-//! # Why the default looks unmemorable
+//! # Why the default is built on T, not V
 //!
 //! A *global* grab takes the combination away from **every** application on the
 //! machine, not just this one. That inverts the usual instinct: the memorable
 //! choices are precisely the wrong ones. `Cmd+Shift+V` is "paste and match style" in
 //! a great many applications and grabbing it globally would break that everywhere;
-//! `Opt+Cmd+V` is Finder's paste-move. So the default deliberately carries enough
-//! modifiers to be uncontested, and the binding is shown in the button's tooltip so
-//! it stays discoverable despite being obscure.
+//! `Opt+Cmd+V` is Finder's paste-move; `Win+V` is Windows' clipboard history.
+//!
+//! The tempting escape is to keep V and stack modifiers until nothing collides — but
+//! a four-modifier chord is uncontested precisely *because* nobody can press it, so
+//! that trade buys safety with the one property a shortcut exists to provide. Safety
+//! comes from the **key** instead: V is the most fought-over key on the keyboard, and
+//! we never needed it. T — for *timestamp*, which is what the press decodes — is
+//! quiet enough that two modifiers suffice, which keeps the chord one-handed.
+//!
+//! Two modifiers is also the floor: below it a global grab would steal a plain
+//! keystroke from every application. So the default carries exactly two.
 //!
 //! # The three ways a hotkey fails
 //!
@@ -175,6 +183,82 @@ impl HotkeySpec {
         None
     }
 
+    /// The trigger key.
+    #[must_use]
+    pub const fn key_char(&self) -> char {
+        self.key
+    }
+
+    /// This combination as `global-hotkey` expresses it, ready to hand to the OS.
+    ///
+    /// The seam worth getting right: if this disagrees with [`Self::display`] we bind
+    /// one combination and advertise another, so the user presses what the tooltip
+    /// says and nothing happens — indistinguishable from the silent shadowing we
+    /// cannot detect.
+    ///
+    /// A key outside the mapped set becomes [`Code::Unidentified`], which the platform
+    /// rejects at registration, surfacing as a named [`Registration::Failed`] rather
+    /// than a binding that quietly never fires.
+    #[must_use]
+    pub fn to_global_hotkey(&self) -> global_hotkey::hotkey::HotKey {
+        use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+
+        let mut mods = Modifiers::empty();
+        if self.control {
+            mods |= Modifiers::CONTROL;
+        }
+        if self.alt {
+            mods |= Modifiers::ALT;
+        }
+        if self.shift {
+            mods |= Modifiers::SHIFT;
+        }
+        if self.meta {
+            mods |= Modifiers::META;
+        }
+
+        let code = match self.key.to_ascii_uppercase() {
+            'A' => Code::KeyA,
+            'B' => Code::KeyB,
+            'C' => Code::KeyC,
+            'D' => Code::KeyD,
+            'E' => Code::KeyE,
+            'F' => Code::KeyF,
+            'G' => Code::KeyG,
+            'H' => Code::KeyH,
+            'I' => Code::KeyI,
+            'J' => Code::KeyJ,
+            'K' => Code::KeyK,
+            'L' => Code::KeyL,
+            'M' => Code::KeyM,
+            'N' => Code::KeyN,
+            'O' => Code::KeyO,
+            'P' => Code::KeyP,
+            'Q' => Code::KeyQ,
+            'R' => Code::KeyR,
+            'S' => Code::KeyS,
+            'T' => Code::KeyT,
+            'U' => Code::KeyU,
+            'V' => Code::KeyV,
+            'W' => Code::KeyW,
+            'X' => Code::KeyX,
+            'Y' => Code::KeyY,
+            'Z' => Code::KeyZ,
+            '0' => Code::Digit0,
+            '1' => Code::Digit1,
+            '2' => Code::Digit2,
+            '3' => Code::Digit3,
+            '4' => Code::Digit4,
+            '5' => Code::Digit5,
+            '6' => Code::Digit6,
+            '7' => Code::Digit7,
+            '8' => Code::Digit8,
+            '9' => Code::Digit9,
+            _ => Code::Unidentified,
+        };
+        HotKey::new(Some(mods), code)
+    }
+
     /// Combinations known to be OS-owned, for tests to assert we refuse them.
     #[must_use]
     pub fn examples_reserved() -> Vec<Self> {
@@ -234,6 +318,12 @@ pub enum Registration {
     },
     /// This platform has no global hotkeys at all.
     Unsupported(&'static str),
+    /// Never asked for — a headless run or the render gate.
+    ///
+    /// Distinct from [`Self::Unsupported`] on purpose: "we chose not to register" is
+    /// not a failure and must not produce a user-facing notice, whereas "this
+    /// platform cannot" is something the user needs told.
+    NotInstalled,
 }
 
 impl Registration {
@@ -245,7 +335,7 @@ impl Registration {
     pub fn active_binding(&self) -> Option<HotkeySpec> {
         match self {
             Self::Active(s) => Some(*s),
-            Self::Failed { .. } | Self::Unsupported(_) => None,
+            Self::Failed { .. } | Self::Unsupported(_) | Self::NotInstalled => None,
         }
     }
 
@@ -263,6 +353,124 @@ impl Registration {
                 Some(format!("hotkey {} unavailable — {reason}", spec.display()))
             }
             Self::Unsupported(why) => Some((*why).to_owned()),
+            // Silent by design: nothing was attempted, so there is nothing to report.
+            Self::NotInstalled => None,
         }
+    }
+}
+
+/// A live global hotkey, and the manager whose lifetime owns it.
+///
+/// The thin shell around the platform: everything decidable lives above and is
+/// unit-tested, while this part cannot be exercised without a window server.
+pub struct Hotkey {
+    /// Dropping the manager unregisters the key, so it is held for the process
+    /// lifetime rather than discarded after `install`.
+    _manager: Option<global_hotkey::GlobalHotKeyManager>,
+    registration: Registration,
+}
+
+impl Hotkey {
+    /// Ask the platform for `spec`, reporting rather than panicking on refusal.
+    ///
+    /// Never fatal: on any failure the 🗐 button still works, so a taken combination
+    /// costs convenience and not access.
+    #[must_use]
+    pub fn install(spec: HotkeySpec) -> Self {
+        // Wayland has no protocol for an application to grab a global shortcut — it
+        // belongs to the compositor by design. Under XWayland a grab can even appear
+        // to succeed while the compositor routes the key natively and it never
+        // fires, which is the undetectable failure; say so up front instead.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            return Self {
+                _manager: None,
+                registration: Registration::Unsupported(
+                    "global hotkeys are not available on Wayland — use the clipboard button",
+                ),
+            };
+        }
+
+        // Refuse what we already know is spoken for, rather than binding it and
+        // letting it fail invisibly.
+        if let Some(reason) = spec.reserved_reason() {
+            return Self {
+                _manager: None,
+                registration: Registration::Failed {
+                    spec,
+                    reason: reason.to_owned(),
+                },
+            };
+        }
+
+        let manager = match global_hotkey::GlobalHotKeyManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                return Self {
+                    _manager: None,
+                    registration: Registration::Failed {
+                        spec,
+                        reason: e.to_string(),
+                    },
+                }
+            }
+        };
+
+        // The platform's own words are kept verbatim: "already registered by another
+        // application" tells the user what to do, where "failed" does not.
+        match manager.register(spec.to_global_hotkey()) {
+            Ok(()) => {
+                tracing::info!(binding = %spec.display(), "global hotkey registered");
+                Self {
+                    _manager: Some(manager),
+                    registration: Registration::Active(spec),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(binding = %spec.display(), error = %e, "global hotkey unavailable");
+                Self {
+                    _manager: None,
+                    registration: Registration::Failed {
+                        spec,
+                        reason: e.to_string(),
+                    },
+                }
+            }
+        }
+    }
+
+    /// A hotkey that was never asked for.
+    ///
+    /// For tests and headless runs. The offscreen render gate must not grab a real
+    /// system-wide key — that would reach outside the process and take a combination
+    /// from the developer's machine for the duration of the test run, the same
+    /// hermeticity concern that made the gate inject its clipboard and settings.
+    #[must_use]
+    pub fn none() -> Self {
+        Self {
+            _manager: None,
+            registration: Registration::NotInstalled,
+        }
+    }
+
+    /// What happened when we asked for the key.
+    #[must_use]
+    pub fn registration(&self) -> &Registration {
+        &self.registration
+    }
+
+    /// Whether the hotkey was pressed since the last call, draining the queue.
+    ///
+    /// Polled once per frame from the render loop, mirroring how the cursor snapshot
+    /// is consumed. Only `Pressed` counts, so one physical press is one decode rather
+    /// than two.
+    pub fn fired(&self) -> bool {
+        let mut pressed = false;
+        while let Ok(ev) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv() {
+            if ev.state == global_hotkey::HotKeyState::Pressed {
+                pressed = true;
+            }
+        }
+        pressed
     }
 }

@@ -82,10 +82,14 @@ fn a_binding_renders_for_the_platform_it_is_shown_on() {
     let shown = DEFAULT.display();
     assert!(!shown.is_empty(), "a binding must be displayable");
     // The user has to be able to read it off the tooltip and press it. Whatever the
-    // platform convention, the trigger key has to appear.
+    // platform convention, the trigger key has to appear. Asserted against
+    // `key_char()` rather than a hardcoded letter, so rebinding the default cannot
+    // leave this test passing for the wrong key — which is exactly what happened when
+    // the default moved from V to T.
     assert!(
-        shown.to_uppercase().contains('V'),
-        "the trigger key must be visible in {shown:?}"
+        shown.to_uppercase().contains(DEFAULT.key_char()),
+        "the trigger key {:?} must be visible in {shown:?}",
+        DEFAULT.key_char()
     );
 }
 

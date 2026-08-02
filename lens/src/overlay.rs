@@ -20,6 +20,7 @@ use timeglyph::{DateStyle, PosixNs, RenderZone};
 use timeglyph_lens::clipboard::{
     self, ClipboardOutcome, ClipboardRead, ClipboardUnavailable, SourceContext, SystemClipboard,
 };
+use timeglyph_lens::hotkey;
 use timeglyph_lens::settings as persist;
 use timeglyph_lens::theme::{Palette, Theme, ThemePreference};
 use timeglyph_lens::zone::{self, parse_zone, ZoneChoice};
@@ -85,6 +86,11 @@ pub fn run(verbose: u8) -> Result<(), String> {
             crate::macmenu::install();
             let latest = Arc::new(Mutex::new(String::new()));
             spawn_cursor_poll(cc.egui_ctx.clone(), Arc::clone(&latest));
+            // Asked for once, here, and held for the process lifetime — dropping the
+            // registration hands the key back. Never fatal: if the combination is
+            // taken the 🗐 button is unaffected, so this costs convenience, not
+            // access.
+            let hotkey = hotkey::Hotkey::install(hotkey::DEFAULT);
             Ok(Box::new(LensApp::new(
                 latest,
                 verbose,
@@ -99,14 +105,18 @@ pub fn run(verbose: u8) -> Result<(), String> {
                     "sr-light",
                     include_bytes!("../assets/securityronin-light.png"),
                 ),
-                // Load persisted preferences (a missing/corrupt file degrades to
-                // defaults). Injected here rather than inside `new` so the render
-                // gate can pass a fixed, hermetic settings snapshot instead of
-                // reading the host's config.
-                persist::load(),
-                // The real platform clipboard; a failure to open is carried as the
-                // button's disabled reason rather than a startup abort.
-                SystemClipboard::new().map(|c| Box::new(c) as Box<dyn ClipboardRead>),
+                HostResources {
+                    // Load persisted preferences (a missing/corrupt file degrades to
+                    // defaults). Injected here rather than inside `new` so the render
+                    // gate can pass a fixed, hermetic settings snapshot instead of
+                    // reading the host's config.
+                    saved: persist::load(),
+                    // The real platform clipboard; a failure to open is carried as
+                    // the button's disabled reason rather than a startup abort.
+                    clipboard: SystemClipboard::new()
+                        .map(|c| Box::new(c) as Box<dyn ClipboardRead>),
+                    hotkey,
+                },
             )))
         }),
     )
@@ -246,6 +256,13 @@ struct LensApp {
     /// the press's answer, so the miss says so instead. Always a constant from
     /// [`ClipboardOutcome::notice`], never clipboard content.
     clipboard_notice: Option<&'static str>,
+    /// The global shortcut for the clipboard decode, held for the process lifetime —
+    /// dropping it unregisters the key.
+    hotkey: hotkey::Hotkey,
+    /// Why the shortcut is unavailable, when it is. Set once at startup and left up,
+    /// because a shortcut that silently does nothing is worse than one that says why:
+    /// the user would keep pressing a combination that was never ours.
+    hotkey_notice: Option<String>,
     /// The display timezone. Session-scoped, UTC by default: it never persists
     /// across launches, so a prior case's zone can't silently apply to the next.
     zone: ZoneChoice,
@@ -291,6 +308,21 @@ struct LensApp {
     /// light-background variants (picked by the active theme).
     sr_logo_dark: Option<egui::TextureHandle>,
     sr_logo_light: Option<egui::TextureHandle>,
+}
+
+/// Everything the app reaches for OUTSIDE its own window: the preferences file on
+/// disk, the system pasteboard, and the system-wide key grab.
+///
+/// Grouped because they share one property — each is acquired from the machine in
+/// [`run`] and handed in, never opened inside [`LensApp::new`]. That is what lets the
+/// offscreen render gate substitute a fixed settings snapshot, an always-empty
+/// clipboard, and an unregistered hotkey, and so render identically on a dev Mac and
+/// a headless runner. Adding a fourth host resource extends this struct rather than
+/// the constructor's argument list.
+struct HostResources {
+    saved: persist::PersistedSettings,
+    clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
+    hotkey: hotkey::Hotkey,
 }
 
 impl LensApp {
@@ -419,9 +451,13 @@ impl LensApp {
         logo: Option<egui::TextureHandle>,
         sr_logo_dark: Option<egui::TextureHandle>,
         sr_logo_light: Option<egui::TextureHandle>,
-        saved: persist::PersistedSettings,
-        clipboard: Result<Box<dyn ClipboardRead>, ClipboardUnavailable>,
+        host: HostResources,
     ) -> Self {
+        let HostResources {
+            saved,
+            clipboard,
+            hotkey,
+        } = host;
         let zone = parse_zone(&saved.zone_spec).unwrap_or_default();
         let longitude_input = saved.longitude.map(|d| format!("{d}")).unwrap_or_default();
         Self {
@@ -430,6 +466,14 @@ impl LensApp {
             source: SourceContext::Cursor(String::new()),
             hits: Vec::new(),
             clipboard_notice: None,
+            hotkey_notice: {
+                let n = hotkey.registration().notice();
+                if let Some(ref why) = n {
+                    tracing::warn!(%why, "the global shortcut is unavailable");
+                }
+                n
+            },
+            hotkey,
             zone,
             continents: zone::continents(),
             longitude: saved.longitude,
@@ -520,6 +564,14 @@ impl eframe::App for LensApp {
         }
 
         let mut dirty = false;
+        // Polled once per frame, exactly like the cursor snapshot: the platform
+        // pushes events into a channel and this drains them. A press runs the same
+        // one-shot read the 🗐 button does — one path, so the stale-reading fix and
+        // the privacy properties apply identically however the decode was triggered.
+        if self.hotkey.fired() {
+            tracing::info!("global shortcut pressed");
+            self.decode_clipboard_now();
+        }
         self.ingest_cursor_text();
 
         // The reference instant for the footer's offset/abbr/DST resolution: the
@@ -583,6 +635,11 @@ impl eframe::App for LensApp {
         // nothing has to be visible, or the readings still on screen read as its
         // answer. `Option<&'static str>` is `Copy`, and never clipboard content.
         let clipboard_notice = self.clipboard_notice;
+        // A standing condition, not a per-press one: set once at startup and cloned
+        // out each frame like `zone` below, so the panel closure need not borrow
+        // `self`. `None` whenever the shortcut works — and also for the render gate's
+        // uninstalled hotkey, which is why the reference PNGs are unaffected.
+        let hotkey_notice = self.hotkey_notice.clone();
         let zone = self.zone.zone.clone();
         let longitude = self.longitude;
         let show_lunar = cur.show_lunar;
@@ -618,6 +675,14 @@ impl eframe::App for LensApp {
             );
             ui.separator();
             ui.add_space(10.0);
+            if let Some(note) = hotkey_notice {
+                // Above the clipboard notice because it disclaims something larger:
+                // not one press, but the shortcut for every press. Without it the
+                // shortcut fails the only way a shortcut can fail — by doing nothing
+                // — and the user keeps pressing a combination that was never ours.
+                ui.label(egui::RichText::new(note).color(pal.mute).italics());
+                ui.add_space(6.0);
+            }
             if let Some(note) = clipboard_notice {
                 // Deliberately directly above the readings, because it is those
                 // readings it disclaims: the press found nothing, so whatever is
