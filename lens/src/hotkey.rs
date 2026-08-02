@@ -150,11 +150,26 @@ impl HotkeySpec {
             if self.meta && self.shift && matches!(self.key, '3' | '4' | '5') {
                 return Some("macOS uses this for screenshots");
             }
+            // Every VoiceOver command is ⌃⌥ + something. Grabbing anything in that
+            // namespace globally breaks screen-reader control — an unacceptable
+            // trade for a tool that already leans on the accessibility API.
+            if self.control && self.alt {
+                return Some("⌃⌥ is VoiceOver's modifier — every VoiceOver command uses it");
+            }
         }
         #[cfg(not(target_os = "macos"))]
         {
             if self.control && self.alt && self.key == '\u{7f}' {
                 return Some("the system uses this combination");
+            }
+            // GNOME and most Linux desktops ship this as open-a-terminal.
+            if self.control && self.alt && self.key == 'T' {
+                return Some("Linux desktops use this to open a terminal");
+            }
+            // Every browser binds this to reopen-closed-tab; a global grab would take
+            // it from all of them.
+            if self.control && self.shift && self.key == 'T' {
+                return Some("browsers use this to reopen a closed tab");
             }
         }
         None
@@ -183,9 +198,26 @@ impl HotkeySpec {
 
 /// The binding we register unless the user chooses another.
 ///
-/// Four modifiers, and `V` for the value being pasted. Obscure on purpose — see the
-/// module docs on why a memorable default would be actively harmful.
-pub const DEFAULT: HotkeySpec = HotkeySpec::new(true, true, false, true, 'V');
+/// **`T` for timestamp, and only two modifiers.** The obscurity that keeps a global
+/// grab from stealing someone's shortcut comes from picking a quiet *key*, not from
+/// piling on modifiers — a four-modifier chord is safe precisely because nobody can
+/// comfortably press it, which makes it a bad shortcut.
+///
+/// `V` was the obvious choice and the wrong one: it is the paste key, so it is the
+/// most contested key on the keyboard (`⌘V`, `⌘⇧V` paste-and-match, `⌥⌘V` Finder
+/// paste-move, `Win+V` clipboard history). Competing there forces the modifier
+/// stacking this constant now avoids.
+///
+/// Platform-conditional, because the quiet space differs:
+/// - **macOS `⌃⌘T`** — avoids `⌃⌥`, which is VoiceOver's modifier for *every* one of
+///   its commands, and `⌥⌘T`, which is Show Toolbar in Apple's own apps.
+/// - **Windows / Linux `Alt+Shift+T`** — avoids `Ctrl+Alt+T` (GNOME's open-terminal)
+///   and `Ctrl+Shift+T` (reopen-closed-tab in every browser).
+#[cfg(target_os = "macos")]
+pub const DEFAULT: HotkeySpec = HotkeySpec::new(true, false, false, true, 'T');
+/// See the macOS variant above for the rationale.
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT: HotkeySpec = HotkeySpec::new(false, true, true, false, 'T');
 
 /// What happened when we asked the platform for the key.
 #[derive(Debug)]

@@ -14,20 +14,67 @@
 use timeglyph_lens::hotkey::{HotkeySpec, Registration, DEFAULT};
 
 #[test]
-fn the_default_binding_is_deliberately_obscure() {
-    // Four modifiers, because three-modifier combinations are routinely claimed by
-    // applications and a global grab would steal them.
+fn the_default_binding_is_quiet_without_being_unpressable() {
+    // Two properties in tension, and the earlier version got the trade wrong by
+    // demanding lots of modifiers. A four-modifier chord IS collision-proof — because
+    // nobody can comfortably press it, which makes it a bad shortcut.
+    //
+    // Safety should come from choosing a quiet KEY instead. So: at least two
+    // modifiers (below that, a global grab steals a plain key from every app), but
+    // not more than two, because it has to stay pressable one-handed.
+    let n = DEFAULT.modifier_count();
     assert!(
-        DEFAULT.modifier_count() >= 3,
-        "a default with few modifiers will collide and steal a common shortcut: {}",
+        (2..=2).contains(&n),
+        "default should carry exactly 2 modifiers, has {n}: {}",
         DEFAULT.display()
     );
+
+    // Not the paste key. V is the most contested key on the keyboard (Cmd+V,
+    // Cmd+Shift+V paste-and-match, Opt+Cmd+V Finder paste-move, Win+V clipboard
+    // history) — competing there is what forced the modifier stacking above.
+    assert_ne!(
+        DEFAULT.key_char(),
+        'V',
+        "the default must not build on the contested paste key"
+    );
+
     // And it must not be one we ourselves refuse.
     assert_eq!(
         DEFAULT.reserved_reason(),
         None,
-        "the default must not be on our own deny-list"
+        "the default must not be on our own deny-list: {}",
+        DEFAULT.display()
     );
+}
+
+#[test]
+fn the_combinations_we_learned_to_avoid_stay_refused() {
+    // Each of these was a candidate default until it turned out to be taken. Pinning
+    // them stops a future edit quietly reintroducing one.
+    #[cfg(target_os = "macos")]
+    {
+        // Every VoiceOver command is Ctrl+Opt + something.
+        let vo = HotkeySpec::new(true, true, false, false, 'T');
+        assert!(
+            vo.reserved_reason()
+                .is_some_and(|r| r.contains("VoiceOver")),
+            "Ctrl+Opt must stay refused — it is the screen reader's namespace"
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let term = HotkeySpec::new(true, true, false, false, 'T');
+        assert!(
+            term.reserved_reason()
+                .is_some_and(|r| r.contains("terminal")),
+            "Ctrl+Alt+T must stay refused — Linux desktops open a terminal with it"
+        );
+        let tab = HotkeySpec::new(true, false, true, false, 'T');
+        assert!(
+            tab.reserved_reason().is_some_and(|r| r.contains("reopen")),
+            "Ctrl+Shift+T must stay refused — browsers reopen a closed tab with it"
+        );
+    }
 }
 
 #[test]
@@ -124,15 +171,19 @@ fn a_spec_converts_to_the_platform_hotkey_it_describes() {
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 
     // Built independently of the implementation, so this compares against the intent
-    // rather than against itself.
-    let expected = HotKey::new(
-        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META),
-        Code::KeyV,
-    );
+    // rather than against itself. Platform-conditional because the quiet part of the
+    // keyboard differs: macOS must dodge VoiceOver's Ctrl+Opt, and Linux must dodge
+    // Ctrl+Alt+T (open terminal).
+    #[cfg(target_os = "macos")]
+    let expected = HotKey::new(Some(Modifiers::CONTROL | Modifiers::META), Code::KeyT);
+    #[cfg(not(target_os = "macos"))]
+    let expected = HotKey::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyT);
+
     assert_eq!(
         DEFAULT.to_global_hotkey(),
         expected,
-        "the default must bind Ctrl+Alt+Cmd+V, the combination display() advertises"
+        "the default must bind exactly what display() advertises: {}",
+        DEFAULT.display()
     );
 }
 
