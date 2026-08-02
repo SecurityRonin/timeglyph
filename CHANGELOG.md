@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.6](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.5...timeglyph-v0.9.6) - 2026-08-02
+
+### Documentation
+
+- document the Lens clipboard decode as a feature, not a workaround
+
 ## [0.9.5](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.4...timeglyph-v0.9.5) - 2026-07-30
 
 ### Added
