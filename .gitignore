@@ -22,3 +22,10 @@ lcov.info
 # Playground WASM built into docs/ at deploy time (source is wasm/)
 /docs/timeglyph_wasm.js
 /docs/timeglyph_wasm_bg.wasm
+# SQLite sidecars created locally when a corpus database is opened. They are
+# byproduct, not corpus: this repo tracks only the .sqlite itself.
+# NOT safe to generalise fleet-wide — sqlite-forensic deliberately TRACKS
+# .sqlite-wal/-shm/-journal files as CFReDS corpus artifacts, because the WAL
+# holds the un-checkpointed records its carver exists to recover.
+*.sqlite-shm
+*.sqlite-wal
