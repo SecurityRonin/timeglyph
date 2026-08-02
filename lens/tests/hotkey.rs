@@ -114,3 +114,36 @@ fn a_failed_registration_exposes_no_active_binding() {
     assert!(r.active_binding().is_none());
     assert!(Registration::Unsupported("nope").active_binding().is_none());
 }
+
+#[test]
+fn a_spec_converts_to_the_platform_hotkey_it_describes() {
+    // The seam between our platform-neutral spec and what global-hotkey hands the
+    // OS. Getting this wrong binds a DIFFERENT combination than the one shown in the
+    // tooltip — the user presses what the UI told them and nothing happens, which
+    // looks exactly like the silent-shadowing failure we cannot otherwise detect.
+    use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+
+    // Built independently of the implementation, so this compares against the intent
+    // rather than against itself.
+    let expected = HotKey::new(
+        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META),
+        Code::KeyV,
+    );
+    assert_eq!(
+        DEFAULT.to_global_hotkey(),
+        expected,
+        "the default must bind Ctrl+Alt+Cmd+V, the combination display() advertises"
+    );
+}
+
+#[test]
+fn shift_is_carried_into_the_platform_hotkey() {
+    // A modifier dropped in conversion is invisible until someone presses the key.
+    use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+
+    let spec = HotkeySpec::new(false, false, true, true, 'V'); // Shift+Meta+V
+    assert_eq!(
+        spec.to_global_hotkey(),
+        HotKey::new(Some(Modifiers::SHIFT | Modifiers::META), Code::KeyV)
+    );
+}

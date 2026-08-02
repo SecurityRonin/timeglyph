@@ -38,6 +38,12 @@ directories = "6"
 # inside a VM guest, where the host accessibility tree stops at the guest window).
 # Already in the graph via egui-winit, so this adds no package.
 arboard = "3.6.1"
+# Global hotkey for the clipboard decode, so the value can be read without moving
+# the mouse to the 🗐 button. macOS uses Carbon RegisterEventHotKey (no Accessibility
+# grant needed, so the clipboard path stays usable without that permission), Windows
+# RegisterHotKey, Linux X11 XGrabKey. Wayland is NOT supported by any backend — the
+# button remains the path there.
+global-hotkey = "0.8"
 # Cross-platform always-on-top overlay window (the same GUI on Windows + macOS);
 # the platform-specific part is only the element picker.
 # `default_fonts` is LOAD-BEARING: `default-features = false` drops it, and

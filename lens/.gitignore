@@ -1,2 +1,5 @@
 /target
-Cargo.lock
+# Cargo.lock is deliberately NOT ignored. timeglyph-lens ships a [[bin]], and a
+# shipped binary's dependency graph must be reproducible from the committed bytes
+# (ADR-0013). The repo root commits its lock for exactly this reason; the lens was
+# inconsistent with both the root and the fleet standard.
