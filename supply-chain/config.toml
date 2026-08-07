@@ -20,7 +20,7 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 audit-as-crates-io = false
 
 [[exemptions.aho-corasick]]
-version = "1.1.4"
+version = "1.1.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.anstream]]
@@ -68,11 +68,11 @@ version = "0.4.45"
 criteria = "safe-to-run"
 
 [[exemptions.clap]]
-version = "4.6.4"
+version = "4.6.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.clap_builder]]
-version = "4.6.2"
+version = "4.6.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.clap_derive]]
@@ -140,7 +140,7 @@ version = "0.4.3"
 criteria = "safe-to-run"
 
 [[exemptions.hifitime]]
-version = "4.3.0"
+version = "4.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.icu_calendar]]
@@ -271,10 +271,6 @@ criteria = "safe-to-deploy"
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
-[[exemptions.quote]]
-version = "1.0.47"
-criteria = "safe-to-deploy"
-
 [[exemptions.r-efi]]
 version = "5.3.0"
 criteria = "safe-to-run"
@@ -304,7 +300,7 @@ version = "0.10.1"
 criteria = "safe-to-run"
 
 [[exemptions.regex-automata]]
-version = "0.4.16"
+version = "0.4.18"
 criteria = "safe-to-deploy"
 
 [[exemptions.regex-syntax]]
@@ -380,7 +376,7 @@ version = "1.1.10"
 criteria = "safe-to-deploy"
 
 [[exemptions.time]]
-version = "0.3.54"
+version = "0.3.55"
 criteria = "safe-to-run"
 
 [[exemptions.time-core]]
@@ -468,11 +464,11 @@ version = "0.8.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.zerocopy]]
-version = "0.8.55"
+version = "0.8.56"
 criteria = "safe-to-run"
 
 [[exemptions.zerocopy-derive]]
-version = "0.8.55"
+version = "0.8.56"
 criteria = "safe-to-run"
 
 [[exemptions.zerofrom]]

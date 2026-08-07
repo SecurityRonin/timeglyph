@@ -13,16 +13,22 @@ end = "2027-07-28"
 criteria = "safe-to-deploy"
 user-id = 347968 # Albert Hui (h4x0r)
 start = "2026-06-05"
-end = "2027-07-29"
+end = "2027-08-07"
 
 [[trusted.forensicnomicon-core]]
 criteria = "safe-to-deploy"
 user-id = 347968 # Albert Hui (h4x0r)
 start = "2026-06-28"
-end = "2027-07-29"
+end = "2027-08-07"
 
 [[trusted.forensicnomicon-data]]
 criteria = "safe-to-deploy"
 user-id = 347968 # Albert Hui (h4x0r)
 start = "2026-06-28"
-end = "2027-07-29"
+end = "2027-08-07"
+
+[[trusted.safe-read]]
+criteria = "safe-to-deploy"
+user-id = 347968 # Albert Hui (h4x0r)
+start = "2026-07-15"
+end = "2027-08-07"
