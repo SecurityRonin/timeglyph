@@ -1,4 +1,4 @@
-/target
+target/
 
 # mkdocs build output (docs/ is the source; the built site is ephemeral)
 /site
