@@ -25,6 +25,8 @@ jobs:
           # otherwise defaults to musl (crt-static) and fails with E0463.
           targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
       - uses: taiki-e/install-action@a402910a723481c4c80d006d75298c796a9c8695 # cargo-fuzz
         with:
           tool: cargo-fuzz
