@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.8](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.7...timeglyph-v0.9.8) - 2026-08-20
+
+### Fixed
+
+- *(gitignore)* unanchor the target rule so nested cargo projects are ignored
+
 ## [0.9.7](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.6...timeglyph-v0.9.7) - 2026-08-07
 
 ### Added
