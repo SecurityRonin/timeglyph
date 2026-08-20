@@ -12,7 +12,7 @@
 //! the covered data", not "provably an ordinary day".
 //!
 //! Cost: the ~1.5 MB blob is inflated and parsed once, lazily, on the first
-//! lookup (an [`OnceLock`]); the parsed table is then held for the process
+//! lookup (a [`OnceLock`](std::sync::OnceLock)); the parsed table is then held for the process
 //! lifetime (tens of MB). Both are opt-in with the feature.
 
 use std::collections::HashMap;
@@ -43,6 +43,10 @@ fn table() -> &'static Table {
 /// runtime failure means a packaging regression — logged at error level, never a
 /// silent empty table that reads like "no holidays".
 fn load_or_empty<T: Default>(what: &str, decoded: Result<T, String>) -> T {
+    // cov:unreachable: the embedded blobs are decoded and validated in CI, so
+    // this arm cannot run for a build that shipped. Kept — and logged at error
+    // level rather than returning a silent empty table — so a packaging
+    // regression announces itself instead of reading as "no holidays".
     decoded.unwrap_or_else(|e| {
         tracing::error!(table = what, error = %e, "embedded holiday data failed to decode; degrading to empty");
         T::default()

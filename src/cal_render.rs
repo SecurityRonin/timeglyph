@@ -1,4 +1,4 @@
-//! Pure renderers for [`crate::cal`] — turn a [`CalMonth`] into a monospace text
+//! Pure renderers for [`crate::cal`] — turn a [`CalMonth`](crate::cal::CalMonth) into a monospace text
 //! calendar for the terminal. No I/O, no colour side effects here: the grid uses
 //! spaces only (never box-drawing characters, which misalign across fonts), one
 //! marker glyph per day, and an ISO-week gutter. Machine (`--json`) output is the

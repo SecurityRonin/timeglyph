@@ -1,4 +1,4 @@
-//! Bounded carve: slide [`identify_bytes`](crate::interpret::identify_bytes) over
+//! Bounded carve: slide [`crate::interpret::identify_bytes`] over
 //! a blob and report scored hits per offset — the validatable core of "find
 //! timestamps in raw bytes" (a malware config blob, a hex selection, one record).
 //!
@@ -27,7 +27,7 @@ const MAX_CARVE_BYTES: usize = 4096;
 /// Slide [`identify_bytes`] over every offset of `bytes` and return each reading
 /// whose score ≥ `min_score` and whose instant falls in `window` (nanoseconds,
 /// `[lo, hi)`, if given), tagged with its offset. Sorted by offset, then score
-/// descending. At most [`MAX_CARVE_BYTES`] of input is swept.
+/// descending. At most `MAX_CARVE_BYTES` of input is swept.
 #[must_use]
 pub fn carve(bytes: &[u8], min_score: f64, window: Option<(i128, i128)>) -> Vec<CarveHit> {
     let n = bytes.len().min(MAX_CARVE_BYTES);

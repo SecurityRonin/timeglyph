@@ -5,7 +5,7 @@
 //! conversion is **convention-relative**: a UTC instant maps to a lunisolar date
 //! only once a *reference meridian* is fixed (China uses UTC+8; Vietnam UTC+7;
 //! Korea UTC+9), because the calendar assigns civil DAYS at that meridian. So
-//! [`render`] REQUIRES a [`RenderZone`]. The optional `longitude` corrects the
+//! [`render`](crate::lunisolar::render) REQUIRES a [`RenderZone`]. The optional `longitude` corrects the
 //! HOUR pillar to local mean solar time (真太陽時); the equation of time is NOT
 //! applied (stated in the reading's assumptions).
 //!

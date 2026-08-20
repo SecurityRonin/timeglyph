@@ -1,0 +1,231 @@
+# The checks that the shared fleet workflow cannot express, carved out of
+# ci.yml when the commodity jobs moved to it.
+#
+# These are NOT part of `ci / All checks`. A job outside the reusable workflow
+# publishes its own context, so branch protection reaches it only if it is named
+# there explicitly. `MSRV 1.75 (timeglyph-core)` is required alongside the
+# aggregate gate for exactly that reason -- it verifies a published floor that
+# downstreams pin against, and a promise nothing enforces is not a promise.
+#
+# Why each cannot move:
+#
+#   MSRV 1.75 (timeglyph-core)  the shared msrv job builds in-tree, and this
+#                               repo's Cargo.lock is v4, which cargo 1.75 cannot
+#                               parse. Verifying the floor means copying the
+#                               crate out first -- and asserting the resolved
+#                               lock names exactly one package, which is what
+#                               makes "zero dependencies" a checked claim rather
+#                               than a README sentence.
+#   Lens build                  `lens/` is EXCLUDED from the workspace, so no
+#                               `--workspace` invocation reaches it.
+#   lean-build                  asserts clap/csv/tracing-subscriber are ABSENT
+#                               from the `--no-default-features` tree. The shared
+#                               workflow builds; it does not assert absence.
+#   wasm-build                  a wasm32 target build plus an out-of-workspace
+#                               binding crate.
+#   python-wheel                maturin + pytest against the built wheel.
+#   freshness                   `cargo update --locked` on both lockfiles.
+name: extras
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lens:
+    name: Lens build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install GUI build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # mesa-vulkan-drivers supplies the lavapipe software Vulkan ICD. The lens's
+          # offscreen render gate asks wgpu for an adapter, and a runner with no ICD has
+          # none — the gate would panic rather than check anything. The all-black /
+          # tofu frame regression it catches (see Cargo.toml on default_fonts) is
+          # platform-independent and worth running here, so give it an adapter.
+          sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config \
+            mesa-vulkan-drivers
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+      - name: Build lens (compiles + links the platform picker)
+        working-directory: lens
+        run: cargo build --all-targets
+      # Gate the lens's own tests, not just that it compiles. Without this the
+      # clipboard privacy/caption tests and the offscreen render gate are local-only,
+      # so a regression in them reaches main green.
+      - name: Test lens
+        working-directory: lens
+        run: cargo test
+      - name: Clippy lens
+        working-directory: lens
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Rustfmt lens
+        working-directory: lens
+        run: cargo fmt --check
+  msrv:
+    # timeglyph-core declares `rust-version = "1.75"` — a low floor downstreams
+    # (FOUNDATION crates, published low-MSRV parsers) pin against. An MSRV nobody
+    # enforces is an unbacked promise, so this job is what makes the number true.
+    # Raising the floor is near-breaking; do it deliberately, in both places the
+    # assert below names.
+    #
+    # It builds core/ COPIED OUT of the repo, and that is load-bearing rather
+    # than incidental. Two things in the tree would otherwise decide the outcome
+    # instead of the crate: the workspace Cargo.lock is version 4, which cargo
+    # 1.75 refuses to parse at all (it fails before ever reading core/), and
+    # rust-toolchain.toml pins 1.96.0, which would override the toolchain this
+    # job just installed. Outside the repo the crate is its own workspace with
+    # its own lockfile — exactly how a crates.io consumer builds it. Do NOT
+    # "simplify" this by downgrading or deleting the committed v4 lockfile.
+    name: MSRV 1.75 (timeglyph-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.75.0
+      - name: Assert the declared MSRV is the one this job checks
+        run: |
+          declared=$(grep -m1 '^rust-version' core/Cargo.toml | cut -d'"' -f2)
+          if [ "$declared" != "1.75" ]; then
+            echo "core/Cargo.toml declares rust-version = \"$declared\", but this job installs 1.75.0."
+            echo "The two must move together, or the floor stops being verified. Update both."
+            exit 1
+          fi
+      - name: Check + test timeglyph-core on its declared MSRV, standalone
+        run: |
+          dest="$RUNNER_TEMP/timeglyph-core-msrv"
+          cp -R core "$dest"
+          cd "$dest"
+          # `cargo +1.75.0`, not a bare `cargo`: the explicit +toolchain sits at
+          # the top of rustup's precedence chain, above RUSTUP_TOOLCHAIN, a
+          # directory override and any rust-toolchain.toml. A bare `cargo` here
+          # is silently hostage to ambient state — verified locally, where an
+          # exported RUSTUP_TOOLCHAIN=1.96.0 beat `rustup override set 1.75.0`
+          # and compiled the crate on 1.96 while the job looked green.
+          #
+          # Then assert the compiler rather than merely logging it. If the
+          # toolchain ever fails to resolve as intended, a newer cargo would
+          # build this crate happily and the job would pass having verified
+          # nothing — the vacuous-gate shape, same as a coverage report that
+          # contains no records for the file it claims to cover.
+          version=$(cargo +1.75.0 --version)
+          echo "$version"
+          case "$version" in
+            "cargo 1.75.0"*) ;;
+            *) echo "Expected cargo 1.75.0, got: $version — the MSRV was not actually exercised."; exit 1 ;;
+          esac
+          cargo +1.75.0 check --all-targets
+          cargo +1.75.0 test
+      - name: Assert zero dependencies
+        # The zero-dependency promise is what lets a downstream link this crate
+        # for free; enforce it rather than trust the manifest comment. The
+        # lockfile cargo just resolved must name exactly one package — itself.
+        run: |
+          dest="$RUNNER_TEMP/timeglyph-core-msrv"
+          count=$(grep -c '^\[\[package\]\]' "$dest/Cargo.lock")
+          if [ "$count" != "1" ]; then
+            echo "timeglyph-core resolved $count packages; it must resolve exactly 1 (itself):"
+            grep '^name = ' "$dest/Cargo.lock"
+            exit 1
+          fi
+  freshness:
+    # Advisory dependency-freshness gate: fails if the committed Cargo.lock is
+    # stale relative to the requirements (see CLAUDE.md "Dependency Freshness").
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      # BOTH locks. `lens/` is excluded from the workspace and carries its own
+      # Cargo.lock, which this job never looked at -- so it drifted while the
+      # check reported on the root alone and read as covering the repo. A gate
+      # that inspects one of two artifacts is not a gate on the repo.
+      - run: cargo update --locked
+      - run: cargo update --locked --manifest-path lens/Cargo.toml
+  lean-build:
+    # Gate: `cargo add timeglyph --no-default-features` must NOT pull in clap,
+    # csv, or tracing-subscriber.  Those are CLI-only deps; a library consumer
+    # doing `default-features = false` should get a lean build with only the
+    # core engine deps (jiff, thiserror, hex, serde, serde_json, tracing facade).
+    # Enforced now that clap/csv/tracing-subscriber sit behind the `cli`/`csv`
+    # features (a lean library build carries none of them).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+      - name: Lean lib build (no default features)
+        run: cargo build --no-default-features
+      - name: Assert clap / csv / tracing-subscriber absent from lean tree
+        run: |
+          cargo tree --no-default-features -e no-dev --prefix none > /tmp/lean-tree.txt
+          UNWANTED=$(grep -E '^clap |^csv |^tracing-subscriber ' /tmp/lean-tree.txt || true)
+          if [ -n "$UNWANTED" ]; then
+            echo "FAIL: CLI-only deps present in lean (no-default-features) build:"
+            echo "$UNWANTED"
+            exit 1
+          fi
+  wasm-build:
+    # Gate: the core engine must compile to wasm32 so the WASM playground and
+    # browser / CyberChef embeddings stay buildable. Depends on the engine being
+    # pure (no I/O, no clap/csv) and jiff + serde being wasm-compatible.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+      - name: WASM lib build (wasm32-unknown-unknown, no default features)
+        run: cargo build --lib --no-default-features --target wasm32-unknown-unknown
+      - name: WASM playground binding build (wasm32)
+        run: cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown
+  python-wheel:
+    # Gate: the PyO3 Python bindings build a wheel and its tests pass. Publishing
+    # to PyPI is a separate credentialed release step; this proves the wheel is
+    # always buildable and correct (plaso/Timesketch/Jupyter consume it).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install maturin pytest
+      # One v* tag ships the crate AND the wheel, so the wheel version must equal
+      # the crate version. release-plz bumps ONLY the root crate on a release, so an
+      # equality *check* here can never pass on a release PR (bindings/ would still
+      # lag). Instead stamp the bindings from the crate — the single source of truth —
+      # making drift impossible by construction (this closes the 0.3.0-vs-0.4.0 gap
+      # without a guard release-plz can't satisfy). The same stamp runs in the wheel
+      # build (release.yml) so published wheels are always at the crate version.
+      - name: sync bindings version to the crate
+        run: ./bindings/python/sync-version.sh
+      - name: Build + test the Python wheel
+        working-directory: bindings/python
+        run: |
+          maturin build --release
+          pip install target/wheels/*.whl
+          pytest tests/ -q
