@@ -1,2 +1,8 @@
 [toolchain]
 channel = "1.96.0"
+# Required, not optional. `rust-toolchain.toml` OVERRIDES a workflow that asks
+# for the `stable` channel -- a channel ref loses to the toml -- so cargo runs
+# this pinned toolchain while the workflow installed rustfmt and clippy for
+# `stable`. The result is `'cargo-fmt' is not installed for the toolchain
+# '1.96.0'`, which reads as a broken workflow and is a missing declaration here.
+components = ["clippy", "rustfmt"]
