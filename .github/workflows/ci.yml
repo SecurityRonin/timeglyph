@@ -200,10 +200,30 @@ jobs:
         # Pin the version rather than query the GitHub API for "latest": the
         # unauthenticated api.github.com call rate-limits on shared CI IPs, which
         # left VERSION empty and 404'd the download. Bump deliberately.
+        shell: bash
         run: |
+          set -euo pipefail
+          # renovate: datasource=github-releases depName=gitleaks/gitleaks
           VERSION=8.30.1
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
-            | tar xz -C /tmp gitleaks
+          # Retried: a one-off network blip on a shared runner should not fail a
+          # job that has nothing to do with the network. Bounded so it cannot
+          # become a hang either.
+          fetch() {
+            local url="$1" out="$2" attempt=1
+            until curl -sSfL --max-time 120 "$url" -o "$out"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error::download failed on all 3 attempts: $url (endpoint unreachable, not a code failure)"
+                return 1
+              fi
+              echo "::warning::download failed (attempt ${attempt}/3), retrying: $url"
+              rm -f "$out"
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+            done
+          }
+          fetch "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" /tmp/gitleaks.tar.gz
+          tar xz -C /tmp -f /tmp/gitleaks.tar.gz gitleaks
+          /tmp/gitleaks version
       - name: Run gitleaks
         run: /tmp/gitleaks detect --source . --config .gitleaks.toml
 

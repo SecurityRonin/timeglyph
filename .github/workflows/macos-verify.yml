@@ -85,11 +85,27 @@ jobs:
       - name: Assert the published cask expects this bundle name
         run: |
           set -euo pipefail
-          CASK=$(curl -fsSL https://raw.githubusercontent.com/SecurityRonin/homebrew-tap/main/Casks/timeglyph-lens.rb || true)
-          if [ -z "$CASK" ]; then
-            echo "::notice::cask not published yet — skipping cross-repo name check"
-            exit 0
-          fi
+          URL=https://raw.githubusercontent.com/SecurityRonin/homebrew-tap/main/Casks/timeglyph-lens.rb
+          # `|| true` used to collapse two different outcomes into one: a cask
+          # that is not published yet, and a fetch that failed. Both skipped the
+          # check, so a network blip silently reported the mismatch guard as
+          # satisfied. Distinguish them by HTTP status instead, and retry first.
+          attempt=1
+          while :; do
+            CODE=$(curl -sSL --max-time 60 -o /tmp/cask.rb -w '%{http_code}' "$URL" || echo 000)
+            case "$CODE" in
+              200) break ;;
+              404) echo "::notice::cask not published yet — skipping cross-repo name check"; exit 0 ;;
+            esac
+            if [ "$attempt" -ge 3 ]; then
+              echo "::error::could not reach the tap after 3 attempts (last status ${CODE}). Refusing to report this check as satisfied when it never ran."
+              exit 1
+            fi
+            echo "::warning::tap fetch returned ${CODE} (attempt ${attempt}/3), retrying"
+            sleep $((attempt * 15))
+            attempt=$((attempt + 1))
+          done
+          CASK=$(cat /tmp/cask.rb)
           echo "$CASK" | grep -qF 'app "TimeGlyph Lens.app"' \
             || { echo "::error::cask app stanza does not match the built bundle name"; echo "$CASK" | grep -E '^\s*app '; exit 1; }
           echo "OK: cask app stanza matches the built bundle"
