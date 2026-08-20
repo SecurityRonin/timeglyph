@@ -32,9 +32,31 @@ pub const CJK_FONTS: &[&str] = &[
 /// Symbol faces covering the geometric / warning marks the CJK faces lack
 /// (◷ U+25F7, ⚠ U+26A0).
 pub const SYMBOL_FONTS: &[&str] = &[
-    "/System/Library/Fonts/Apple Symbols.ttf", // macOS
-    "C:\\Windows\\Fonts\\seguisym.ttf",        // Windows: Segoe UI Symbol
-    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf", // Linux
+    "/System/Library/Fonts/Apple Symbols.ttf",     // macOS
+    "/System/Library/Fonts/Apple Color Emoji.ttc", // macOS: 🌐 and friends
+    "C:\\Windows\\Fonts\\seguisym.ttf",            // Windows: Segoe UI Symbol
+    "C:\\Windows\\Fonts\\seguiemj.ttf",            // Windows: Segoe UI Emoji
+    // Linux ships symbol coverage across SEVERAL faces, none of them complete:
+    // Symbols2 carries ◷, Symbols carries ⚙, and 🌐 (U+1F310) lives in the emoji
+    // face. DejaVu is the near-universal fallback and covers ⚙ where Noto is
+    // absent. Every readable one is loaded, not just the first -- see below.
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+];
+
+/// One stable key per [`SYMBOL_FONTS`] entry, so a loaded face keeps a name in
+/// the stack (egui registers fallbacks by key). Kept parallel to that list.
+const SYMBOL_KEYS: &[&str] = &[
+    "sym-apple",
+    "sym-apple-emoji",
+    "sym-segoe",
+    "sym-segoe-emoji",
+    "sym-noto2",
+    "sym-noto",
+    "sym-noto-emoji",
+    "sym-dejavu",
 ];
 
 /// Per-script faces for scripts a single CJK face doesn't cover. Linux ships one
@@ -71,8 +93,16 @@ pub fn fallback_fonts() -> Vec<(&'static str, Vec<u8>)> {
     if let Some(bytes) = first_readable(CJK_FONTS) {
         stack.push(("cjk", bytes));
     }
-    if let Some(bytes) = first_readable(SYMBOL_FONTS) {
-        stack.push(("sym", bytes));
+    // EVERY readable symbol face, not just the first. Symbol coverage is spread
+    // across faces that do not subsume one another -- Noto Symbols2 has ◷ but not
+    // ⚙, Noto Symbols has ⚙ but not 🌐, and 🌐 needs the emoji face. Taking only
+    // the first meant a host with Symbols2 installed rendered ⚙ and 🌐 as tofu
+    // while a perfectly good face sat unread beside it. Found by tests/fonts.rs
+    // on a Linux host that has exactly that combination.
+    for (i, path) in SYMBOL_FONTS.iter().enumerate() {
+        if let Ok(bytes) = std::fs::read(path) {
+            stack.push((SYMBOL_KEYS[i], bytes));
+        }
     }
     // Per-script faces (Linux ships these separately; macOS/Windows cover them via
     // the CJK/pan-Unicode face above, so these paths simply won't exist there).

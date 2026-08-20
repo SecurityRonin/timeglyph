@@ -57,6 +57,13 @@ jobs:
           sudo apt-get install -y libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
             libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxcb1-dev pkg-config \
             mesa-vulkan-drivers
+          # Fonts, so tests/fonts.rs can actually CHECK rather than skip. That test
+          # only asserts a symbol class when a face of that class is loaded -- the
+          # alternative is auditing the runner's font packages instead of the code.
+          # Without these the runner has no CJK and no emoji face, so the pillar
+          # labels, era kanji and 🌐 go unchecked on every run, and a chrome that
+          # grew an uncoverable glyph would ship unnoticed.
+          sudo apt-get install -y fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
