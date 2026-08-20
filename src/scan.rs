@@ -1,7 +1,7 @@
 //! Scan arbitrary text for timestamp candidates and decode each into ranked
-//! readings. Three extractors — long digit runs ([`scan_numbers`]),
-//! self-describing datetime strings ([`datetime_candidates`]), and raw-hex tokens
-//! ([`hex_candidates`]) — feed [`interpret`](crate::interpret); [`inspect_text`]
+//! readings. Three extractors — long digit runs ([`scan_numbers`](crate::scan::scan_numbers)),
+//! self-describing datetime strings (`datetime_candidates`), and raw-hex tokens
+//! (`hex_candidates`) — feed [`crate::interpret`]; [`inspect_text`](crate::scan::inspect_text)
 //! ties them together. Pure and GUI-free: it powers both the CLI `scan` command
 //! and the timeglyph-lens overlay.
 
@@ -310,7 +310,7 @@ fn string_readings_opts(
 
 /// Candidate datetime-string substrings of `text`: the whole text, each line,
 /// and each whitespace token (deduped, >= 8 chars). Pure numeric runs are
-/// excluded — those are the integer path's job ([`scan_numbers`]).
+/// excluded — those are the integer path's job ([`scan_numbers`](crate::scan::scan_numbers)).
 fn datetime_candidates(text: &str) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();

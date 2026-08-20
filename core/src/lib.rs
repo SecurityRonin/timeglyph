@@ -24,7 +24,7 @@
 //! makes negative values ordinary — every date before 2001 is one — so only
 //! `0.0` and the non-finite values are rejected.
 //!
-//! This is deliberately **not** the contract of [`timeglyph`]'s scanner, which
+//! This is deliberately **not** the contract of `timeglyph`'s scanner, which
 //! answers a different question — "what *could* this value decode to?" — and so
 //! reports the 1601 instant for a zero FILETIME rather than hiding it. Neither
 //! is a fallback for the other; pick by what your caller does with the answer.

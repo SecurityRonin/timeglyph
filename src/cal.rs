@@ -1,5 +1,5 @@
 //! `timeglyph cal` — a timezone/DST/leap-aware reference calendar. This module is the pure data
-//! builder: [`build_day`] computes the civil + timezone facts of a date (ISO
+//! builder: [`cal::build_day`](crate::cal::build_day) computes the civil + timezone facts of a date (ISO
 //! week, day-of-year, Julian Day Number, Modified JD, Unix midnight, weekday,
 //! per-day UTC offset, DST fold/gap, and — behind the `leap` feature — leap-second
 //! days and GPS week) with zero I/O, so it is fully testable and serialisable.

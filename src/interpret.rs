@@ -1660,7 +1660,7 @@ fn parse_asn1_utctime(s: &str) -> Option<(PosixNs, bool)> {
 
 /// A per-format spec card generated from the registry — epoch, tick unit,
 /// timezone/leap semantics, plausible range, known value sentinels, and the
-/// citation. Registry-derived (a projection of the same [`Format`](crate::Format)
+/// citation. Registry-derived (a projection of the same [`crate::Format`]
 /// the engine decodes with), so it never drifts from the decoder. `None` for an
 /// unknown format id.
 #[must_use]

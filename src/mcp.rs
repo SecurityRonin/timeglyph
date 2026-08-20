@@ -2,7 +2,7 @@
 //! as tools — `identify`, `decode`, `explain` — so an LLM-driven DFIR workflow
 //! gets a cited, reproducible reading instead of a hallucinated epoch conversion
 //! (LLMs are reliably wrong at FILETIME↔Unix arithmetic). The handler is a pure
-//! function; the `mcp` subcommand is a thin stdin→[`handle`]→stdout loop over it.
+//! function; the `mcp` subcommand is a thin stdin→[`handle`](crate::mcp::handle)→stdout loop over it.
 
 use serde_json::{json, Value};
 

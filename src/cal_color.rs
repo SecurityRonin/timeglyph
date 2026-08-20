@@ -28,7 +28,7 @@ pub struct Ink {
 }
 
 impl ColorMode {
-    /// Wrap `text` in the SGR for `ink` at this capability (no-op under [`Mono`]).
+    /// Wrap `text` in the SGR for `ink` at this capability (no-op under [`ColorMode::Mono`]).
     #[must_use]
     pub fn paint(self, ink: Ink, text: &str) -> String {
         let (r, g, b) = ink.rgb;
@@ -40,7 +40,7 @@ impl ColorMode {
         }
     }
 
-    /// Wrap `text` in reverse video (used for `today`); no-op under [`Mono`].
+    /// Wrap `text` in reverse video (used for `today`); no-op under [`ColorMode::Mono`].
     #[must_use]
     pub fn reverse(self, text: &str) -> String {
         if self == ColorMode::Mono {

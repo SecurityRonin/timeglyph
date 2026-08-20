@@ -7,7 +7,7 @@
 //! the 16 packed bit-field layouts — FAT/DOS, exFAT, DTTM, BitDate/BitDec, BCD/GSM
 //! semi-octet, Motorola, Symantec, DVR, NS40/NS40LE, LogTime, Nokia LE, SQL Server
 //! — and builds [`FORMATS`] by wrapping each catalog entry in an engine [`Format`]
-//! with the matching [`crate::PackedCodec`]. The SYSTEMTIME packed and
+//! with the matching `PackedCodec`. The SYSTEMTIME packed and
 //! ULID/UUIDv1/RFC-2822/EXIF string forms live in `interpret.rs`; the leap-aware
 //! GPS/NTP/TAI scales in `leap.rs`. Each packed codec is cross-validated against
 //! the MIT `time-decode` oracle (tests/oracle.rs, tests/catalog.rs), and
