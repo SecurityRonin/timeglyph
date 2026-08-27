@@ -91,7 +91,7 @@ version = "1.0.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.crc32fast]]
-version = "1.5.0"
+version = "1.5.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.csv]]
@@ -169,7 +169,7 @@ criteria = "safe-to-deploy"
 notes = "New to the graph with the ICU4X 2.3 bump, which restructured this stack: icu_collections, icu_locale and icu_locale_data left as these two arrived, so the net exemption count went down. Same publisher (sffc / unicode-org:icu4x-release) as the icu crates already exempted here, and exempted rather than trusted to match how this repo already treats every one of them. Exempted means nobody has read this source."
 
 [[exemptions.icu_provider]]
-version = "2.3.0"
+version = "2.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.is_terminal_polyfill]]
@@ -229,7 +229,7 @@ version = "0.8.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.log]]
-version = "0.4.33"
+version = "0.4.34"
 criteria = "safe-to-deploy"
 
 [[exemptions.memchr]]
@@ -356,14 +356,6 @@ criteria = "safe-to-deploy"
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.syn]]
-version = "2.0.119"
-criteria = "safe-to-deploy"
-
-[[exemptions.syn]]
-version = "3.0.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.thiserror]]
 version = "2.0.20"
 criteria = "safe-to-deploy"
@@ -413,7 +405,7 @@ version = "1.0.24"
 criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
-version = "1.24.1"
+version = "1.25.0"
 criteria = "safe-to-run"
 
 [[exemptions.valuable]]
@@ -489,7 +481,7 @@ version = "0.11.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.zerovec-derive]]
-version = "0.11.5"
+version = "0.11.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.zmij]]
