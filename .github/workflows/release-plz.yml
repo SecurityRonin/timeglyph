@@ -54,9 +54,41 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: release-plz release-pr
+        id: release-pr
         uses: release-plz/action@e8792575c7f2366cf6ff3ccc33ead9ace5b691c7 # v0.5.130
         with:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # release-plz regenerates only the ROOT workspace lock. `lens/` is a
+      # separate workspace (excluded because it is Windows-only) with its own
+      # committed Cargo.lock, so after a version bump it still pins the old
+      # `timeglyph` version (a path dep) and the freshness gate's
+      # `cargo update --locked --manifest-path lens/Cargo.toml` fails on the very
+      # next release. Refresh it on the same release PR branch. lens is not
+      # published, so this touches no cargo-vet attestations. Runs only when a
+      # release PR exists (created or updated).
+      - name: Refresh lens/Cargo.lock on the release PR
+        if: steps.release-pr.outputs.prs != '' && steps.release-pr.outputs.prs != '[]'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          branch="$(printf '%s' '${{ steps.release-pr.outputs.prs }}' | jq -r '.[0].head_branch')"
+          if [ -z "$branch" ] || [ "$branch" = "null" ]; then
+            echo "no release PR branch — nothing to refresh"
+            exit 0
+          fi
+          git fetch origin "$branch"
+          git checkout "$branch"
+          cargo update --manifest-path lens/Cargo.toml
+          if git diff --quiet -- lens/Cargo.lock; then
+            echo "lens/Cargo.lock already current"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add lens/Cargo.lock
+            git commit -m "chore: refresh lens/Cargo.lock behind the version bump"
+            git push origin "HEAD:$branch"
+          fi
