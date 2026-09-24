@@ -170,13 +170,14 @@ fn google_ei_decodes_the_microsecond_varint_after_the_seconds() {
     // Cheeky4n6Monkey / Deed Poll Office example (seconds 1387841717 published
     // there; the µs varint is 616780).
     let (r, _) = ei_reading("ei=tci4UszSJeLN7Ab9xYD4CQ");
-    assert_eq!(r, "2013-12-23T23:35:17.616780Z");
+    // (the renderer drops trailing zeros: .616780 → .61678)
+    assert_eq!(r, "2013-12-23T23:35:17.61678Z");
 }
 
 #[test]
 fn google_ei_says_it_is_the_page_serve_time_not_the_query_time() {
     // unfurl #56: ei was minted when Google served the page the user searched
-    // FROM (session start / previous search), minutes to hours before the query
+    // FROM (session start / previous search), up to hours before the query
     // in the same URL. The reading must carry that caveat, not imply search time.
     let (_, note) = ei_reading("ei=ttqdXsP7IMKZk74Pgv-k6AY");
     assert!(note.contains("not necessarily"), "{note}");
@@ -205,10 +206,13 @@ fn google_ei_matches_only_the_ei_and_sei_parameter_names() {
     let (r, _) =
         ei_reading("https://www.google.com.au/search?q=bananas&gbv=1&sei=BrU2VKfrB9Xz8gX2iILoBA");
     assert!(r.starts_with("2014-10-09T16:17:10"), "{r}");
-    // A parameter merely ENDING in "ei" is a different parameter.
+    // A parameter merely ENDING in "ei" is a different parameter; a value that is
+    // not urlsafe base64, or decodes to under the 4 seconds bytes, is no reading.
     for other in [
         "?gei=ttqdXsP7IMKZk74Pgv-k6AY",
         "x?q=1&rei=ttqdXsP7IMKZk74Pgv-k6AY",
+        "ei=ttqd+sP7",
+        "ei=ttqd",
     ] {
         assert!(
             !interpret::interpret_string(other)

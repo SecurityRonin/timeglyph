@@ -969,13 +969,6 @@ const STRING_FORMATS: &[StringFormat] = &[
         note: "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
     },
     StringFormat {
-        parse: parse_google_ei,
-        id: "google_ei",
-        label: "Google ei= URL parameter (Unix seconds in the first 4 bytes)",
-        spec: "Google ei URL param (urlsafe base64; first 4 bytes little-endian Unix seconds)",
-        note: "parsed as a Google ei= URL parameter — the leading 4 bytes are little-endian Unix seconds",
-    },
-    StringFormat {
         parse: parse_clf,
         id: "clf",
         label: "Apache/nginx common-log-format date",
@@ -1031,10 +1024,12 @@ const STRING_FORMATS: &[StringFormat] = &[
 pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let s = text.trim();
     let mut out = Vec::new();
-    // Dynamic-note formats first (ISO 8601 + ASN.1 + JWT), then the fixed-note registry.
+    // Dynamic-note formats first (ISO 8601 + ASN.1 + JWT + Google ei), then the
+    // fixed-note registry.
     push_iso8601(s, &mut out);
     push_asn1(s, &mut out);
     push_jwt(s, &mut out);
+    push_google_ei(s, &mut out);
     for f in STRING_FORMATS {
         if let Some(instant) = (f.parse)(s) {
             out.push(string_candidate(f.id, f.label, f.spec, instant, f.note));
@@ -1278,23 +1273,73 @@ fn parse_objectid(s: &str) -> Option<PosixNs> {
     Some(PosixNs(secs.checked_mul(Unit::Seconds.nanos())?))
 }
 
-/// Google's `ei=` URL parameter (urlsafe base64): its leading 4 decoded bytes are
-/// a little-endian Unix-seconds count. Decoded ONLY when the `ei=` marker is
-/// present (the format *is* a named URL parameter) — a bare base64-looking token
-/// carries no structural signature, so requiring the marker keeps auto-detect
-/// quiet instead of reading a timestamp out of any 6-char word. `None` if no
-/// `ei=` marker, or the value is under 6 chars / not urlsafe base64.
-fn parse_google_ei(s: &str) -> Option<PosixNs> {
-    // The value after the `ei=` marker, up to the next query delimiter.
-    let val = s.split("ei=").nth(1)?.split(['&', '#']).next()?;
-    // 6 urlsafe-base64 chars = 36 bits; the first 4 bytes are the top 32.
-    let mut acc: u64 = 0;
-    for ch in val.get(..6)?.bytes() {
-        acc = (acc << 6) | u64::from(urlsafe_b64_val(ch)?);
+/// Why an `ei` reading is only as precise as it is: the instant is when Google
+/// served the page the link was minted on, which unfurl issue #56 showed can be
+/// hours before the query carried in the same URL.
+const EI_SERVE_TIME: &str = "this is when Google served the page the link was minted on \
+(session start or a previous search), not necessarily when the query in the same URL was run";
+
+/// Google's `ei=` (and `sei=`) URL parameter: unpadded urlsafe base64 whose
+/// leading 4 bytes are little-endian Unix seconds, followed by protobuf varints —
+/// the first a microsecond count (it reappears as `ved` protobuf 13→1→1 in the
+/// same URL; unfurl renders it the same way). Decoded ONLY as a named query
+/// parameter: a bare base64-looking token carries no structural signature, so
+/// requiring the name keeps auto-detect quiet instead of reading a timestamp out
+/// of any 6-char word. When the microsecond varint is missing or out of range the
+/// reading is whole seconds and its note says so.
+fn push_google_ei(s: &str, out: &mut Vec<Candidate>) {
+    let Some(val) = s
+        .split(['?', '&', '#'])
+        .find_map(|param| match param.split_once('=') {
+            Some(("ei" | "sei", v)) => Some(v),
+            _ => None,
+        })
+    else {
+        return;
+    };
+    let Some(bytes) = b64url_decode(val) else {
+        return;
+    };
+    let Some((secs, rest)) = bytes.split_first_chunk::<4>() else {
+        return;
+    };
+    let secs = i128::from(u32::from_le_bytes(*secs));
+    let micros = ei_micros(rest);
+    let instant = PosixNs(secs * Unit::Seconds.nanos() + i128::from(micros.unwrap_or(0)) * 1_000);
+    let note = if micros.is_some() {
+        format!(
+            "parsed as a Google ei= URL parameter — 4 bytes little-endian Unix seconds + a \
+             varint of microseconds; {EI_SERVE_TIME}"
+        )
+    } else {
+        format!(
+            "parsed as a Google ei= URL parameter — whole seconds only: no microsecond varint \
+             in 0–999999 follows the 4 little-endian Unix-seconds bytes (value truncated?); \
+             {EI_SERVE_TIME}"
+        )
+    };
+    out.push(string_candidate(
+        "google_ei",
+        "Google ei= URL parameter (Unix seconds + microseconds)",
+        "Google ei URL param (urlsafe base64; 4-byte LE Unix seconds, varint µs) — \
+         Cheeky4n6Monkey 2014; unfurl",
+        instant,
+        &note,
+    ));
+}
+
+/// The microsecond varint leading `bytes` (protobuf base-128), or `None` if it
+/// does not terminate or is not below 1 000 000. Any value in range fits in 3
+/// varint bytes (2^21 > 10^6), so a longer varint is out of range by construction.
+fn ei_micros(bytes: &[u8]) -> Option<u32> {
+    let mut v: u32 = 0;
+    for (i, &b) in bytes.iter().take(3).enumerate() {
+        v |= u32::from(b & 0x7F) << (7 * i);
+        if b & 0x80 == 0 {
+            return (v < 1_000_000).then_some(v);
+        }
     }
-    let bytes = ((acc >> 4) as u32).to_be_bytes();
-    let secs = i128::from(u32::from_le_bytes(bytes));
-    Some(PosixNs(secs.checked_mul(Unit::Seconds.nanos())?))
+    None
 }
 
 /// One urlsafe-base64 character (`A–Z a–z 0–9 - _`) to its 6-bit value; `None`
