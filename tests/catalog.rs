@@ -148,6 +148,77 @@ fn google_ei_url_parameter_first_4_bytes_le_unix_seconds() {
     );
 }
 
+/// The `google_ei` reading of `input`: its rendered instant and assumption text.
+fn ei_reading(input: &str) -> (String, String) {
+    let c = interpret::interpret_string(input)
+        .into_iter()
+        .find(|c| c.format_id == "google_ei")
+        .unwrap_or_else(|| panic!("no google_ei candidate for {input:?}"));
+    (c.rendered.unwrap_or_default(), c.assumptions.join(" "))
+}
+
+#[test]
+fn google_ei_decodes_the_microsecond_varint_after_the_seconds() {
+    // Real URL from unfurl issue #56 (Rasmus-Riis, 2020). After the 4-byte LE
+    // seconds comes a protobuf varint of microseconds (540099). Corroborated by a
+    // separate Google field in the SAME URL: `ved` protobuf 13→1→1 carries
+    // 1587403446540099 µs, and unfurl renders the same µs value.
+    let (r, note) =
+        ei_reading("https://www.google.com/search?ei=ttqdXsP7IMKZk74Pgv-k6AY&q=third+search");
+    assert_eq!(r, "2020-04-20T17:24:06.540099Z");
+    assert!(note.contains("microsecond"), "{note}");
+    // Cheeky4n6Monkey / Deed Poll Office example (seconds 1387841717 published
+    // there; the µs varint is 616780).
+    let (r, _) = ei_reading("ei=tci4UszSJeLN7Ab9xYD4CQ");
+    assert_eq!(r, "2013-12-23T23:35:17.616780Z");
+}
+
+#[test]
+fn google_ei_says_it_is_the_page_serve_time_not_the_query_time() {
+    // unfurl #56: ei was minted when Google served the page the user searched
+    // FROM (session start / previous search), minutes to hours before the query
+    // in the same URL. The reading must carry that caveat, not imply search time.
+    let (_, note) = ei_reading("ei=ttqdXsP7IMKZk74Pgv-k6AY");
+    assert!(note.contains("not necessarily"), "{note}");
+}
+
+#[test]
+fn google_ei_without_a_usable_microsecond_field_says_so() {
+    // Synthetic (python: urlsafe_b64encode(pack('<I',1587403446)+tail)):
+    // tail 0xC3 (varint never terminates) and tail C0 84 3D (= 1_000_000, not a
+    // microsecond count) — both fall back to whole seconds and SAY so, rather
+    // than inventing a fraction or rendering a bare second as if it were exact.
+    for tok in ["ttqdXsM", "ttqdXsCEPQ", "Yx1sYw"] {
+        let (r, note) = ei_reading(&format!("ei={tok}"));
+        assert!(r.ends_with(":06Z") || tok == "Yx1sYw", "{tok}: {r}");
+        assert!(note.contains("whole seconds"), "{tok}: {note}");
+    }
+    // 999_999 is the largest valid microsecond value.
+    let (r, _) = ei_reading("ei=ttqdXr-EPQ");
+    assert_eq!(r, "2020-04-20T17:24:06.999999Z");
+}
+
+#[test]
+fn google_ei_matches_only_the_ei_and_sei_parameter_names() {
+    // `sei=` carries the same encoding (Cheeky4n6Monkey 2014: sei and ei from one
+    // session share their leading bytes).
+    let (r, _) =
+        ei_reading("https://www.google.com.au/search?q=bananas&gbv=1&sei=BrU2VKfrB9Xz8gX2iILoBA");
+    assert!(r.starts_with("2014-10-09T16:17:10"), "{r}");
+    // A parameter merely ENDING in "ei" is a different parameter.
+    for other in [
+        "?gei=ttqdXsP7IMKZk74Pgv-k6AY",
+        "x?q=1&rei=ttqdXsP7IMKZk74Pgv-k6AY",
+    ] {
+        assert!(
+            !interpret::interpret_string(other)
+                .iter()
+                .any(|c| c.format_id == "google_ei"),
+            "{other} is not an ei= parameter"
+        );
+    }
+}
+
 #[test]
 fn apache_clf_datetime() {
     // Apache/nginx common-log-format date, with and without the surrounding
