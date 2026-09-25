@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.9](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.8...timeglyph-v0.9.9) - 2026-09-25
+
+### Added
+
+- *(interpret)* decode Google ei microseconds, and caveat its meaning (GREEN)
+
 ## [0.9.8](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.7...timeglyph-v0.9.8) - 2026-08-20
 
 ### Fixed
