@@ -2,8 +2,9 @@
 title: "Identifiers with embedded timestamps — Snowflake, UUID, ULID, ObjectId"
 description: >-
   Forensic reference for IDs that embed a creation time: Twitter/X and Discord
-  Snowflakes, UUID v1/v6/v7 (RFC 9562), ULID, MongoDB ObjectId, KSUID, and
-  Sonyflake — with bit layouts, epochs, extraction formulas, and worked examples.
+  Snowflakes, UUID v1/v6/v7 (RFC 9562), ULID, MongoDB ObjectId, KSUID,
+  Sonyflake, and Google's ei= search parameter — with bit layouts, epochs,
+  extraction formulas, and worked examples.
 ---
 
 # Identifiers with embedded timestamps
@@ -101,6 +102,33 @@ default epoch **2014-09-01** (`1409529600000` ms). Source:
   of the host's private IPv4 address (partial host leak). Epoch, time unit, and bit split
   are configurable — confirm against the generating code.
 
+## Google `ei=` search parameter {#google-ei}
+
+Google search URLs carry an `ei` (and sometimes `sei`) parameter: unpadded urlsafe
+base64 whose first **4 bytes are little-endian Unix seconds**, followed by protobuf
+varints — the first a **microsecond** count. Sources:
+[Cheeky4n6Monkey, “Google-ei’d ?!” (2014)](https://cheeky4n6monkey.blogspot.com/2014/10/google-eid.html),
+[Kevin Jones, Deed Poll Office (2013)](https://deedpolloffice.com/blog/articles/decoding-ei-parameter),
+[unfurl `parse_google.py`](https://github.com/obsidianforensics/unfurl/blob/main/unfurl/parsers/parse_google.py).
+Google does not document the layout; it is reverse-engineered.
+
+```text
+$ timeglyph 'https://www.google.com/search?ei=ttqdXsP7IMKZk74Pgv-k6AY&q=x'
+  [1.00] google_ei        2020-04-20T17:24:06.540099Z
+```
+
+- **Microseconds:** in that URL (from [unfurl #56](https://github.com/obsidianforensics/unfurl/issues/56)),
+  the `ved` parameter carries `1587403446540099` µs in its protobuf field 13→1→1 —
+  the same instant as ei's seconds + microsecond varint. unfurl reports the same value.
+  If the varint is missing or not below 1 000 000, timeglyph reports whole seconds and
+  says so in the reading.
+- **Gotcha:** ei is when Google **served the page the link was minted on** (session
+  start or a previous search), not necessarily when the query in the same URL was run.
+  The unfurl #56 reporter saw ei values “hours apart from the actual search”.
+- **Recognised only as a named parameter** (`ei=` / `sei=`, at the start or after
+  `?`, `&`, `#`). A bare token has no structure to detect it by, so pass it as
+  `ei=<value>`.
+
 ## Cross-scheme summary
 
 | Scheme | TS bits | Resolution | Epoch (UTC) | Extraction core |
@@ -113,6 +141,7 @@ default epoch **2014-09-01** (`1409529600000` ms). Source:
 | MongoDB ObjectId | 32 | 1 s | 1970-01-01 | first 4 bytes (BE) |
 | KSUID | 32 | 1 s | 2014-05-13 | `BE4bytes + 1400000000` |
 | Sonyflake | 39 | 10 ms | 2014-09-01 | `(id>>24)*10 + epoch` |
+| Google `ei=` | 32 + varint | 1 µs | 1970-01-01 | first 4 bytes (LE) + µs varint |
 
 **Highest attribution value:** UUIDv1/v6 `node` (often real MAC); Sonyflake machine id
 (private IP low bits); ObjectId per-process random (legacy: machine-id + PID).

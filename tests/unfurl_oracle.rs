@@ -63,3 +63,24 @@ fn unfurl_agrees_on_discord_snowflake() {
         "unfurl vs timeglyph discord (ms)"
     );
 }
+
+#[test]
+fn unfurl_agrees_on_google_ei_to_the_microsecond() {
+    // unfurl joins ei's seconds and microsecond varint into one `ei Timestamp:`
+    // in Unix MICROseconds (the helper's name notwithstanding). Real URL from
+    // unfurl issue #56.
+    let url = "https://www.google.com/search?ei=ttqdXsP7IMKZk74Pgv-k6AY&q=x";
+    let Some(us) = unfurl_timestamp_ms(url) else {
+        eprintln!("unfurl unavailable — skipping (install dfir-unfurl to run)");
+        return;
+    };
+    let mine = timeglyph::interpret::interpret_string(url)
+        .into_iter()
+        .find(|c| c.format_id == "google_ei")
+        .expect("timeglyph google_ei candidate");
+    assert_eq!(
+        i128::from(us),
+        mine.instant.0 / 1_000,
+        "unfurl vs timeglyph google_ei (µs)"
+    );
+}
