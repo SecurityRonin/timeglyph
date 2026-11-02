@@ -607,18 +607,24 @@ fn fold_gap_note(
     if !matches!(tz, timeglyph::TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
         return None;
     }
+    // Name the cause: a fold or gap can come from a standard-offset move
+    // (Venezuela 2007) as well as from daylight saving, and calling the former
+    // "DST" asserts a transition that never happened.
+    let cause = match timeglyph::ambiguity_cause(instant, zone) {
+        Some(timeglyph::AmbiguityCause::StandardOffset) => "standard-offset change",
+        _ => "DST",
+    };
     match timeglyph::resolve_local(instant, zone) {
         timeglyph::LocalResolution::Fold { earlier, later } => Some(format!(
-            "if this wall-clock is in the chosen zone: AMBIGUOUS (DST fall-back fold) \
+            "if this wall-clock is in the chosen zone: AMBIGUOUS ({cause} fall-back fold) \
              — two instants: {} / {}",
             earlier.to_rfc3339().unwrap_or_default(),
             later.to_rfc3339().unwrap_or_default()
         )),
-        timeglyph::LocalResolution::Gap => Some(
-            "if this wall-clock is in the chosen zone: NONEXISTENT (DST spring-forward \
+        timeglyph::LocalResolution::Gap => Some(format!(
+            "if this wall-clock is in the chosen zone: NONEXISTENT ({cause} spring-forward \
              gap) — a correctly-clocked device in this zone cannot have written it"
-                .to_string(),
-        ),
+        )),
         timeglyph::LocalResolution::Unique(_) => None,
     }
 }

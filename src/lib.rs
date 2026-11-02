@@ -72,7 +72,7 @@ pub mod localzone;
 /// MCP (Model Context Protocol) stdio JSON-RPC handler — expose the engine as
 /// tools for LLM-driven DFIR (cited readings, not hallucinated epoch math).
 pub mod mcp;
-pub use localzone::{resolve_local, LocalResolution};
+pub use localzone::{ambiguity_cause, resolve_local, AmbiguityCause, LocalResolution};
 /// Leap-aware time scales (GPS/TAI/NTP), behind the `leap` feature. Kept
 /// separate from the POSIX [`PosixNs`] spine (ADR 0003).
 #[cfg(feature = "leap")]

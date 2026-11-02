@@ -620,6 +620,14 @@ fn gsm_offset_ns(v: u64) -> Result<i128, ChronoError> {
     let negative = low & 0b1000 != 0;
     let tens = i32::from(low & 0b0111);
     let units = i32::from(octet >> 4);
+    // Both digits are BCD, so a nibble above 9 is not a digit at all. Rejecting
+    // it keeps 0xA0 from decoding as a plausible-looking 10 quarter-hours.
+    if tens > 9 || units > 9 {
+        return Err(ChronoError::OutOfRange {
+            what: "GSM timezone (non-BCD digit)",
+            value: i128::from(octet),
+        });
+    }
     let quarters = tens * 10 + units;
     // 79 quarter-hours is the largest representable magnitude (19h45m); anything
     // above it is a malformed field, not a real offset.

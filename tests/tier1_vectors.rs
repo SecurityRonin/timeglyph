@@ -44,6 +44,22 @@ fn gsm_scts_negative_offset() {
 }
 
 #[test]
+fn gsm_rejects_a_malformed_timezone_octet() {
+    // The tz octet is BCD: each digit must be 0-9. A units nibble of 0xA-0xF is
+    // not a digit, so the octet is malformed and must be rejected rather than
+    // read as a number (0xA0 would otherwise decode as 10 quarter-hours).
+    let f = format("gsm").unwrap();
+    assert!(
+        f.decode_int(0x0070_4021_3252_24A0).is_err(),
+        "units nibble 0xA is not a BCD digit"
+    );
+    assert!(
+        f.decode_int(0x0070_4021_3252_24F0).is_err(),
+        "units nibble 0xF is not a BCD digit"
+    );
+}
+
+#[test]
 fn gsm_scts_zero_offset_is_utc() {
     // tz octet 0x00 -> +0 quarter-hours: the wall clock IS UTC.
     assert_vector("gsm", 0x0070_4021_3252_2400, "2007-04-12T23:25:42");

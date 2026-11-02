@@ -203,6 +203,24 @@ fn offset_end_is_sampled_just_before_the_next_midnight() {
 }
 
 #[test]
+fn a_date_that_never_existed_reports_no_offsets_and_no_transition() {
+    // Samoa skipped 2011-12-30 entirely (it moved across the date line). The day
+    // has zero length, so it has no start offset, no end offset and no
+    // transition — reporting `+14:00 .. -10:00` combines the two sides of a date
+    // that never occurred.
+    let d = zoned(2011, 12, 30, "Pacific/Apia");
+    assert_eq!(d.wall_day_seconds, 0, "the date was skipped");
+    assert_eq!(
+        d.offset_start_seconds, d.offset_end_seconds,
+        "a zero-length day has one offset, not two"
+    );
+    assert!(
+        d.dst_transition.is_none(),
+        "no transition occurs within a day that does not exist"
+    );
+}
+
+#[test]
 fn a_dst_flag_flip_with_no_offset_change_is_not_a_fold() {
     // zdump -v Europe/Lisbon:
     //   Sun Sep 27 00:59:59 1992 UT = Sun Sep 27 01:59:59 1992 WEST isdst=1 gmtoff=3600

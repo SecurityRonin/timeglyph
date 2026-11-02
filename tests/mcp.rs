@@ -78,6 +78,28 @@ fn identify_keeps_the_utc_designator_for_a_utc_anchored_value() {
 }
 
 #[test]
+fn decode_does_not_stamp_a_naive_wall_clock_as_utc() {
+    // Same defect as `identify`, on the `decode` tool: FAT is a zone-less
+    // wall-clock, so a `Z` asserts an anchor the value never carried.
+    let req = r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"decode","arguments":{"format":"fat","value":"1399262144"}}}"#;
+    let v = json(&handle(req).unwrap());
+    let text = v["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        text, "2021-11-07T01:30:00",
+        "no zone designator on a naive value"
+    );
+}
+
+#[test]
+fn decode_keeps_the_utc_designator_for_a_utc_anchored_format() {
+    // Control: Unix seconds are UTC-anchored.
+    let req = r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"decode","arguments":{"format":"unix","value":"1577836800"}}}"#;
+    let v = json(&handle(req).unwrap());
+    let text = v["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(text, "2020-01-01T00:00:00Z");
+}
+
+#[test]
 fn tools_call_identify_returns_the_readings_matching_the_library() {
     let req = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"identify","arguments":{"value":"1577836800"}}}"#;
     let v = json(&handle(req).unwrap());

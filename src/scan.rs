@@ -299,15 +299,21 @@ fn dst_note(tz: TzSemantics, instant: PosixNs, zone: &RenderZone) -> Option<Stri
     if !matches!(tz, TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
         return None;
     }
+    // Name the cause: a fold or gap can come from a standard-offset move as well
+    // as from daylight saving.
+    let cause = match crate::ambiguity_cause(instant, zone) {
+        Some(crate::AmbiguityCause::StandardOffset) => "standard-offset change",
+        _ => "DST",
+    };
     match crate::resolve_local(instant, zone) {
         crate::LocalResolution::Fold { earlier, later } => Some(format!(
-            "DST fall-back fold: this wall time occurred twice ({} / {})",
+            "{cause} fall-back fold: this wall time occurred twice ({} / {})",
             earlier.to_rfc3339().unwrap_or_default(),
             later.to_rfc3339().unwrap_or_default()
         )),
-        crate::LocalResolution::Gap => {
-            Some("DST spring-forward gap: this wall time never existed in the zone".to_string())
-        }
+        crate::LocalResolution::Gap => Some(format!(
+            "{cause} spring-forward gap: this wall time never existed in the zone"
+        )),
         crate::LocalResolution::Unique(_) => None,
     }
 }

@@ -854,10 +854,19 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
     // midnight, not the one AT it: a transition landing exactly on that midnight
     // belongs to the day that starts there, and sampling `next` would attribute
     // it to this day as well (and make a 24 h day report a changed offset).
-    let end_instant = instant_before(next);
-    let offset_end_seconds = tz.to_offset(end_instant).seconds();
     let wall_day_seconds = next.as_second() - start.as_second();
-    let dst_transition = transition_in_day(start, next, &tz);
+    // A date the zone skipped entirely (Samoa 2011-12-30, when it crossed the
+    // date line) has zero length: `start == next`, so there is no "end" to
+    // sample and no transition within it. Reporting an end offset would combine
+    // the two sides of a day that never occurred.
+    let (offset_end_seconds, dst_transition) = if wall_day_seconds == 0 {
+        (offset_start_seconds, None)
+    } else {
+        (
+            tz.to_offset(instant_before(next)).seconds(),
+            transition_in_day(start, next, &tz),
+        )
+    };
 
     // The reference instant for the astronomical/Chinese overlays (the given time
     // in the zone; compatible disambiguation resolves a DST gap, never errors).

@@ -10,6 +10,45 @@
 
 use crate::{PosixNs, RenderZone};
 
+/// Whether the transition that makes a wall time ambiguous was a daylight-saving
+/// change or a standard-offset move.
+///
+/// A fold or gap can be produced by either: Venezuela's 2007 move from -04:00 to
+/// -04:30 repeats a half hour of wall time without any daylight saving being
+/// involved. The ambiguity is the same, but attributing it to DST would assert a
+/// transition that never happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmbiguityCause {
+    /// The tzdb's DST flag flipped across the transition.
+    DaylightSaving,
+    /// The offset moved but the DST flag did not: a jurisdiction redefining its
+    /// standard offset.
+    StandardOffset,
+}
+
+/// Classify the transition nearest `instant` in `zone` by whether it was a
+/// daylight-saving change. `None` for UTC / fixed zones, which never transition.
+///
+/// Looks at the transition at or before `instant` and compares the tzdb's DST
+/// flag on each side of it.
+#[must_use]
+pub fn ambiguity_cause(instant: PosixNs, zone: &RenderZone) -> Option<AmbiguityCause> {
+    let tz = match zone {
+        RenderZone::Utc | RenderZone::Fixed(_) => return None,
+        RenderZone::Named(tz) => tz,
+    };
+    let ts = jiff::Timestamp::from_nanosecond(instant.0).ok()?;
+    // The transition governing this instant is the last one at or before it.
+    let t = tz.preceding(ts).next()?;
+    let before = jiff::Timestamp::from_nanosecond(t.timestamp().as_nanosecond() - 1).ok()?;
+    let was_dst = tz.to_offset_info(before).dst();
+    Some(if was_dst == t.dst() {
+        AmbiguityCause::StandardOffset
+    } else {
+        AmbiguityCause::DaylightSaving
+    })
+}
+
 /// How a `LocalNaive` wall time resolves to an absolute instant in a given zone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalResolution {

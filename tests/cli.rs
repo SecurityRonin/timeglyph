@@ -732,6 +732,20 @@ fn an_exif_wall_clock_is_not_shifted_as_if_it_were_utc() {
 }
 
 #[test]
+fn a_fold_caused_by_a_standard_offset_change_is_not_called_dst() {
+    // Venezuela moved its standard offset on 2007-12-09 (-04 -> -04:30) with no
+    // daylight-saving change (zdump: isdst=0 on both sides). The wall time 02:45
+    // IS ambiguous, so the note must still appear — but calling it a "DST
+    // fall-back fold" asserts a DST transition that never happened.
+    let (out, _) = run(&["decode", "hfs", "3280013100", "--tz", "America/Caracas"]);
+    assert!(out.contains("AMBIGUOUS"), "the ambiguity is real: {out}");
+    assert!(
+        !out.contains("DST"),
+        "but it is not a DST transition: {out}"
+    );
+}
+
+#[test]
 fn decode_wave2_byte_formats_via_cli() {
     // Oracle DATE [120,120,1,1,1,1,1] = 2020-01-01 00:00:00.
     let (out, code) = run(&["decode", "oracle_date", "78780101010101"]);
