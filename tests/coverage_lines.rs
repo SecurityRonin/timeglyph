@@ -311,17 +311,19 @@ fn a_common_log_date_needs_a_numeric_offset_and_exactly_three_date_fields() {
 }
 
 #[test]
-fn a_pdf_date_without_an_offset_is_read_as_utc() {
+fn a_pdf_date_without_an_offset_is_a_wall_clock() {
     let pdf = |s: &str| {
         interpret::interpret_string(s)
             .into_iter()
             .find(|c| c.format_id == "pdf_date")
             .and_then(|c| c.rendered)
     };
-    // ISO 32000-1 §7.9.4 allows the offset to be omitted or given as `Z`.
+    // ISO 32000-1 §7.9.4: an ABSENT offset means the UTC relationship is
+    // unknown, so the value is a wall-clock and carries no `Z`. An explicit `Z`
+    // is a real UTC anchor.
     assert_eq!(
         pdf("D:20200101120000").as_deref(),
-        Some("2020-01-01T12:00:00Z")
+        Some("2020-01-01T12:00:00")
     );
     assert_eq!(
         pdf("D:20200101120000Z").as_deref(),
@@ -613,12 +615,14 @@ fn a_udf_timestamp_west_of_utc_sign_extends_its_12_bit_offset() {
         Some("2020-01-01T14:00:00Z"),
         "a negative offset is subtracted, not added"
     );
-    // The same fields with "no timezone" (0x800) stay as read.
-    b[0] = 0x00;
+    // ECMA-167 §1/7.3.1: the UNSPECIFIED sentinel is -2047 (0x801), not 0x800.
+    // 0x800 is a real offset of -2048 minutes, so it must be applied.
+    b[0] = 0x01;
     b[1] = 0x08;
     assert_eq!(
         timeglyph::compose::udf(b).unwrap().to_rfc3339().as_deref(),
-        Some("2020-01-01T12:00:00Z")
+        Some("2020-01-01T12:00:00Z"),
+        "0x801 is the unspecified sentinel: the fields stay as read"
     );
 }
 

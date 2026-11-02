@@ -1068,15 +1068,6 @@ const STRING_FORMATS: &[StringFormat] = &[
         date_only: false,
     },
     StringFormat {
-        parse: parse_pdf_date,
-        id: "pdf_date",
-        label: "PDF metadata date (D:YYYYMMDDHHmmSS)",
-        spec: "ISO 32000-1 §7.9.4 (PDF date string)",
-        note: "parsed as a PDF metadata date (offset normalised to UTC)",
-        tz: TzSemantics::Utc,
-        date_only: false,
-    },
-    StringFormat {
         parse: parse_rfc2822,
         id: "rfc2822",
         label: "RFC 2822 / email date",
@@ -1121,6 +1112,7 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let mut out = Vec::new();
     // Dynamic-note formats first (ISO 8601 + ASN.1 + JWT), then the fixed-note registry.
     push_iso8601(s, &mut out);
+    push_pdf(s, &mut out);
     push_dmtf(s, &mut out);
     push_asn1(s, &mut out);
     push_jwt(s, &mut out);
@@ -1227,6 +1219,39 @@ fn push_iso8601(s: &str, out: &mut Vec<Candidate>) {
             false,
         ));
     }
+}
+
+/// PDF metadata date, whose tz semantics depend on the input: an explicit `Z` or
+/// `±HH'mm'` gives a real offset, but an ABSENT one means the UTC relationship is
+/// unknown (ISO 32000-1 §7.9.4), so the value is a wall-clock.
+fn push_pdf(s: &str, out: &mut Vec<Candidate>) {
+    let Some(instant) = parse_pdf_date(s) else {
+        return;
+    };
+    let body = s.trim().strip_prefix("D:").unwrap_or_default();
+    let digits: String = body.chars().take_while(char::is_ascii_digit).collect();
+    let rest = &body[digits.len()..];
+    let has_offset = rest.starts_with('Z') || rest.starts_with('+') || rest.starts_with('-');
+    let (note, tz) = if has_offset {
+        (
+            "parsed as a PDF metadata date (offset normalised to UTC)",
+            TzSemantics::Utc,
+        )
+    } else {
+        (
+            "parsed as a PDF metadata date; NO offset is stored, so this is a wall-clock",
+            TzSemantics::LocalNaive,
+        )
+    };
+    out.push(string_candidate(
+        "pdf_date",
+        "PDF metadata date (D:YYYYMMDDHHmmSS)",
+        "ISO 32000-1 §7.9.4 (PDF date string)",
+        instant,
+        note,
+        tz,
+        false,
+    ));
 }
 
 /// DMTF CIM_DATETIME, whose tz semantics depend on the input: `±UUU` is a real

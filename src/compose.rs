@@ -176,8 +176,11 @@ pub fn udf(b: [u8; 12]) -> Result<PosixNs, ChronoError> {
     let sub_ns =
         i128::from(b[9]) * 10_000_000 + i128::from(b[10]) * 100_000 + i128::from(b[11]) * 1_000;
     let tz12 = (u16::from(b[0]) | (u16::from(b[1]) << 8)) & 0x0FFF;
-    // Sign-extend the 12-bit timezone (minutes east of UTC); 0 and 0x800 = no tz.
-    let tz_min = if tz12 == 0 || tz12 == 0x800 {
+    // Sign-extend the 12-bit timezone (minutes east of UTC). ECMA-167 §1/7.3.1:
+    // the UNSPECIFIED sentinel is -2047 (0x801), not 0x800 — treating 0x800 as
+    // "no timezone" invented a -2048-minute offset and shifted the value by
+    // 34h07m. 0 is a genuine UTC offset.
+    let tz_min = if tz12 == 0x801 {
         0
     } else if tz12 & 0x800 != 0 {
         i32::from(tz12) - 0x1000

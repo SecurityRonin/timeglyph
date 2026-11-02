@@ -56,20 +56,30 @@ pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCau
             tz.following(earlier).next()?.timestamp().as_nanosecond()
         }
         jiff::tz::AmbiguousOffset::Gap { .. } => {
-            // The gap's transition is the one that SKIPPED this wall time. It
-            // lies at or before the wall time re-expressed at the pre-transition
-            // offset, so search from a day earlier and take the first transition
-            // whose jump spans the wall time. Searching from `ts` (the wall time
-            // read as UTC) can land past the real transition — Moscow's 1992
-            // +02 -> +03 jump is at 00:00Z, before the 02:30 the wall time reads
-            // as, so a forward search from `ts` skipped it entirely.
-            let probe =
-                jiff::Timestamp::from_nanosecond(ts.as_nanosecond() - 86_400_000_000_000).ok()?;
-            tz.following(probe)
-                .take_while(|t| t.timestamp() <= ts)
-                .last()?
-                .timestamp()
-                .as_nanosecond()
+            // The gap's transition is the one that SKIPPED this wall time. The
+            // skipped range is expressed in LOCAL time (Caracas 2016-05-01 skips
+            // 02:30-03:00 local, which is 07:00-07:30Z), so compare the wall
+            // time's civil fields against the local range either side of each
+            // candidate transition — not against the UTC surrogate.
+            let day = 86_400_000_000_000_i128;
+            let probe = jiff::Timestamp::from_nanosecond(ts.as_nanosecond() - day).ok()?;
+            let limit = jiff::Timestamp::from_nanosecond(ts.as_nanosecond() + day).ok()?;
+            let mut found = None;
+            for t in tz.following(probe) {
+                if t.timestamp() > limit {
+                    break;
+                }
+                let prev =
+                    jiff::Timestamp::from_nanosecond(t.timestamp().as_nanosecond() - 1).ok()?;
+                // Local wall time immediately before and after the jump.
+                let before_local = tz.to_offset(prev).to_datetime(prev);
+                let after_local = t.offset().to_datetime(t.timestamp());
+                if civil > before_local && civil < after_local {
+                    found = Some(t.timestamp().as_nanosecond());
+                    break;
+                }
+            }
+            found?
         }
         jiff::tz::AmbiguousOffset::Unambiguous { .. } => return None,
     };

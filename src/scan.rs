@@ -45,6 +45,9 @@ pub struct Reading {
     /// forms (EXIF, ASN.1) are not in the numeric registry and would otherwise
     /// default to `Utc` and lose their warning.
     pub tz: TzSemantics,
+    /// True when the source carried a date but no time of day, so its midnight
+    /// is synthesised and a DST gap there is not evidence about the source.
+    pub date_only: bool,
 }
 
 /// The weekday name of a reading's *displayed* value — parsed from its leading
@@ -292,8 +295,9 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
         instant: c.instant,
         score: c.score,
         components: c.components,
-        dst_note: dst_note(tz, c.instant, zone),
+        dst_note: dst_note(tz, c.instant, zone, c.date_only),
         tz,
+        date_only: c.date_only,
     }
 }
 
@@ -307,15 +311,25 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
 /// without the source text.
 #[must_use]
 pub fn dst_note_for(r: &Reading, zone: &RenderZone) -> Option<String> {
-    dst_note(r.tz, r.instant, zone)
+    dst_note(r.tz, r.instant, zone, r.date_only)
 }
 
 /// The DST fold/gap note for a naive wall-clock read in a named zone, or `None`
 /// when the wall time is unambiguous (or the zone is UTC / a fixed offset, which
 /// never fold or gap). Mirrors the CLI's `fold_gap_note` so the overlay and the
 /// console cannot disagree about whether a reading is ambiguous.
-fn dst_note(tz: TzSemantics, instant: PosixNs, zone: &RenderZone) -> Option<String> {
+fn dst_note(
+    tz: TzSemantics,
+    instant: PosixNs,
+    zone: &RenderZone,
+    date_only: bool,
+) -> Option<String> {
     if !matches!(tz, TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
+        return None;
+    }
+    // A date-only value's midnight is synthesised, so a gap there says nothing
+    // about the source: the date itself plainly exists.
+    if date_only {
         return None;
     }
     // Name the cause: a fold or gap can come from a standard-offset move as well
@@ -481,9 +495,13 @@ pub fn inspect_text_opts(
         .collect();
     let use_neighbours = int_values.len() >= 3;
 
+    // The same token appearing twice in the text is ONE value: emit one record
+    // per distinct token, or a repeated value doubles the per-value limit.
+    let mut seen_numbers: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut out: Vec<NumberReadings> = numbers
         .into_iter()
         .enumerate()
+        .filter(|(_, number)| seen_numbers.insert(number.clone()))
         .filter_map(|(i, number)| {
             // Integer path: use context when column-like; float/other: bare path.
             let candidates = if let Ok(value) = number.parse::<i64>() {

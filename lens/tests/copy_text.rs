@@ -22,6 +22,7 @@ fn reading(rendered: &str, instant_ns: i128, local: bool) -> Reading {
         components: vec![],
         dst_note: None,
         tz: timeglyph::TzSemantics::Utc,
+        date_only: false,
     }
 }
 

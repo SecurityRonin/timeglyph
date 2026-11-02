@@ -926,3 +926,27 @@ fn scan_emits_one_record_per_value() {
     let records = out.lines().filter(|l| l.contains("\"number\"")).count();
     assert_eq!(records, 1, "one record per value: {out}");
 }
+
+#[test]
+fn a_pdf_date_without_an_offset_is_not_shifted() {
+    // ISO 32000-1 §7.9.4: an absent offset means the UTC relationship is
+    // unknown. Shifting it into a zone fabricates an instant.
+    let (out, _) = run(&["identify", "D:20211107013000", "--tz", "America/New_York"]);
+    assert!(out.contains("2021-11-07T01:30:00"), "{out}");
+    assert!(!out.contains("2021-11-06T21:30:00"), "{out}");
+}
+
+#[test]
+fn scan_does_not_warn_about_a_date_only_value() {
+    // `2026-249` is 2026-09-06; its midnight is synthesised, so Santiago's
+    // midnight gap is not evidence about the source.
+    let (out, _) = run(&["scan", "2026-249", "--tz", "America/Santiago"]);
+    assert!(!out.contains("never existed"), "{out}");
+}
+
+#[test]
+fn scan_emits_one_record_for_a_repeated_token() {
+    let (out, _) = run(&["scan", "20211107013000 20211107013000", "--json"]);
+    let records = out.lines().filter(|l| l.contains("\"number\"")).count();
+    assert_eq!(records, 1, "a repeated token is one value: {out}");
+}
