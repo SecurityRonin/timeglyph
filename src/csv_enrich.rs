@@ -140,14 +140,25 @@ pub fn enrich(csv_text: &str, opts: &EnrichOptions) -> Result<String, ChronoErro
 /// decoded (empty/non-numeric/out of range). Integer first, then float.
 fn render_cell(cell: &str, fmt: &str, zone: &RenderZone) -> Option<String> {
     let f = format(fmt).ok()?;
+    // A `LocalNaive` format stores a zone-less wall-clock: shifting it into the
+    // display zone would fabricate an instant (FAT 2021-11-07 01:30 would become
+    // 2021-11-06 21:30 in New York). Render it as the wall-clock it is.
+    let render = |inst: crate::PosixNs| {
+        if matches!(f.tz, crate::TzSemantics::LocalNaive) {
+            crate::datefmt::format_naive(inst, crate::DateStyle::Iso8601)
+        } else {
+            inst.render(zone)?
+        }
+        .into()
+    };
     if let Ok(v) = cell.trim().parse::<i64>() {
         if let Ok(inst) = f.decode_int(v) {
-            return inst.render(zone);
+            return render(inst);
         }
     }
     if let Ok(v) = cell.trim().parse::<f64>() {
         if let Ok(inst) = f.decode_float(v) {
-            return inst.render(zone);
+            return render(inst);
         }
     }
     None

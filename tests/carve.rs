@@ -1,4 +1,5 @@
 //! Bounded carve: slide `identify_bytes` over a blob and report scored hits per
+//! (see also the GSM width test at the end of this file)
 //! offset — the validatable core of "find timestamps in raw bytes" (a config
 //! blob, a hex selection, one record). A window + score threshold are the
 //! false-positive controls; the caller bounds the input (not an image-wide
@@ -57,4 +58,22 @@ fn carve_is_bounded_and_never_panics_on_empty_or_odd_input() {
     assert!(carve(&[], 0.5, None).is_empty());
     // A single byte: no 4/8-byte reading fits, must not panic.
     let _ = carve(&[0x42], 0.5, None);
+}
+
+#[test]
+fn a_gsm_hit_reports_its_seven_byte_width() {
+    // A TP-SCTS is 7 bytes. The lane-size default is 8, which would make a
+    // bookmark select one byte past the field — and past EOF for an exactly
+    // 7-byte input.
+    let bytes = [0x70_u8, 0x40, 0x21, 0x32, 0x52, 0x24, 0x23];
+    let hits = carve(&bytes, 0.0, None);
+    let gsm = hits
+        .into_iter()
+        .find(|h| h.lane.contains("GSM"))
+        .expect("a GSM hit");
+    let jsonl = timeglyph::carve::to_jsonl(&[gsm]);
+    assert!(
+        jsonl.contains("\"size\":7"),
+        "the GSM lane is 7 bytes wide: {jsonl}"
+    );
 }

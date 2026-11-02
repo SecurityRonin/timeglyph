@@ -842,16 +842,25 @@ fn render_readings(
                                     ui.end_row();
                                     // The 干支 row and the alternative-calendar row
                                     // are independent — each drawn on its own toggle.
+                                    // A naive wall-clock has no zone, so the
+                                    // calendar expansions read it in UTC (its
+                                    // civil fields) rather than shifting it into
+                                    // the display zone, which would move the date.
+                                    let cal_zone = if r.local {
+                                        &RenderZone::Utc
+                                    } else {
+                                        zone
+                                    };
                                     if cal.show_lunar {
                                         ui.label(""); // col 1 (confidence)
                                         ui.label(""); // col 2 (format)
-                                        ganzhi_cell(ui, r.instant, zone, longitude, pal);
+                                        ganzhi_cell(ui, r.instant, cal_zone, longitude, pal);
                                         ui.end_row();
                                     }
                                     if cal.calendars.any() {
                                         ui.label(""); // col 1
                                         ui.label(""); // col 2
-                                        altcal_cell(ui, r.instant, zone, cal.calendars, pal);
+                                        altcal_cell(ui, r.instant, cal_zone, cal.calendars, pal);
                                         ui.end_row();
                                     }
                                 }
@@ -1403,10 +1412,17 @@ fn datetime_cell(
             // A naive wall-clock that is ambiguous (fold) or impossible (gap) in
             // the display zone: the value cannot be placed on a timeline without
             // a choice, so say so next to it rather than only in a tooltip.
-            if r.dst_note.is_some() {
+            if let Some(note) = &r.dst_note {
+                // Name the cause: a fold can come from a standard-offset move,
+                // not only from daylight saving.
+                let badge = if note.contains("standard-offset") {
+                    "⚠ offset"
+                } else {
+                    "⚠ DST"
+                };
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new("⚠ DST")
+                    RichText::new(badge)
                         .font(FontId::proportional(10.0))
                         .color(pal.amber)
                         .strong(),

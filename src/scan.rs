@@ -40,6 +40,11 @@ pub struct Reading {
     /// and the wall time is ambiguous (a fall-back fold) or impossible (a
     /// spring-forward gap). `None` when the reading is unambiguous.
     pub dst_note: Option<String>,
+    /// How this reading's value relates to UTC, carried from the candidate so a
+    /// note can be recomputed for a new zone without a registry lookup — string
+    /// forms (EXIF, ASN.1) are not in the numeric registry and would otherwise
+    /// default to `Utc` and lose their warning.
+    pub tz: TzSemantics,
 }
 
 /// The weekday name of a reading's *displayed* value — parsed from its leading
@@ -288,6 +293,7 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
         score: c.score,
         components: c.components,
         dst_note: dst_note(tz, c.instant, zone),
+        tz,
     }
 }
 
@@ -301,8 +307,7 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
 /// without the source text.
 #[must_use]
 pub fn dst_note_for(r: &Reading, zone: &RenderZone) -> Option<String> {
-    let tz = crate::format(&r.format_id).map_or(TzSemantics::Utc, |f| f.tz);
-    dst_note(tz, r.instant, zone)
+    dst_note(r.tz, r.instant, zone)
 }
 
 /// The DST fold/gap note for a naive wall-clock read in a named zone, or `None`
@@ -355,14 +360,18 @@ fn string_readings_opts(
 }
 
 /// Candidate datetime-string substrings of `text`: the whole text, each line,
-/// and each whitespace token (deduped, >= 8 chars). Pure numeric runs are
-/// excluded — those are the integer path's job ([`scan_numbers`](crate::scan::scan_numbers)).
+/// and each whitespace token (deduped, >= 8 chars).
+///
+/// All-digit runs are NOT excluded: a 14-digit run is a valid ASN.1
+/// GeneralizedTime with no designator, and dropping it here meant the string
+/// path never saw it (the integer path decodes it as a number, not a datetime).
+/// The string parsers are strict enough that a plain count does not match.
 fn datetime_candidates(text: &str) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();
     let mut push = |s: &str| {
         let t = s.trim();
-        if t.len() >= 8 && !t.bytes().all(|b| b.is_ascii_digit()) && seen.insert(t.to_string()) {
+        if t.len() >= 8 && seen.insert(t.to_string()) {
             out.push(t.to_string());
         }
     };

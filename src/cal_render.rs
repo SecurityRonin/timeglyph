@@ -396,6 +396,7 @@ pub fn render_day_text_with_calendars(d: &CalDay, color: ColorMode, cals: &Calen
         let _ = match t.kind.as_str() {
             "gap" | "fold" => writeln!(out, "  DST {} at {}", t.kind, t.at_utc),
             "dst-flag" => writeln!(out, "  DST flag change at {}", t.at_utc),
+            "abbreviation" => writeln!(out, "  zone renamed at {}", t.at_utc),
             _ => writeln!(out, "  offset change at {}", t.at_utc),
         };
     }

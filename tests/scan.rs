@@ -79,6 +79,24 @@ fn dst_note_for_recomputes_for_a_new_zone() {
 }
 
 #[test]
+fn dst_note_for_works_for_a_string_form_not_in_the_numeric_registry() {
+    // EXIF is a string form, absent from the numeric registry. Recomputing its
+    // note must not fall back to `Utc` and silently drop the warning — that is
+    // exactly what the lens does on a zone change for a clipboard reading.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let r = scan::readings_for_string("2021:11:07 01:30:00", &ny)
+        .into_iter()
+        .find(|x| x.format_id == "exif")
+        .expect("an exif reading");
+    assert!(r.local, "EXIF is a wall-clock");
+    assert!(r.dst_note.is_some(), "and it is a fold in New York");
+    assert!(
+        scan::dst_note_for(&r, &ny).is_some(),
+        "recomputing for the same zone must not lose the note"
+    );
+}
+
+#[test]
 fn an_unambiguous_reading_has_no_dst_note() {
     // A UTC-anchored value is never ambiguous, whatever the display zone.
     let ny = RenderZone::parse("America/New_York").unwrap();
@@ -437,4 +455,20 @@ fn single_integer_value_is_unchanged_without_neighbours() {
             "components must be identical for lone integer (no neighbour_monotonicity)"
         );
     }
+}
+
+#[test]
+fn a_designator_less_asn1_time_is_scanned_as_a_wall_clock() {
+    // `20211107013000` is a valid ASN.1 GeneralizedTime with no designator. The
+    // string path excluded all-digit tokens (the integer path's job), so the
+    // ASN.1 reading — and its fold warning — never appeared in a scan.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let hits = scan::inspect_text("sent 20211107013000", 4, &ny);
+    let asn1 = hits
+        .iter()
+        .flat_map(|nr| &nr.readings)
+        .find(|r| r.format_id == "asn1_generalizedtime")
+        .expect("an ASN.1 reading in the scan");
+    assert!(asn1.local, "it is a wall-clock");
+    assert!(asn1.dst_note.is_some(), "and a fold in New York");
 }

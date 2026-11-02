@@ -226,6 +226,19 @@ fn a_date_that_never_existed_reports_no_offsets_and_no_transition() {
 }
 
 #[test]
+fn an_abbreviation_only_change_is_not_a_dst_flag_change() {
+    // zdump -v America/Nome:
+    //   Wed Nov 30 08:59:59 1983 UT = Tue Nov 29 23:59:59 1983 YST  isdst=0 gmtoff=-32400
+    //   Wed Nov 30 09:00:00 1983 UT = Wed Nov 30 00:00:00 1983 AKST isdst=0 gmtoff=-32400
+    // Only the abbreviation changed: same offset, same DST flag. Calling it a
+    // "DST flag change" asserts a flag change that did not happen.
+    let d = zoned(1983, 11, 30, "America/Nome");
+    assert_eq!(d.offset_start_seconds, d.offset_end_seconds);
+    let t = d.dst_transition.expect("the rename is still reported");
+    assert_eq!(t.kind, "abbreviation");
+}
+
+#[test]
 fn a_dst_flag_flip_with_no_offset_change_is_not_a_fold() {
     // zdump -v Europe/Lisbon:
     //   Sun Sep 27 00:59:59 1992 UT = Sun Sep 27 01:59:59 1992 WEST isdst=1 gmtoff=3600

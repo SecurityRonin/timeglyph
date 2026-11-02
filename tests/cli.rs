@@ -746,6 +746,43 @@ fn a_fold_caused_by_a_standard_offset_change_is_not_called_dst() {
 }
 
 #[test]
+fn a_dmtf_unknown_offset_is_a_wall_clock_not_utc() {
+    // DMTF DSP0004: `±***` means the offset is UNKNOWN (Microsoft: "no
+    // timezone"). Treating it as UTC and shifting fabricates an instant.
+    let (out, _) = run(&[
+        "identify",
+        "20211107013000.000000+***",
+        "--tz",
+        "America/New_York",
+    ]);
+    assert!(
+        out.contains("2021-11-07T01:30:00"),
+        "the wall-clock is shown as stored: {out}"
+    );
+    assert!(
+        !out.contains("2021-11-06T21:30:00"),
+        "it must not be shifted as if UTC: {out}"
+    );
+}
+
+#[test]
+fn an_iso_ordinal_or_week_date_is_not_shifted() {
+    // `2021-311` and `2021-W44-7` are both 2021-11-07 with no time of day and no
+    // offset. Shifting them into a zone moves them to the previous day.
+    for input in ["2021-311", "2021-W44-7"] {
+        let (out, _) = run(&["identify", input, "--tz", "America/New_York"]);
+        assert!(
+            out.contains("2021-11-07T00:00:00"),
+            "{input} keeps its date: {out}"
+        );
+        assert!(
+            !out.contains("2021-11-06"),
+            "{input} must not move to the previous day: {out}"
+        );
+    }
+}
+
+#[test]
 fn decode_wave2_byte_formats_via_cli() {
     // Oracle DATE [120,120,1,1,1,1,1] = 2020-01-01 00:00:00.
     let (out, code) = run(&["decode", "oracle_date", "78780101010101"]);

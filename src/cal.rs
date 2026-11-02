@@ -586,7 +586,10 @@ fn transition_in_day(
     let offset_moved = before.offset() != t.offset();
     let dst_flipped = before.dst() != t.dst();
     let kind = match (offset_moved, dst_flipped) {
-        (false, _) => "dst-flag",
+        // Neither the offset nor the DST flag moved: only the zone's name
+        // changed (Nome's YST -> AKST in 1983). Nothing about the clock did.
+        (false, false) => "abbreviation",
+        (false, true) => "dst-flag",
         (true, true) if t.offset() > before.offset() => "gap",
         (true, true) => "fold",
         (true, false) => "offset",

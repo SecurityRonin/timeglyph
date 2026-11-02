@@ -89,3 +89,28 @@ fn auto_skips_small_numeric_columns() {
         "small numeric column must be skipped"
     );
 }
+
+#[test]
+fn a_naive_column_is_not_shifted_into_the_display_zone() {
+    // FAT stores a zone-less wall-clock. Rendering it in a named zone as though
+    // it were UTC moves it: 2021-11-07 01:30 becomes 2021-11-06 21:30.
+    let input = "id,created\n1,1399262144\n";
+    let opts = EnrichOptions {
+        conversions: vec![Conversion {
+            column: "created".into(),
+            format: "fat".into(),
+        }],
+        auto: false,
+        replace: false,
+        zone: RenderZone::parse("America/New_York").unwrap(),
+    };
+    let out = enrich(input, &opts).unwrap();
+    assert!(
+        out.contains("2021-11-07T01:30:00"),
+        "the wall-clock is shown as stored: {out}"
+    );
+    assert!(
+        !out.contains("2021-11-06T21:30:00"),
+        "it must not be shifted as if UTC: {out}"
+    );
+}

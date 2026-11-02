@@ -221,7 +221,14 @@ pub fn interpret_float(value: f64) -> Vec<Candidate> {
 /// out of range) or renders outside the civil range.
 fn build_candidate_float(f: &Format, value: f64) -> Option<Candidate> {
     let instant = f.decode_float(value).ok()?;
-    let rendered = instant.to_rfc3339()?;
+    // A naive wall-clock carries no `Z` (see `string_candidate`).
+    let rendered = instant.to_rfc3339().map(|r| {
+        if matches!(f.tz, TzSemantics::LocalNaive) {
+            r.trim_end_matches('Z').to_string()
+        } else {
+            r
+        }
+    })?;
     let components = score_components_float(f, instant);
     let score = overall_score(&components);
     let assumptions = assumptions(f);
@@ -287,7 +294,14 @@ fn prevalence(id: &str) -> f64 {
 /// civil range. Shared by [`interpret_int`] and the per-format hex decoders.
 fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Candidate> {
     let instant = f.decode_int(value).ok()?;
-    let rendered = instant.to_rfc3339()?;
+    // A naive wall-clock carries no `Z` (see `string_candidate`).
+    let rendered = instant.to_rfc3339().map(|r| {
+        if matches!(f.tz, TzSemantics::LocalNaive) {
+            r.trim_end_matches('Z').to_string()
+        } else {
+            r
+        }
+    })?;
     let components = score_components(f, value, instant, ctx);
     let score = overall_score(&components);
     let mut assumptions = assumptions(f);
@@ -1042,14 +1056,6 @@ const STRING_FORMATS: &[StringFormat] = &[
         tz: TzSemantics::Utc,
     },
     StringFormat {
-        parse: parse_dmtf_cim,
-        id: "dmtf_cim",
-        label: "DMTF/WMI CIM_DATETIME",
-        spec: "DMTF DSP0004 (CIM_DATETIME): yyyymmddHHMMSS.mmmmmm±UUU",
-        note: "parsed as a DMTF/WMI CIM datetime — UUU is the offset in minutes east of UTC",
-        tz: TzSemantics::Utc,
-    },
-    StringFormat {
         parse: parse_rfc2822,
         id: "rfc2822",
         label: "RFC 2822 / email date",
@@ -1070,16 +1076,16 @@ const STRING_FORMATS: &[StringFormat] = &[
         id: "iso_ordinal",
         label: "ISO 8601 ordinal date (YYYY-DDD)",
         spec: "ISO 8601 §5.2.2.1 (ordinal date)",
-        note: "parsed as an ISO 8601 ordinal date (day-of-year), midnight UTC assumed",
-        tz: TzSemantics::Utc,
+        note: "parsed as an ISO 8601 ordinal date (day-of-year); no time or offset is stored, so this is a wall-clock",
+        tz: TzSemantics::LocalNaive,
     },
     StringFormat {
         parse: parse_iso_week,
         id: "iso_week",
         label: "ISO 8601 week date (YYYY-Www-D)",
         spec: "ISO 8601 §5.2.3 (week date)",
-        note: "parsed as an ISO 8601 week date, midnight UTC assumed",
-        tz: TzSemantics::Utc,
+        note: "parsed as an ISO 8601 week date; no time or offset is stored, so this is a wall-clock",
+        tz: TzSemantics::LocalNaive,
     },
 ];
 
@@ -1090,6 +1096,7 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
     let mut out = Vec::new();
     // Dynamic-note formats first (ISO 8601 + ASN.1 + JWT), then the fixed-note registry.
     push_iso8601(s, &mut out);
+    push_dmtf(s, &mut out);
     push_asn1(s, &mut out);
     push_jwt(s, &mut out);
     for f in STRING_FORMATS {
@@ -1187,6 +1194,35 @@ fn push_iso8601(s: &str, out: &mut Vec<Candidate>) {
             TzSemantics::Utc,
         ));
     }
+}
+
+/// DMTF CIM_DATETIME, whose tz semantics depend on the input: `±UUU` is a real
+/// offset, but `±***` means the offset is UNKNOWN (DMTF DSP0004; Microsoft:
+/// "no timezone"), so the value is a wall-clock and must not be zone-shifted.
+fn push_dmtf(s: &str, out: &mut Vec<Candidate>) {
+    let Some(instant) = parse_dmtf_cim(s) else {
+        return;
+    };
+    let unknown_offset = s.trim().ends_with("+***") || s.trim().ends_with("-***");
+    let (note, tz) = if unknown_offset {
+        (
+            "parsed as a DMTF/WMI CIM datetime — the offset is UNKNOWN (±***), so this is a wall-clock",
+            TzSemantics::LocalNaive,
+        )
+    } else {
+        (
+            "parsed as a DMTF/WMI CIM datetime — UUU is the offset in minutes east of UTC",
+            TzSemantics::Utc,
+        )
+    };
+    out.push(string_candidate(
+        "dmtf_cim",
+        "DMTF/WMI CIM_DATETIME",
+        "DMTF DSP0004 (CIM_DATETIME): yyyymmddHHMMSS.mmmmmm±UUU",
+        instant,
+        note,
+        tz,
+    ));
 }
 
 /// The two ASN.1 string forms, whose assumption note depends on whether the input
@@ -1431,12 +1467,22 @@ fn string_candidate(
     assumption: &str,
     tz: TzSemantics,
 ) -> Candidate {
+    // A naive wall-clock must not carry a `Z`: `to_rfc3339` appends one, which
+    // asserts a UTC anchor the value never had. Strip it here so every consumer
+    // of `Candidate.rendered` (not only the JSON wrapper) sees the truth.
+    let rendered = instant.to_rfc3339().map(|r| {
+        if matches!(tz, TzSemantics::LocalNaive) {
+            r.trim_end_matches('Z').to_string()
+        } else {
+            r
+        }
+    });
     Candidate {
         format_id,
         label,
         citation,
         instant,
-        rendered: instant.to_rfc3339(),
+        rendered,
         score: 1.0,
         components: vec![
             ("representable", 1.0),

@@ -63,6 +63,10 @@ pub fn carve(bytes: &[u8], min_score: f64, window: Option<(i128, i128)>) -> Vec<
 fn lane_size(lane: &str) -> usize {
     if lane.contains("SYSTEMTIME") {
         16
+    } else if lane.contains("GSM") {
+        // A TP-SCTS is exactly 7 bytes; the 8-byte default would select one byte
+        // past the field (and past EOF for an exactly 7-byte input).
+        7
     } else if lane.contains("u32") || lane.contains("FAT") {
         4
     } else {
