@@ -29,3 +29,6 @@ lcov.info
 # holds the un-checkpointed records its carver exists to recover.
 *.sqlite-shm
 *.sqlite-wal
+
+# macOS Finder metadata
+.DS_Store
