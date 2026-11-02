@@ -58,6 +58,27 @@ fn a_naive_reading_in_a_gap_carries_a_dst_note() {
 }
 
 #[test]
+fn dst_note_for_recomputes_for_a_new_zone() {
+    // A reading decoded in New York carries a fold note; moving the display zone
+    // to UTC must clear it, and moving back must restore it. This is what the
+    // lens does for a clipboard source, which retains no text to re-decode.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let r = scan::readings_for("3719093400", 5, &ny)
+        .into_iter()
+        .find(|x| x.format_id == "hfs")
+        .unwrap();
+    assert!(r.dst_note.is_some(), "a fold in New York");
+    assert!(
+        scan::dst_note_for(&r, &RenderZone::Utc).is_none(),
+        "UTC never folds"
+    );
+    assert!(
+        scan::dst_note_for(&r, &ny).is_some(),
+        "and the fold returns with the zone"
+    );
+}
+
+#[test]
 fn an_unambiguous_reading_has_no_dst_note() {
     // A UTC-anchored value is never ambiguous, whatever the display zone.
     let ny = RenderZone::parse("America/New_York").unwrap();

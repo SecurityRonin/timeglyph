@@ -615,7 +615,18 @@ impl eframe::App for LensApp {
                     timeglyph_lens::READINGS_SHOWN,
                     &self.zone.zone,
                 )),
-                SourceContext::Clipboard => None,
+                // The clipboard retains no text (by design), so it cannot be
+                // re-decoded. Its readings still carry the instant and format,
+                // so the zone-dependent DST note is recomputed in place —
+                // otherwise a note computed for the old zone would persist.
+                SourceContext::Clipboard => {
+                    for nr in &mut self.hits {
+                        for r in &mut nr.readings {
+                            r.dst_note = scan::dst_note_for(r, &self.zone.zone);
+                        }
+                    }
+                    None
+                }
             };
             if let Some(hits) = redecoded {
                 self.hits = hits;

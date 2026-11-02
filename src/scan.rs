@@ -291,6 +291,20 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
     }
 }
 
+/// Recompute a reading's DST fold/gap note for a different display zone.
+///
+/// A caller that changes the display zone without re-decoding (the lens overlay's
+/// clipboard source, which deliberately retains no text) would otherwise keep a
+/// note computed for the OLD zone — a false warning after moving to UTC, or a
+/// missing one after moving to a named zone. The reading carries everything the
+/// note needs (`instant` and its format's tz semantics), so it can be recomputed
+/// without the source text.
+#[must_use]
+pub fn dst_note_for(r: &Reading, zone: &RenderZone) -> Option<String> {
+    let tz = crate::format(&r.format_id).map_or(TzSemantics::Utc, |f| f.tz);
+    dst_note(tz, r.instant, zone)
+}
+
 /// The DST fold/gap note for a naive wall-clock read in a named zone, or `None`
 /// when the wall time is unambiguous (or the zone is UTC / a fixed offset, which
 /// never fold or gap). Mirrors the CLI's `fold_gap_note` so the overlay and the

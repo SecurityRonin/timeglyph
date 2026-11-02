@@ -160,14 +160,19 @@ fn a_transition_at_local_midnight_is_marked_on_the_day_it_starts() {
 }
 
 #[test]
-fn a_midnight_fold_is_marked_on_the_day_it_starts() {
+fn a_fold_that_repeats_the_first_hour_is_marked() {
     // zdump -v America/Havana:
     //   Sun Nov  1 04:59:59 2026 UT = Sun Nov  1 00:59:59 2026 CDT isdst=1
     //   Sun Nov  1 05:00:00 2026 UT = Sun Nov  1 00:00:00 2026 CST isdst=0
-    // 01:00 CDT falls back to 00:00 CST, so the 1st repeats the 00:00 hour.
+    // 01:00 CDT falls back to 00:00 CST, so the 1st repeats its first hour.
+    //
+    // NOTE: this transition is one hour AFTER the day's first instant, so it
+    // does NOT exercise the exclusive-start defect — the gap test above does.
+    // No fold in the tzdb lands exactly on local midnight (checked across 1980-
+    // 2026), so the inclusive-start probe is only observable for gaps.
     let d = zoned(2026, 11, 1, "America/Havana");
     assert_eq!(d.wall_day_seconds, 90_000, "25 h");
-    let t = d.dst_transition.expect("a midnight fold must be reported");
+    let t = d.dst_transition.expect("the fold must be reported");
     assert_eq!(t.kind, "fold");
     assert_eq!(t.at_utc, "2026-11-01T05:00:00Z");
 }
