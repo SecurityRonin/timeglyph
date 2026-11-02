@@ -126,11 +126,17 @@ pub fn to_imhex_bookmarks(hits: &[CarveHit]) -> String {
 /// Serialize carve hits as Timesketch JSONL — one event per hit carrying the
 /// required import fields (`message`, `datetime`, `timestamp_desc`) plus
 /// `data_type` and `offset`. Import via Timesketch's JSONL importer so carve
-/// results drop straight into a timeline. Hits whose reading does not render an
-/// instant are skipped (no valid `datetime`).
+/// results drop straight into a timeline.
+///
+/// Hits whose reading does not render an instant are skipped (no valid
+/// `datetime`). So are hits whose value is a naive wall-clock: Timesketch's
+/// importer parses a designator-less datetime in the HOST timezone, so exporting
+/// one would silently anchor it to whatever machine ran the import. A timeline
+/// event needs a resolved instant; an unresolved wall-clock is not one.
 #[must_use]
 pub fn to_timesketch_jsonl(hits: &[CarveHit]) -> String {
     hits.iter()
+        .filter(|h| !matches!(h.reading.tz, crate::TzSemantics::LocalNaive))
         .filter_map(|h| {
             let dt = h.reading.rendered.as_deref()?;
             Some(
