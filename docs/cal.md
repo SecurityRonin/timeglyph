@@ -41,7 +41,7 @@ W29  13* 14  15  16  17  18  19
 W30  20  21  22  23  24  25  26
 W31  27  28  29  30  31
 
-  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover
+  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover/offset
 ```
 
 The gutter is the ISO-8601 week number. One marker per day flags the
@@ -49,6 +49,15 @@ forensically-salient conditions (highest precedence wins): today, a
 spring-forward **gap** day, a fall-back **fold** day, a **leap-second** day, a
 timestamp-format **epoch** day, or a fixed-width **rollover**. Markers are plain
 ASCII, so a piped or colourless view loses no information.
+
+A day whose UTC offset changes **without** a daylight-saving change — a
+jurisdiction redefining its standard offset (Venezuela 2007, Russia's 2014
+repeal) — is reported as an **offset change**, not a DST fold, and shares the
+`~` glyph. The distinction comes from the tzdb's own DST flag on each side of the
+transition, never from the direction the offset moved.
+
+A transition landing exactly on local midnight is reported by the day it
+**starts**, since that is the day whose wall clock it changes.
 
 ## The day detail card
 

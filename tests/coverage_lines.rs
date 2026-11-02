@@ -477,6 +477,22 @@ fn a_dst_gap_and_fold_day_get_their_own_marker_and_card_line() {
 }
 
 #[test]
+fn a_non_dst_offset_change_gets_its_own_glyph_and_wording() {
+    use timeglyph::cal::build_day;
+    use timeglyph::cal_color::ColorMode;
+    use timeglyph::cal_render::{day_marker, render_day_text_with};
+    // Venezuela moved its standard offset on 2007-12-09 (-04 -> -04:30) with no
+    // daylight-saving change (zdump: isdst=0 on both sides). It must not be
+    // presented as a DST fold, and must not borrow the fold glyph.
+    let car = RenderZone::parse("America/Caracas").unwrap();
+    let d = build_day(date(2007, 12, 9), &car).unwrap();
+    assert_eq!(day_marker(&d, None), '~', "offset-change glyph");
+    let text = render_day_text_with(&d, ColorMode::Truecolor);
+    assert!(text.contains("offset change at "), "{text}");
+    assert!(!text.contains("DST "), "not a DST transition: {text}");
+}
+
+#[test]
 fn a_month_grid_paints_the_dst_marker() {
     use timeglyph::cal::{build_month, WeekStart};
     use timeglyph::cal_color::ColorMode;

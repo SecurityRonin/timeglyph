@@ -133,6 +133,98 @@ fn dst_thirty_minute_fold_lord_howe() {
     assert_eq!(d.dst_transition.expect("fold").kind, "fold");
 }
 
+// --- Cycle 3b: transitions AT local midnight, and non-DST offset changes ------
+//
+// `tz.following(start)` is EXCLUSIVE, so a transition occurring exactly at local
+// midnight belongs to neither the day that starts there nor the day before it
+// (whose window is `[prev_start, start)`). These cases pin the inclusive window.
+// Oracle: `zdump -v <zone>` (system tzdb 2026e), quoted per case.
+
+#[test]
+fn a_transition_at_local_midnight_is_marked_on_the_day_it_starts() {
+    // zdump -v America/Santiago:
+    //   Sun Sep  6 03:59:59 2026 UT = Sat Sep  5 23:59:59 2026 -04 isdst=0
+    //   Sun Sep  6 04:00:00 2026 UT = Sun Sep  6 01:00:00 2026 -03 isdst=1
+    // The jump happens AT local midnight of the 6th, so the 6th is the gap day.
+    let d = zoned(2026, 9, 6, "America/Santiago");
+    assert_eq!(d.offset_start_seconds, -10_800, "the day starts in -03");
+    assert_eq!(d.wall_day_seconds, 82_800, "23 h: 00:00-01:00 never happened");
+    let t = d
+        .dst_transition
+        .expect("a transition at local midnight must be reported");
+    assert_eq!(t.kind, "gap");
+    assert_eq!(t.at_utc, "2026-09-06T04:00:00Z");
+}
+
+#[test]
+fn a_midnight_fold_is_marked_on_the_day_it_starts() {
+    // zdump -v America/Havana:
+    //   Sun Nov  1 04:59:59 2026 UT = Sun Nov  1 00:59:59 2026 CDT isdst=1
+    //   Sun Nov  1 05:00:00 2026 UT = Sun Nov  1 00:00:00 2026 CST isdst=0
+    // 01:00 CDT falls back to 00:00 CST, so the 1st repeats the 00:00 hour.
+    let d = zoned(2026, 11, 1, "America/Havana");
+    assert_eq!(d.wall_day_seconds, 90_000, "25 h");
+    let t = d.dst_transition.expect("a midnight fold must be reported");
+    assert_eq!(t.kind, "fold");
+    assert_eq!(t.at_utc, "2026-11-01T05:00:00Z");
+}
+
+#[test]
+fn a_midnight_transition_is_not_double_counted_on_the_previous_day() {
+    // The day BEFORE a midnight transition must not claim it: its window ends at
+    // the transition instant, and the transition belongs to the day that starts
+    // there. (Santiago 2026-09-05 runs 00:00-04 to 00:00-04, a full 24 h.)
+    let d = zoned(2026, 9, 5, "America/Santiago");
+    assert_eq!(d.offset_start_seconds, -14_400);
+    assert_eq!(d.offset_end_seconds, -14_400, "the day ends before the jump");
+    assert_eq!(d.wall_day_seconds, 86_400);
+    assert!(
+        d.dst_transition.is_none(),
+        "the transition belongs to the 6th, not the 5th"
+    );
+}
+
+#[test]
+fn offset_end_is_sampled_just_before_the_next_midnight() {
+    // A day whose successor starts with a transition must still report the offset
+    // in force at its OWN end. Santiago 2025-09-06 runs 00:00-04 to 23:59:59-04
+    // (the jump is at the next midnight), so both ends are -04 and the wall day is
+    // a full 24 h — not the 23 h a naive `offset(next_midnight)` would imply.
+    let d = zoned(2025, 9, 6, "America/Santiago");
+    assert_eq!(d.offset_start_seconds, -14_400);
+    assert_eq!(d.offset_end_seconds, -14_400);
+    assert_eq!(d.wall_day_seconds, 86_400);
+}
+
+#[test]
+fn a_non_dst_offset_change_is_not_labelled_dst() {
+    // zdump -v America/Caracas: 2007-12-09 -04 -> -04:30, isdst=0 on BOTH sides.
+    // Venezuela moved its standard offset; no daylight saving was involved.
+    let d = zoned(2007, 12, 9, "America/Caracas");
+    let t = d.dst_transition.expect("the offset change is still reported");
+    assert_eq!(
+        t.kind, "offset",
+        "a standard-offset change is not a DST gap/fold"
+    );
+    assert_eq!(t.at_utc, "2007-12-09T07:00:00Z");
+}
+
+#[test]
+fn a_permanent_dst_repeal_is_not_labelled_dst() {
+    // zdump -v Europe/Moscow: 2014-10-26 +04 -> +03, isdst=0 on both sides
+    // (Russia abandoned permanent summer time; this is not a fall-back fold).
+    let d = zoned(2014, 10, 26, "Europe/Moscow");
+    let t = d.dst_transition.expect("the offset change is still reported");
+    assert_eq!(t.kind, "offset");
+}
+
+#[test]
+fn a_real_dst_fold_is_still_labelled_fold() {
+    // Control: the ordinary US fall-back must keep its DST label.
+    let d = zoned(2026, 11, 1, "America/New_York");
+    assert_eq!(d.dst_transition.expect("fold").kind, "fold");
+}
+
 #[test]
 fn ordinary_day_has_no_transition_and_full_wall_day() {
     let d = zoned(2026, 7, 1, "America/New_York");

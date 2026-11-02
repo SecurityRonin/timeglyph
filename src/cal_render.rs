@@ -36,10 +36,12 @@ impl CalendarSel {
 /// video, and for an unmarked day). Mirrors [`day_marker`]'s precedence.
 fn marker_ink(day: &CalDay) -> Option<Ink> {
     if let Some(t) = &day.dst_transition {
-        return Some(if t.kind == "gap" {
-            cal_color::GAP
-        } else {
-            cal_color::FOLD
+        return Some(match t.kind.as_str() {
+            "gap" => cal_color::GAP,
+            "fold" => cal_color::FOLD,
+            // A standard-offset change is not a DST event; it shares the
+            // rollover ink rather than borrowing a DST colour.
+            _ => cal_color::ROLLOVER,
         });
     }
     #[cfg(feature = "leap")]
@@ -59,14 +61,20 @@ fn marker_ink(day: &CalDay) -> Option<Ink> {
 /// single-width so the grid stays aligned and legible without colour.
 ///
 /// `*` today · `^` DST gap · `v` DST fold · `+` leap-second day · `e` format
-/// epoch · `~` rollover · space otherwise.
+/// epoch · `~` rollover or standard-offset change · space otherwise.
 #[must_use]
 pub fn day_marker(day: &CalDay, today: Option<Date>) -> char {
     if today.is_some_and(|t| t.to_string() == day.date) {
         return '*';
     }
     if let Some(t) = &day.dst_transition {
-        return if t.kind == "gap" { '^' } else { 'v' };
+        return match t.kind.as_str() {
+            "gap" => '^',
+            "fold" => 'v',
+            // A standard-offset change: the clock moved, but no daylight saving
+            // was involved, so it must not wear a DST glyph.
+            _ => '~',
+        };
     }
     #[cfg(feature = "leap")]
     if day.leap_second != 0 {
@@ -158,7 +166,10 @@ pub fn render_month_text_with_calendars(
     let mut result = grid.join("\n") + "\n";
 
     result
-        .push_str("\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   ~ rollover\n");
+        .push_str(
+            "\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   \
+             ~ rollover/offset\n",
+        );
 
     // Overlay footer: the month's alternative calendars and moon, from a
     // representative mid-month day (facts beside the seasonal "logo" above).
@@ -381,7 +392,12 @@ pub fn render_day_text_with_calendars(d: &CalDay, color: ColorMode, cals: &Calen
         d.unix_utc_midnight, d.offset_start_seconds, d.offset_end_seconds, d.wall_day_seconds
     );
     if let Some(t) = &d.dst_transition {
-        let _ = writeln!(out, "  DST {} at {}", t.kind, t.at_utc);
+        // Only a real daylight-saving change is called "DST"; a standard-offset
+        // change is named for what it is.
+        let _ = match t.kind.as_str() {
+            "gap" | "fold" => writeln!(out, "  DST {} at {}", t.kind, t.at_utc),
+            _ => writeln!(out, "  offset change at {}", t.at_utc),
+        };
     }
     #[cfg(feature = "leap")]
     {

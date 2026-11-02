@@ -544,6 +544,53 @@ fn first_instant(date: Date, tz: &jiff::tz::TimeZone) -> Result<jiff::Timestamp,
         .map_err(|e| ChronoError::Render(e.to_string()))
 }
 
+/// The instant one nanosecond before `t` — the last instant of the preceding day.
+///
+/// Used to sample the offset in force at a day's end without picking up a
+/// transition that lands exactly on the following midnight. Falls back to `t`
+/// only at the minimum representable instant, where no earlier instant exists.
+fn instant_before(t: jiff::Timestamp) -> jiff::Timestamp {
+    jiff::Timestamp::from_nanosecond(t.as_nanosecond() - 1).unwrap_or(t)
+}
+
+/// The time-zone transition occurring within the half-open window `[start, next)`,
+/// classified by what actually changed.
+///
+/// `tz.following(start)` is EXCLUSIVE, so a transition landing exactly on `start`
+/// (local midnight) would be missed by this day AND by the day before it, whose
+/// window ends at `start`. Probing one nanosecond earlier makes the window
+/// inclusive at the start, so a midnight transition is reported by the day it
+/// begins — the only day whose wall clock it changes.
+///
+/// The kind is derived from the tzdb's own DST flag, not from the offset's
+/// direction: an offset can move without any daylight-saving change (Venezuela
+/// 2007, Russia's 2014 repeal), and calling that a "fold" would assert a DST
+/// transition that never happened.
+fn transition_in_day(
+    start: jiff::Timestamp,
+    next: jiff::Timestamp,
+    tz: &jiff::tz::TimeZone,
+) -> Option<DstTransition> {
+    let probe = instant_before(start);
+    let t = tz.following(probe).next()?;
+    if t.timestamp() >= next {
+        return None;
+    }
+    let before = tz.to_offset_info(probe).dst();
+    let after = t.dst();
+    let kind = match (before, after) {
+        (jiff::tz::Dst::No, jiff::tz::Dst::Yes) => "gap",
+        (jiff::tz::Dst::Yes, jiff::tz::Dst::No) => "fold",
+        // The offset moved but the DST flag did not: a standard-offset change
+        // (a jurisdiction redefining its zone), not a daylight-saving transition.
+        _ => "offset",
+    };
+    Some(DstTransition {
+        kind: kind.to_string(),
+        at_utc: t.timestamp().to_string(),
+    })
+}
+
 /// The Chinese lunisolar overlay at reference instant `ref_ns` (ns since Unix),
 /// at the `zone` meridian.
 #[cfg(feature = "lunisolar")]
@@ -797,22 +844,14 @@ pub fn build_day_at(dt: jiff::civil::DateTime, zone: &RenderZone) -> Result<CalD
     let start = first_instant(date, &tz)?;
     let next = first_instant(tomorrow, &tz)?;
     let offset_start_seconds = tz.to_offset(start).seconds();
-    let offset_end_seconds = tz.to_offset(next).seconds();
+    // The offset in force at this day's END is the one just BEFORE the next
+    // midnight, not the one AT it: a transition landing exactly on that midnight
+    // belongs to the day that starts there, and sampling `next` would attribute
+    // it to this day as well (and make a 24 h day report a changed offset).
+    let end_instant = instant_before(next);
+    let offset_end_seconds = tz.to_offset(end_instant).seconds();
     let wall_day_seconds = next.as_second() - start.as_second();
-    let dst_transition = tz.following(start).next().and_then(|t| {
-        (t.timestamp() < next).then(|| {
-            let after = t.offset().seconds();
-            DstTransition {
-                kind: if after > offset_start_seconds {
-                    "gap"
-                } else {
-                    "fold"
-                }
-                .to_string(),
-                at_utc: t.timestamp().to_string(),
-            }
-        })
-    });
+    let dst_transition = transition_in_day(start, next, &tz);
 
     // The reference instant for the astronomical/Chinese overlays (the given time
     // in the zone; compatible disambiguation resolves a DST gap, never errors).
