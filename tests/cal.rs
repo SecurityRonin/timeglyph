@@ -203,6 +203,25 @@ fn offset_end_is_sampled_just_before_the_next_midnight() {
 }
 
 #[test]
+fn a_dst_flag_flip_with_no_offset_change_is_not_a_fold() {
+    // zdump -v Europe/Lisbon:
+    //   Sun Sep 27 00:59:59 1992 UT = Sun Sep 27 01:59:59 1992 WEST isdst=1 gmtoff=3600
+    //   Sun Sep 27 01:00:00 1992 UT = Sun Sep 27 02:00:00 1992 CET  isdst=0 gmtoff=3600
+    // The DST flag flips but the OFFSET does not move, so no wall time repeats
+    // and the day is a full 24 h. Calling it a "fold" would assert an ambiguity
+    // that does not exist.
+    let d = zoned(1992, 9, 27, "Europe/Lisbon");
+    assert_eq!(d.offset_start_seconds, 3_600);
+    assert_eq!(d.offset_end_seconds, 3_600);
+    assert_eq!(d.wall_day_seconds, 86_400, "no wall time is repeated");
+    let t = d.dst_transition.expect("the DST-flag change is reported");
+    assert_eq!(
+        t.kind, "dst-flag",
+        "a DST-flag flip with an unchanged offset is neither a gap nor a fold"
+    );
+}
+
+#[test]
 fn a_non_dst_offset_change_is_not_labelled_dst() {
     // zdump -v America/Caracas: 2007-12-09 -04 -> -04:30, isdst=0 on BOTH sides.
     // Venezuela moved its standard offset; no daylight saving was involved.

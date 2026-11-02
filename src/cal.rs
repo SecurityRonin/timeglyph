@@ -562,10 +562,16 @@ fn instant_before(t: jiff::Timestamp) -> jiff::Timestamp {
 /// inclusive at the start, so a midnight transition is reported by the day it
 /// begins — the only day whose wall clock it changes.
 ///
-/// The kind is derived from the tzdb's own DST flag, not from the offset's
-/// direction: an offset can move without any daylight-saving change (Venezuela
-/// 2007, Russia's 2014 repeal), and calling that a "fold" would assert a DST
-/// transition that never happened.
+/// The kind is derived from what actually changed, in this order:
+///
+/// 1. **The offset did not move** — no wall time is skipped or repeated, so the
+///    day is not a gap or a fold whatever the DST flag says. Lisbon 1992-09-27
+///    flips WEST→CET with `gmtoff=3600` on both sides: a DST-flag change only.
+/// 2. **The offset moved and the DST flag flipped** — a real daylight-saving
+///    transition: forward is a `gap`, backward a `fold`.
+/// 3. **The offset moved but the DST flag did not** — a jurisdiction redefining
+///    its standard offset (Venezuela 2007, Russia's 2014 repeal), not daylight
+///    saving at all.
 fn transition_in_day(
     start: jiff::Timestamp,
     next: jiff::Timestamp,
@@ -576,14 +582,14 @@ fn transition_in_day(
     if t.timestamp() >= next {
         return None;
     }
-    let before = tz.to_offset_info(probe).dst();
-    let after = t.dst();
-    let kind = match (before, after) {
-        (jiff::tz::Dst::No, jiff::tz::Dst::Yes) => "gap",
-        (jiff::tz::Dst::Yes, jiff::tz::Dst::No) => "fold",
-        // The offset moved but the DST flag did not: a standard-offset change
-        // (a jurisdiction redefining its zone), not a daylight-saving transition.
-        _ => "offset",
+    let before = tz.to_offset_info(probe);
+    let offset_moved = before.offset() != t.offset();
+    let dst_flipped = before.dst() != t.dst();
+    let kind = match (offset_moved, dst_flipped) {
+        (false, _) => "dst-flag",
+        (true, true) if t.offset() > before.offset() => "gap",
+        (true, true) => "fold",
+        (true, false) => "offset",
     };
     Some(DstTransition {
         kind: kind.to_string(),

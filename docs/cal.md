@@ -50,11 +50,17 @@ spring-forward **gap** day, a fall-back **fold** day, a **leap-second** day, a
 timestamp-format **epoch** day, or a fixed-width **rollover**. Markers are plain
 ASCII, so a piped or colourless view loses no information.
 
-A day whose UTC offset changes **without** a daylight-saving change — a
-jurisdiction redefining its standard offset (Venezuela 2007, Russia's 2014
-repeal) — is reported as an **offset change**, not a DST fold, and shares the
-`~` glyph. The distinction comes from the tzdb's own DST flag on each side of the
-transition, never from the direction the offset moved.
+The kind of a transition is derived from what actually changed, never from the
+direction the offset moved:
+
+- **gap** / **fold** — the offset moved *and* the tzdb's DST flag flipped: a real
+  daylight-saving transition.
+- **offset change** — the offset moved but the DST flag did not: a jurisdiction
+  redefining its standard offset (Venezuela 2007, Russia's 2014 repeal).
+- **DST flag change** — the DST flag flipped but the offset did not move, so no
+  wall time is skipped or repeated (Lisbon 1992-09-27, WEST→CET, both +01:00).
+
+The last two share the `~` glyph and are never presented as a DST fold.
 
 A transition landing exactly on local midnight is reported by the day it
 **starts**, since that is the day whose wall clock it changes.

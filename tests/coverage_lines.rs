@@ -493,6 +493,26 @@ fn a_non_dst_offset_change_gets_its_own_glyph_and_wording() {
 }
 
 #[test]
+fn a_dst_flag_change_with_no_offset_move_is_named_for_what_it_is() {
+    use timeglyph::cal::build_day;
+    use timeglyph::cal_color::ColorMode;
+    use timeglyph::cal_render::{day_marker, render_day_text_with};
+    // Lisbon 1992-09-27: WEST(+01, isdst=1) -> CET(+01, isdst=0). The DST flag
+    // flips but the offset does not, so no wall time repeats. It must not be
+    // called a fold, nor an offset change (the offset did not move).
+    let lis = RenderZone::parse("Europe/Lisbon").unwrap();
+    let d = build_day(date(1992, 9, 27), &lis).unwrap();
+    assert_eq!(day_marker(&d, None), '~');
+    let text = render_day_text_with(&d, ColorMode::Truecolor);
+    assert!(text.contains("DST flag change at "), "{text}");
+    assert!(!text.contains("DST fold"), "not a fold: {text}");
+    assert!(
+        !text.contains("offset change"),
+        "the offset did not move: {text}"
+    );
+}
+
+#[test]
 fn a_month_grid_paints_the_dst_marker() {
     use timeglyph::cal::{build_month, WeekStart};
     use timeglyph::cal_color::ColorMode;
