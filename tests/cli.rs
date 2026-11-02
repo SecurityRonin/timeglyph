@@ -661,6 +661,51 @@ fn localnaive_under_a_named_zone_flags_the_dst_fold() {
 }
 
 #[test]
+fn the_text_view_flags_the_dst_fold_too() {
+    // The fold note must not be a `--json`-only feature: the default human view
+    // is what an examiner reads. FAT 1399262144 = 2021-11-07 01:30 (naive), a
+    // fall-back fold in New York (01:30 occurs twice: 05:30Z EDT, 06:30Z EST).
+    let (out, _) = run(&["identify", "1399262144", "--tz", "America/New_York"]);
+    assert!(
+        out.contains("fall-back fold") && out.contains("2021-11-07T05:30:00Z"),
+        "the text view must carry the fold note: {out}"
+    );
+}
+
+#[test]
+fn decode_flags_the_dst_fold_for_a_naive_format() {
+    // `decode` under a named zone is the single-format path; a naive wall-clock
+    // that lands in a fold is ambiguous there too.
+    let (out, _) = run(&["decode", "fat", "1399262144", "--tz", "America/New_York"]);
+    assert!(
+        out.contains("fall-back fold") && out.contains("2021-11-07T06:30:00Z"),
+        "decode must carry the fold note: {out}"
+    );
+}
+
+#[test]
+fn scan_flags_the_dst_fold_for_a_naive_format() {
+    // `scan` is the bulk path and the lens overlay's backend; it must not drop
+    // the ambiguity either.
+    let (out, _) = run(&["scan", "1399262144", "--tz", "America/New_York"]);
+    assert!(
+        out.contains("fall-back fold"),
+        "scan must carry the fold note: {out}"
+    );
+}
+
+#[test]
+fn decode_flags_a_spring_forward_gap() {
+    // HFS 3729983400 = 2022-03-13 02:30:00 (naive, seconds since 1904) — a wall
+    // time that never existed in New York (clocks jump 02:00 EST -> 03:00 EDT).
+    let (out, _) = run(&["decode", "hfs", "3729983400", "--tz", "America/New_York"]);
+    assert!(
+        out.contains("NONEXISTENT") && out.contains("spring-forward"),
+        "decode must flag the gap: {out}"
+    );
+}
+
+#[test]
 fn decode_wave2_byte_formats_via_cli() {
     // Oracle DATE [120,120,1,1,1,1,1] = 2020-01-01 00:00:00.
     let (out, code) = run(&["decode", "oracle_date", "78780101010101"]);

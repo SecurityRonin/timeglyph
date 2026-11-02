@@ -1389,6 +1389,19 @@ fn datetime_cell(
         ui.set_min_height(row_h(ui));
         if r.local {
             ui.label(datetime());
+            // A naive wall-clock that is ambiguous (fold) or impossible (gap) in
+            // the display zone: the value cannot be placed on a timeline without
+            // a choice, so say so next to it rather than only in a tooltip.
+            if r.dst_note.is_some() {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("⚠ DST")
+                        .font(FontId::proportional(10.0))
+                        .color(pal.amber)
+                        .strong(),
+                )
+                .on_hover_text(r.dst_note.as_deref().unwrap_or_default());
+            }
             ui.add_space(6.0);
             ui.vertical(|ui| {
                 // Tighten the two tag lines: the vertical inherits the grid's

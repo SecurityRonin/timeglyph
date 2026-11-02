@@ -591,30 +591,46 @@ fn render_candidate(c: &Candidate, zone: &RenderZone, style: DateStyle) -> Optio
     }
 }
 
+/// The DST fold/gap note for a naive wall-clock read in a named zone, or `None`
+/// when the wall time is unambiguous (or the zone is UTC / a fixed offset, which
+/// never fold or gap).
+///
+/// A `LocalNaive` value carries no offset, so its rendering stays naive; this
+/// only NOTES the ambiguity as a lead, framed "if …". Shared by every render
+/// path (`identify` text and JSON, `decode`, `scan`) so the warning cannot be
+/// present on one and silently absent on another.
+fn fold_gap_note(
+    tz: timeglyph::TzSemantics,
+    instant: timeglyph::PosixNs,
+    zone: &RenderZone,
+) -> Option<String> {
+    if !matches!(tz, timeglyph::TzSemantics::LocalNaive)
+        || !matches!(zone, RenderZone::Named(_))
+    {
+        return None;
+    }
+    match timeglyph::resolve_local(instant, zone) {
+        timeglyph::LocalResolution::Fold { earlier, later } => Some(format!(
+            "if this wall-clock is in the chosen zone: AMBIGUOUS (DST fall-back fold) \
+             — two instants: {} / {}",
+            earlier.to_rfc3339().unwrap_or_default(),
+            later.to_rfc3339().unwrap_or_default()
+        )),
+        timeglyph::LocalResolution::Gap => Some(
+            "if this wall-clock is in the chosen zone: NONEXISTENT (DST spring-forward \
+             gap) — a correctly-clocked device in this zone cannot have written it"
+                .to_string(),
+        ),
+        timeglyph::LocalResolution::Unique(_) => None,
+    }
+}
+
 fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: DateStyle) {
     for c in cands {
         c.rendered = render_candidate(c, zone, style);
-        // Fold/gap: a LocalNaive wall-clock interpreted IN a named zone is
-        // ambiguous at DST transitions. The rendering stays naive (the value
-        // carried no zone); this only NOTES the fold/gap as a lead, framed "if …".
-        if matches!(zone, RenderZone::Named(_))
-            && timeglyph::format(c.format_id)
-                .is_ok_and(|f| matches!(f.tz, timeglyph::TzSemantics::LocalNaive))
-        {
-            match timeglyph::resolve_local(c.instant, zone) {
-                timeglyph::LocalResolution::Fold { earlier, later } => c.assumptions.push(format!(
-                    "if this wall-clock is in the chosen zone: AMBIGUOUS (DST fall-back fold) \
-                     — two instants: {} / {}",
-                    earlier.to_rfc3339().unwrap_or_default(),
-                    later.to_rfc3339().unwrap_or_default()
-                )),
-                timeglyph::LocalResolution::Gap => c.assumptions.push(
-                    "if this wall-clock is in the chosen zone: NONEXISTENT (DST spring-forward \
-                     gap) — a correctly-clocked device in this zone cannot have written it"
-                        .to_string(),
-                ),
-                timeglyph::LocalResolution::Unique(_) => {}
-            }
+        let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+        if let Some(note) = fold_gap_note(tz, c.instant, zone) {
+            c.assumptions.push(note);
         }
     }
 }
@@ -913,6 +929,11 @@ fn print_decode(
         (timeglyph::datefmt::format_instant(instant, zone, style), "")
     };
     println!("{}  {value}  ->  {rendered}{caveat}", f.id);
+    // A naive wall-clock read in a named zone is ambiguous at a DST transition;
+    // say so here too, not only on the `identify` path.
+    if let Some(note) = fold_gap_note(f.tz, instant, zone) {
+        println!("  ! {note}");
+    }
     EXIT_OK
 }
 
@@ -1063,6 +1084,10 @@ struct ReadingJson<'a> {
     rendered: &'a str,
     score: f64,
     local: bool,
+    /// Present only when the reading is a naive wall-clock that is ambiguous
+    /// (fold) or impossible (gap) in the display zone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dst_note: Option<&'a str>,
 }
 
 /// One scanned value with its ranked readings (a JSONL record for `scan --json`).
@@ -1113,6 +1138,7 @@ fn run_scan(
                         rendered: &r.rendered,
                         score: r.score,
                         local: r.local,
+                        dst_note: r.dst_note.as_deref(),
                     })
                     .collect(),
             };
@@ -1130,6 +1156,9 @@ fn run_scan(
         println!("{}", nr.number);
         for r in &nr.readings {
             println!("    {r}");
+            if let Some(note) = &r.dst_note {
+                println!("      ! {note}");
+            }
         }
     }
     EXIT_OK
@@ -1670,5 +1699,12 @@ fn print_candidates(cands: &[Candidate], zone: &RenderZone, style: DateStyle) {
             rendered.as_deref().unwrap_or("<out of range>"),
             c.label,
         );
+        // A DST fold/gap is the one assumption that changes what the reading
+        // MEANS, so the default human view carries it rather than hiding it
+        // behind `--json`. Other assumptions stay in the JSON.
+        let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+        if let Some(note) = fold_gap_note(tz, c.instant, zone) {
+            println!("         ! {note}");
+        }
     }
 }

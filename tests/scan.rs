@@ -35,6 +35,38 @@ fn trailing_dot_and_dotted_shorts_are_not_floats() {
 }
 
 #[test]
+fn a_naive_reading_in_a_fold_carries_a_dst_note() {
+    // HFS 3719093400 = 2021-11-07 01:30:00 (naive) — a fall-back fold in New
+    // York. The library path (the lens overlay's backend) must surface it.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let r = scan::readings_for("3719093400", 5, &ny);
+    let hfs = r
+        .iter()
+        .find(|x| x.format_id == "hfs")
+        .expect("an hfs reading");
+    let note = hfs.dst_note.as_deref().expect("a fold note");
+    assert!(note.contains("fold"), "{note}");
+}
+
+#[test]
+fn a_naive_reading_in_a_gap_carries_a_dst_note() {
+    // HFS 3729983400 read as 2022-03-13 02:30 is a spring-forward gap in NY.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let r = scan::readings_for("3729983400", 5, &ny);
+    let hfs = r.iter().find(|x| x.format_id == "hfs").unwrap();
+    assert!(hfs.dst_note.is_some(), "a gap note");
+}
+
+#[test]
+fn an_unambiguous_reading_has_no_dst_note() {
+    // A UTC-anchored value is never ambiguous, whatever the display zone.
+    let ny = RenderZone::parse("America/New_York").unwrap();
+    let r = scan::readings_for("1577836800", 5, &ny);
+    let unix = r.iter().find(|x| x.format_id == "unix").unwrap();
+    assert!(unix.dst_note.is_none(), "{:?}", unix.dst_note);
+}
+
+#[test]
 fn readings_for_fractional_float_yields_cocoa_float() {
     let r = scan::readings_for("606940977.71577", 5, &RenderZone::Utc);
     assert!(

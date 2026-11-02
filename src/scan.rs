@@ -36,6 +36,10 @@ pub struct Reading {
     /// The named component scores behind [`score`](Self::score), for a breakdown
     /// tooltip (e.g. `("in_window", 1.0)`).
     pub components: Vec<(&'static str, f64)>,
+    /// A DST fold/gap note when this is a naive wall-clock read in a named zone
+    /// and the wall time is ambiguous (a fall-back fold) or impossible (a
+    /// spring-forward gap). `None` when the reading is unambiguous.
+    pub dst_note: Option<String>,
 }
 
 /// The weekday name of a reading's *displayed* value — parsed from its leading
@@ -283,6 +287,28 @@ fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) ->
         instant: c.instant,
         score: c.score,
         components: c.components,
+        dst_note: dst_note(tz, c.instant, zone),
+    }
+}
+
+/// The DST fold/gap note for a naive wall-clock read in a named zone, or `None`
+/// when the wall time is unambiguous (or the zone is UTC / a fixed offset, which
+/// never fold or gap). Mirrors the CLI's `fold_gap_note` so the overlay and the
+/// console cannot disagree about whether a reading is ambiguous.
+fn dst_note(tz: TzSemantics, instant: PosixNs, zone: &RenderZone) -> Option<String> {
+    if !matches!(tz, TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
+        return None;
+    }
+    match crate::resolve_local(instant, zone) {
+        crate::LocalResolution::Fold { earlier, later } => Some(format!(
+            "DST fall-back fold: this wall time occurred twice ({} / {})",
+            earlier.to_rfc3339().unwrap_or_default(),
+            later.to_rfc3339().unwrap_or_default()
+        )),
+        crate::LocalResolution::Gap => Some(
+            "DST spring-forward gap: this wall time never existed in the zone".to_string(),
+        ),
+        crate::LocalResolution::Unique(_) => None,
     }
 }
 
