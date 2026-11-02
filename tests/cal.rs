@@ -148,7 +148,10 @@ fn a_transition_at_local_midnight_is_marked_on_the_day_it_starts() {
     // The jump happens AT local midnight of the 6th, so the 6th is the gap day.
     let d = zoned(2026, 9, 6, "America/Santiago");
     assert_eq!(d.offset_start_seconds, -10_800, "the day starts in -03");
-    assert_eq!(d.wall_day_seconds, 82_800, "23 h: 00:00-01:00 never happened");
+    assert_eq!(
+        d.wall_day_seconds, 82_800,
+        "23 h: 00:00-01:00 never happened"
+    );
     let t = d
         .dst_transition
         .expect("a transition at local midnight must be reported");
@@ -176,7 +179,10 @@ fn a_midnight_transition_is_not_double_counted_on_the_previous_day() {
     // there. (Santiago 2026-09-05 runs 00:00-04 to 00:00-04, a full 24 h.)
     let d = zoned(2026, 9, 5, "America/Santiago");
     assert_eq!(d.offset_start_seconds, -14_400);
-    assert_eq!(d.offset_end_seconds, -14_400, "the day ends before the jump");
+    assert_eq!(
+        d.offset_end_seconds, -14_400,
+        "the day ends before the jump"
+    );
     assert_eq!(d.wall_day_seconds, 86_400);
     assert!(
         d.dst_transition.is_none(),
@@ -201,7 +207,9 @@ fn a_non_dst_offset_change_is_not_labelled_dst() {
     // zdump -v America/Caracas: 2007-12-09 -04 -> -04:30, isdst=0 on BOTH sides.
     // Venezuela moved its standard offset; no daylight saving was involved.
     let d = zoned(2007, 12, 9, "America/Caracas");
-    let t = d.dst_transition.expect("the offset change is still reported");
+    let t = d
+        .dst_transition
+        .expect("the offset change is still reported");
     assert_eq!(
         t.kind, "offset",
         "a standard-offset change is not a DST gap/fold"
@@ -214,7 +222,9 @@ fn a_permanent_dst_repeal_is_not_labelled_dst() {
     // zdump -v Europe/Moscow: 2014-10-26 +04 -> +03, isdst=0 on both sides
     // (Russia abandoned permanent summer time; this is not a fall-back fold).
     let d = zoned(2014, 10, 26, "Europe/Moscow");
-    let t = d.dst_transition.expect("the offset change is still reported");
+    let t = d
+        .dst_transition
+        .expect("the offset change is still reported");
     assert_eq!(t.kind, "offset");
 }
 

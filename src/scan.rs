@@ -305,9 +305,9 @@ fn dst_note(tz: TzSemantics, instant: PosixNs, zone: &RenderZone) -> Option<Stri
             earlier.to_rfc3339().unwrap_or_default(),
             later.to_rfc3339().unwrap_or_default()
         )),
-        crate::LocalResolution::Gap => Some(
-            "DST spring-forward gap: this wall time never existed in the zone".to_string(),
-        ),
+        crate::LocalResolution::Gap => {
+            Some("DST spring-forward gap: this wall time never existed in the zone".to_string())
+        }
         crate::LocalResolution::Unique(_) => None,
     }
 }

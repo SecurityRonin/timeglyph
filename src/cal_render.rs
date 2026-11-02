@@ -165,11 +165,10 @@ pub fn render_month_text_with_calendars(
 
     let mut result = grid.join("\n") + "\n";
 
-    result
-        .push_str(
-            "\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   \
+    result.push_str(
+        "\n  * today   ^ DST gap   v DST fold   + leap second   e epoch   \
              ~ rollover/offset\n",
-        );
+    );
 
     // Overlay footer: the month's alternative calendars and moon, from a
     // representative mid-month day (facts beside the seasonal "logo" above).

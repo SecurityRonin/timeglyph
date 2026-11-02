@@ -604,9 +604,7 @@ fn fold_gap_note(
     instant: timeglyph::PosixNs,
     zone: &RenderZone,
 ) -> Option<String> {
-    if !matches!(tz, timeglyph::TzSemantics::LocalNaive)
-        || !matches!(zone, RenderZone::Named(_))
-    {
+    if !matches!(tz, timeglyph::TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
         return None;
     }
     match timeglyph::resolve_local(instant, zone) {

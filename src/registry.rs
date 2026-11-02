@@ -615,7 +615,7 @@ fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
 /// and the tens digit, the high nibble the units digit. The magnitude is in
 /// quarter-hours, so the offset is `quarters * 900` seconds.
 fn gsm_offset_ns(v: u64) -> Result<i128, ChronoError> {
-    let octet = ((v >> 0) & 0xFF) as u8;
+    let octet = (v & 0xFF) as u8;
     let low = octet & 0x0F;
     let negative = low & 0b1000 != 0;
     let tens = i32::from(low & 0b0111);
