@@ -125,7 +125,22 @@ pub fn identify(value: &str) -> Vec<Candidate> {
 /// undecodable value yields `"[]"`.
 #[must_use]
 pub fn identify_json(value: &str) -> String {
-    serde_json::to_string(&identify(value))
+    let mut cands = identify(value);
+    // A `LocalNaive` format (FAT, exFAT, HFS, …) stores a zone-less wall-clock.
+    // Its `rendered` is built from `to_rfc3339`, which appends `Z` — asserting a
+    // UTC anchor the value never carried. A consumer (an LLM, a binding) cannot
+    // tell that `Z` from a real one, so strip it here, matching the CLI's
+    // `--json` path, which renders naive values without a designator.
+    for c in &mut cands {
+        if let Ok(f) = crate::format(c.format_id) {
+            if matches!(f.tz, TzSemantics::LocalNaive) {
+                if let Some(r) = c.rendered.as_mut() {
+                    r.truncate(r.trim_end_matches('Z').len());
+                }
+            }
+        }
+    }
+    serde_json::to_string(&cands)
         // cov:unreachable: Candidate serialization is infallible (no fallible
         // types); the fallback is a kept defensive arm, never taken.
         .unwrap_or_else(|_| "[]".to_owned())

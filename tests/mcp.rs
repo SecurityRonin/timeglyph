@@ -40,6 +40,44 @@ fn tools_list_advertises_identify_and_explain() {
 }
 
 #[test]
+fn identify_does_not_stamp_a_naive_wall_clock_as_utc() {
+    // A FAT/exFAT value is a zone-less wall-clock. Serialising it with a `Z`
+    // asserts a UTC anchor the value never carried — and an LLM consuming this
+    // tool cannot tell that `Z` from a real one. The CLI's `--json` path already
+    // renders it without a designator; the MCP path must agree.
+    let req = r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"identify","arguments":{"value":"1399262144"}}}"#;
+    let v = json(&handle(req).unwrap());
+    let text = v["result"]["content"][0]["text"].as_str().unwrap();
+    let readings: Value = serde_json::from_str(text).unwrap();
+    let fat = readings
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["format_id"] == "fat")
+        .expect("a fat reading");
+    assert_eq!(
+        fat["rendered"], "2021-11-07T01:30:00",
+        "a naive wall-clock must carry no zone designator"
+    );
+}
+
+#[test]
+fn identify_keeps_the_utc_designator_for_a_utc_anchored_value() {
+    // Control: a Unix timestamp IS UTC-anchored, so it keeps its `Z`.
+    let req = r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"identify","arguments":{"value":"1577836800"}}}"#;
+    let v = json(&handle(req).unwrap());
+    let text = v["result"]["content"][0]["text"].as_str().unwrap();
+    let readings: Value = serde_json::from_str(text).unwrap();
+    let unix = readings
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["format_id"] == "unix")
+        .expect("a unix reading");
+    assert_eq!(unix["rendered"], "2020-01-01T00:00:00Z");
+}
+
+#[test]
 fn tools_call_identify_returns_the_readings_matching_the_library() {
     let req = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"identify","arguments":{"value":"1577836800"}}}"#;
     let v = json(&handle(req).unwrap());
