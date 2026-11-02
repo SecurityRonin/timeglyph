@@ -527,7 +527,22 @@ pub fn inspect_text_opts(
             .into_iter()
             .take(max_per_number)
             .collect();
-        if !readings.is_empty() {
+        if readings.is_empty() {
+            continue;
+        }
+        // A token the numeric pass already emitted (an all-digit run is both a
+        // number and a possible ASN.1 time) must stay ONE record: merge the
+        // string readings into it, ranked, rather than emitting a second record
+        // with the same `number` — which also doubled the per-value limit.
+        if let Some(existing) = out.iter_mut().find(|nr| nr.number == cand) {
+            existing.readings.extend(readings);
+            existing.readings.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            existing.readings.truncate(max_per_number);
+        } else {
             out.push(NumberReadings {
                 number: cand,
                 readings,

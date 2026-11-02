@@ -893,3 +893,36 @@ fn cal_color_is_pipe_safe() {
     let (json, _) = run(&["cal", "2016-12", "--json"]);
     assert!(!json.contains('\x1b'), "no ANSI in --json");
 }
+
+#[test]
+fn a_date_only_value_gets_no_time_specific_gap_warning() {
+    // `2026-249` is 2026-09-06, a date that plainly exists. Its midnight is
+    // synthesised, and Santiago's DST gap happens to fall at midnight that day —
+    // so warning that a device "cannot have written it" would be false.
+    let (out, _) = run(&["identify", "2026-249", "--tz", "America/Santiago"]);
+    assert!(
+        !out.contains("NONEXISTENT"),
+        "a date-only value must not get a time-specific gap warning: {out}"
+    );
+}
+
+#[test]
+fn a_gap_caused_by_a_standard_offset_change_is_classified_correctly() {
+    // Moscow 1992-01-19: +02 -> +03 with isdst=0 on both sides. The wall time
+    // 02:30 never existed, but the cause is a standard-offset move, not DST.
+    let (out, _) = run(&["identify", "1992:01:19 02:30:00", "--tz", "Europe/Moscow"]);
+    assert!(out.contains("NONEXISTENT"), "{out}");
+    assert!(
+        out.contains("standard-offset change"),
+        "the cause is a standard-offset move: {out}"
+    );
+}
+
+#[test]
+fn scan_emits_one_record_per_value() {
+    // An all-digit run is both a number and a possible ASN.1 time; it must stay
+    // ONE record, not two with the same `number`.
+    let (out, _) = run(&["scan", "20211107013000", "--json"]);
+    let records = out.lines().filter(|l| l.contains("\"number\"")).count();
+    assert_eq!(records, 1, "one record per value: {out}");
+}

@@ -56,7 +56,20 @@ pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCau
             tz.following(earlier).next()?.timestamp().as_nanosecond()
         }
         jiff::tz::AmbiguousOffset::Gap { .. } => {
-            tz.following(ts).next()?.timestamp().as_nanosecond()
+            // The gap's transition is the one that SKIPPED this wall time. It
+            // lies at or before the wall time re-expressed at the pre-transition
+            // offset, so search from a day earlier and take the first transition
+            // whose jump spans the wall time. Searching from `ts` (the wall time
+            // read as UTC) can land past the real transition — Moscow's 1992
+            // +02 -> +03 jump is at 00:00Z, before the 02:30 the wall time reads
+            // as, so a forward search from `ts` skipped it entirely.
+            let probe =
+                jiff::Timestamp::from_nanosecond(ts.as_nanosecond() - 86_400_000_000_000).ok()?;
+            tz.following(probe)
+                .take_while(|t| t.timestamp() <= ts)
+                .last()?
+                .timestamp()
+                .as_nanosecond()
         }
         jiff::tz::AmbiguousOffset::Unambiguous { .. } => return None,
     };

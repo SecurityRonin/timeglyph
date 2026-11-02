@@ -585,14 +585,19 @@ fn transition_in_day(
     let before = tz.to_offset_info(probe);
     let offset_moved = before.offset() != t.offset();
     let dst_flipped = before.dst() != t.dst();
-    let kind = match (offset_moved, dst_flipped) {
+    let renamed = before.abbreviation() != t.abbreviation();
+    let kind = match (offset_moved, dst_flipped, renamed) {
+        // Nothing observable changed: the tzdb records a transition record with
+        // identical offset, DST flag and abbreviation (Asia/Kathmandu 2038-01-19
+        // is one). Reporting it would invent an event.
+        (false, false, false) => return None,
         // Neither the offset nor the DST flag moved: only the zone's name
         // changed (Nome's YST -> AKST in 1983). Nothing about the clock did.
-        (false, false) => "abbreviation",
-        (false, true) => "dst-flag",
-        (true, true) if t.offset() > before.offset() => "gap",
-        (true, true) => "fold",
-        (true, false) => "offset",
+        (false, false, true) => "abbreviation",
+        (false, true, _) => "dst-flag",
+        (true, true, _) if t.offset() > before.offset() => "gap",
+        (true, true, _) => "fold",
+        (true, false, _) => "offset",
     };
     Some(DstTransition {
         kind: kind.to_string(),

@@ -67,7 +67,7 @@ fn lane_size(lane: &str) -> usize {
         // A TP-SCTS is exactly 7 bytes; the 8-byte default would select one byte
         // past the field (and past EOF for an exactly 7-byte input).
         7
-    } else if lane.contains("u32") || lane.contains("FAT") {
+    } else if lane.contains("u32") || lane.contains("i32") || lane.contains("FAT") {
         4
     } else {
         8

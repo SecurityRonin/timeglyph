@@ -52,6 +52,12 @@ pub struct Candidate {
     /// forensicnomicon's `serde` feature, which this crate does not enable.
     #[serde(skip)]
     pub tz: TzSemantics,
+    /// True when the source carried a DATE but no time of day (ISO ordinal and
+    /// week dates). The midnight is synthesised, so a DST gap at midnight is a
+    /// property of the invented time, not of the evidence — the fold/gap note
+    /// must not claim a device "cannot have written" a date that plainly exists.
+    #[serde(skip)]
+    pub date_only: bool,
 }
 
 /// Byte order of a value observed on disk — supplied via [`InterpretContext`] so
@@ -245,6 +251,7 @@ fn build_candidate_float(f: &Format, value: f64) -> Option<Candidate> {
         assumptions,
         sentinel: false,
         tz: f.tz,
+        date_only: false,
     })
 }
 
@@ -380,6 +387,7 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
         assumptions,
         sentinel: sentinel.is_some(),
         tz: f.tz,
+        date_only: false,
     })
 }
 
@@ -884,6 +892,7 @@ fn systemtime_candidate(b: &[u8]) -> Option<Candidate> {
         instant,
         "decoded as a 16-byte SYSTEMTIME struct (UTC unless the source noted local)",
         TzSemantics::Utc,
+        false,
     ))
 }
 
@@ -962,6 +971,7 @@ fn all_ones_sentinel() -> Candidate {
         ],
         sentinel: true,
         tz: TzSemantics::Utc,
+        date_only: false,
     }
 }
 
@@ -987,6 +997,9 @@ struct StringFormat {
     /// How the parsed value relates to UTC. A form that stores no offset (EXIF)
     /// is a wall-clock, not an instant, and must not be zone-shifted.
     tz: TzSemantics,
+    /// True when the form carries a date but no time of day, so the midnight is
+    /// synthesised and a DST gap at midnight is not evidence about the source.
+    date_only: bool,
 }
 
 /// The registry of fixed-interpretation string formats, in report order.
@@ -998,6 +1011,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "ULID spec (Crockford base32; 48-bit ms timestamp)",
         note: "parsed as a ULID — the leading 48 bits are milliseconds since the Unix epoch",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_uuid_v1,
@@ -1006,6 +1020,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "RFC 9562 §5.1 (UUIDv1 60-bit Gregorian timestamp)",
         note: "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_uuid_v6,
@@ -1014,6 +1029,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "RFC 9562 §5.6 (UUIDv6 60-bit Gregorian timestamp)",
         note: "parsed as a UUIDv6 — the v1 Gregorian timestamp reordered most-significant-first",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_uuid_v7,
@@ -1022,6 +1038,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "RFC 9562 §5.7 (UUIDv7 48-bit Unix-ms timestamp)",
         note: "parsed as a UUIDv7 — the leading 48 bits are milliseconds since the Unix epoch",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_objectid,
@@ -1030,6 +1047,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "MongoDB ObjectId spec (4-byte big-endian Unix-seconds prefix)",
         note: "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_google_ei,
@@ -1038,6 +1056,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "Google ei URL param (urlsafe base64; first 4 bytes little-endian Unix seconds)",
         note: "parsed as a Google ei= URL parameter — the leading 4 bytes are little-endian Unix seconds",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_clf,
@@ -1046,6 +1065,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "Apache mod_log_config (CLF): dd/Mon/YYYY:HH:MM:SS ±HHMM",
         note: "parsed as an Apache/nginx CLF date-time (offset normalised to UTC)",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_pdf_date,
@@ -1054,6 +1074,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "ISO 32000-1 §7.9.4 (PDF date string)",
         note: "parsed as a PDF metadata date (offset normalised to UTC)",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_rfc2822,
@@ -1062,14 +1083,16 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "RFC 5322 §3.3 (date-time; via jiff)",
         note: "parsed as an RFC 2822 date-time (offset normalised to UTC)",
         tz: TzSemantics::Utc,
+        date_only: false,
     },
     StringFormat {
         parse: parse_exif,
         id: "exif",
         label: "EXIF DateTime (YYYY:MM:DD HH:MM:SS)",
         spec: "CIPA DC-008 (EXIF) DateTime / DateTimeOriginal",
-        note: "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
+        note: "parsed as an EXIF DateTime; NO offset is stored, so this is a wall-clock (usually local time), not a UTC instant",
         tz: TzSemantics::LocalNaive,
+        date_only: false,
     },
     StringFormat {
         parse: parse_iso_ordinal,
@@ -1078,6 +1101,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "ISO 8601 §5.2.2.1 (ordinal date)",
         note: "parsed as an ISO 8601 ordinal date (day-of-year); no time or offset is stored, so this is a wall-clock",
         tz: TzSemantics::LocalNaive,
+        date_only: true,
     },
     StringFormat {
         parse: parse_iso_week,
@@ -1086,6 +1110,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         spec: "ISO 8601 §5.2.3 (week date)",
         note: "parsed as an ISO 8601 week date; no time or offset is stored, so this is a wall-clock",
         tz: TzSemantics::LocalNaive,
+        date_only: true,
     },
 ];
 
@@ -1102,7 +1127,13 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
     for f in STRING_FORMATS {
         if let Some(instant) = (f.parse)(s) {
             out.push(string_candidate(
-                f.id, f.label, f.spec, instant, f.note, f.tz,
+                f.id,
+                f.label,
+                f.spec,
+                instant,
+                f.note,
+                f.tz,
+                f.date_only,
             ));
         }
     }
@@ -1157,6 +1188,7 @@ fn push_jwt(s: &str, out: &mut Vec<Candidate>) {
                 inst,
                 note,
                 TzSemantics::Utc,
+                false,
             ));
         }
     }
@@ -1192,6 +1224,7 @@ fn push_iso8601(s: &str, out: &mut Vec<Candidate>) {
             PosixNs(ts.as_nanosecond()),
             "parsed as an ISO 8601 / RFC 3339 string (offset normalised to UTC)",
             TzSemantics::Utc,
+            false,
         ));
     }
 }
@@ -1222,6 +1255,7 @@ fn push_dmtf(s: &str, out: &mut Vec<Candidate>) {
         instant,
         note,
         tz,
+        false,
     ));
 }
 
@@ -1241,6 +1275,7 @@ fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
             } else {
                 TzSemantics::LocalNaive
             },
+            false,
         ));
     }
     if let Some((instant, had_tz)) = parse_asn1_utctime(s) {
@@ -1258,6 +1293,7 @@ fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
             } else {
                 TzSemantics::LocalNaive
             },
+            false,
         ));
     }
 }
@@ -1270,6 +1306,13 @@ fn parse_iso_ordinal(s: &str) -> Option<PosixNs> {
     }
     let year: i16 = y.parse().ok()?;
     let doy: i64 = d.parse().ok()?;
+    // ISO 8601 §5.2.2.1: the ordinal day is 001..=365, or 366 in a leap year.
+    // Without this, `2021-366` and `2021-999` rolled into the NEXT year and were
+    // reported as valid dates.
+    let max_doy = jiff::civil::Date::new(year, 12, 31).ok()?.day_of_year();
+    if !(1..=i64::from(max_doy)).contains(&doy) {
+        return None;
+    }
     let date = jiff::civil::Date::new(year, 1, 1)
         .ok()?
         .checked_add(jiff::Span::new().days(doy - 1))
@@ -1452,7 +1495,7 @@ fn asn1_assumption(kind: &str, had_tz: bool) -> String {
         format!("parsed as ASN.1 {kind}")
     } else {
         format!(
-            "parsed as ASN.1 {kind}; NO timezone designator — assumed UTC, but may be local time"
+            "parsed as ASN.1 {kind}; NO timezone designator, so this is a wall-clock (may be local time), not a UTC instant"
         )
     }
 }
@@ -1466,6 +1509,7 @@ fn string_candidate(
     instant: PosixNs,
     assumption: &str,
     tz: TzSemantics,
+    date_only: bool,
 ) -> Candidate {
     // A naive wall-clock must not carry a `Z`: `to_rfc3339` appends one, which
     // asserts a UTC anchor the value never had. Strip it here so every consumer
@@ -1492,6 +1536,7 @@ fn string_candidate(
         assumptions: vec![assumption.to_string()],
         sentinel: false,
         tz,
+        date_only,
     }
 }
 
@@ -1746,6 +1791,12 @@ fn parse_asn1(s: &str, year_digits: usize) -> Option<(PosixNs, bool)> {
     if len != base + 6 && len != base + 8 && len != base + 10 {
         return None;
     }
+    // X.680 §47.3: UTCTime REQUIRES minutes and a designator (`Z` or an offset).
+    // Only GeneralizedTime may omit them. Accepting `24010112` as a UTCTime
+    // invented a reading for a plain 8-digit count.
+    if year_digits == 2 && (!min_present || !had_tz) {
+        return None;
+    }
     let mi = if min_present {
         digits.get(base + 6..base + 8)?.parse().ok()?
     } else {
@@ -1786,11 +1837,22 @@ fn parse_asn1_utctime(s: &str) -> Option<(PosixNs, bool)> {
 #[must_use]
 pub fn explain(id: &str) -> Option<String> {
     let f = crate::format(id).ok()?;
+    // A `LocalNaive` format's epoch is a civil date, not a UTC instant, so it
+    // must not carry a `Z` (HFS's 1904-01-01 is a wall-clock date).
     let epoch = f
         .decode_int(0)
         .ok()
         .and_then(PosixNs::to_rfc3339)
-        .unwrap_or_else(|| "n/a (packed civil — no linear zero)".to_string());
+        .map_or_else(
+            || "n/a (packed civil — no linear zero)".to_string(),
+            |r| {
+                if matches!(f.tz, TzSemantics::LocalNaive) {
+                    r.trim_end_matches('Z').to_string()
+                } else {
+                    r
+                }
+            },
+        );
     let tick = match f.encoding {
         Encoding::LinearInt { unit, .. }
         | Encoding::LinearFloat { unit, .. }

@@ -59,8 +59,10 @@ direction the offset moved:
   redefining its standard offset (Venezuela 2007, Russia's 2014 repeal).
 - **DST flag change** — the DST flag flipped but the offset did not move, so no
   wall time is skipped or repeated (Lisbon 1992-09-27, WEST→CET, both +01:00).
+- **zone renamed** — neither the offset nor the DST flag moved; only the
+  abbreviation changed (Nome 1983-11-30, YST→AKST).
 
-The last two share the `~` glyph and are never presented as a DST fold.
+The last three share the `~` glyph and are never presented as a DST fold.
 
 A transition landing exactly on local midnight is reported by the day it
 **starts**, since that is the day whose wall clock it changes.

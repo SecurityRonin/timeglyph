@@ -603,8 +603,14 @@ fn fold_gap_note(
     tz: timeglyph::TzSemantics,
     instant: timeglyph::PosixNs,
     zone: &RenderZone,
+    date_only: bool,
 ) -> Option<String> {
     if !matches!(tz, timeglyph::TzSemantics::LocalNaive) || !matches!(zone, RenderZone::Named(_)) {
+        return None;
+    }
+    // A date-only value's midnight is synthesised, so a gap there says nothing
+    // about the source: the date itself plainly exists.
+    if date_only {
         return None;
     }
     // Name the cause: a fold or gap can come from a standard-offset move
@@ -633,7 +639,7 @@ fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: 
     for c in cands {
         c.rendered = render_candidate(c, zone, style);
         let tz = c.tz;
-        if let Some(note) = fold_gap_note(tz, c.instant, zone) {
+        if let Some(note) = fold_gap_note(tz, c.instant, zone, c.date_only) {
             c.assumptions.push(note);
         }
     }
@@ -858,9 +864,12 @@ fn run_decode(format: &str, value: &str, zone: &RenderZone, style: DateStyle) ->
     // Composite (two-word) formats take a "low:high" hex pair, reassembled and
     // decoded via the underlying single-value format's epoch math.
     if let Some((result, render_id)) = decode_composite(format, value) {
+        // Oracle DATE stores no timezone, so it is a wall-clock even though it
+        // renders through the `unix` id.
+        let force_naive = format == "oracle_date";
         return match result {
             Ok(instant) => match timeglyph::format(render_id) {
-                Ok(f) => print_decode(f, value, instant, zone, style),
+                Ok(f) => print_decode_as(f, value, instant, zone, style, force_naive),
                 Err(_) => EXIT_ERR, // cov:unreachable: render_id is always registered
             },
             Err(msg) => {
@@ -922,9 +931,24 @@ fn print_decode(
     zone: &RenderZone,
     style: DateStyle,
 ) -> u8 {
+    print_decode_as(f, value, instant, zone, style, false)
+}
+
+/// [`print_decode`] with an explicit naive override, for a COMPOSITE format whose
+/// own storage is zone-less even though it renders through a UTC-anchored id
+/// (Oracle DATE has no timezone field, but is decoded via the `unix` renderer).
+fn print_decode_as(
+    f: &timeglyph::Format,
+    value: &str,
+    instant: timeglyph::PosixNs,
+    zone: &RenderZone,
+    style: DateStyle,
+    force_naive: bool,
+) -> u8 {
     // A LocalNaive format is a zone-less wall-clock: render it naively (no shift,
     // no offset), same as identify and scan. Only UTC-anchored values shift.
-    let (rendered, caveat) = if matches!(f.tz, timeglyph::TzSemantics::LocalNaive) {
+    let naive = force_naive || matches!(f.tz, timeglyph::TzSemantics::LocalNaive);
+    let (rendered, caveat) = if naive {
         (
             timeglyph::datefmt::format_naive(instant, style),
             "  (LOCAL naive — not UTC)",
@@ -935,7 +959,12 @@ fn print_decode(
     println!("{}  {value}  ->  {rendered}{caveat}", f.id);
     // A naive wall-clock read in a named zone is ambiguous at a DST transition;
     // say so here too, not only on the `identify` path.
-    if let Some(note) = fold_gap_note(f.tz, instant, zone) {
+    let note_tz = if naive {
+        timeglyph::TzSemantics::LocalNaive
+    } else {
+        f.tz
+    };
+    if let Some(note) = fold_gap_note(note_tz, instant, zone, false) {
         println!("  ! {note}");
     }
     EXIT_OK
@@ -1179,6 +1208,7 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
     }
     // Accept a Unix-seconds integer or any self-describing string form (ISO 8601
     // / RFC 3339 / ASN.1) that interpret_string can parse.
+    let mut naive_instant = false;
     let instant = if let Ok(secs) = datetime.parse::<i64>() {
         match timeglyph::format("unix").and_then(|f| f.decode_int(secs)) {
             Ok(i) => i,
@@ -1188,15 +1218,32 @@ fn run_lunisolar(datetime: &str, longitude: Option<f64>, zone: &RenderZone, tz_g
             }
         }
     } else if let Some(c) = interpret::interpret_string(datetime).first() {
+        // A naive wall-clock has no zone: read its civil fields in UTC rather
+        // than shifting it into the display zone, which would move the date.
+        if matches!(c.tz, timeglyph::TzSemantics::LocalNaive) {
+            naive_instant = true;
+        }
         c.instant
     } else {
         eprintln!("error: could not parse {datetime:?} as a datetime (try ISO 8601 / RFC 3339)");
         return EXIT_ERR;
     };
-    match timeglyph::lunisolar::render(instant, zone, longitude) {
+    let render_zone = if naive_instant {
+        &RenderZone::Utc
+    } else {
+        zone
+    };
+    match timeglyph::lunisolar::render(instant, render_zone, longitude) {
         Ok(r) => {
             let leap = if r.is_leap_month { "閏" } else { "" };
-            println!("{}", r.civil_local);
+            // A naive wall-clock carries no zone, so its civil rendering must not
+            // gain a `Z` from the UTC surrogate it was read in.
+            let civil = if naive_instant {
+                r.civil_local.trim_end_matches('Z').to_string()
+            } else {
+                r.civil_local.clone()
+            };
+            println!("{civil}");
             println!(
                 "  lunisolar: {}年 {leap}{}月 {}日",
                 r.lunar_year, r.lunar_month, r.lunar_day
@@ -1707,7 +1754,7 @@ fn print_candidates(cands: &[Candidate], zone: &RenderZone, style: DateStyle) {
         // MEANS, so the default human view carries it rather than hiding it
         // behind `--json`. Other assumptions stay in the JSON.
         let tz = c.tz;
-        if let Some(note) = fold_gap_note(tz, c.instant, zone) {
+        if let Some(note) = fold_gap_note(tz, c.instant, zone, c.date_only) {
             println!("         ! {note}");
         }
     }

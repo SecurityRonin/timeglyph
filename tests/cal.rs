@@ -867,3 +867,16 @@ fn extra_calendars_persian_buddhist_japanese() {
     let card = timeglyph::cal_render::render_day_text(&day(2025, 3, 21));
     assert!(card.contains("Persian") && card.contains("令和"), "{card}");
 }
+
+#[test]
+fn a_no_op_transition_record_is_not_reported() {
+    // Asia/Kathmandu 2038-01-19 has a tzdb transition record with identical
+    // offset (+05:45), DST flag (false) and abbreviation (+0545). Reporting it
+    // would invent an event that changed nothing.
+    let d = zoned(2038, 1, 19, "Asia/Kathmandu");
+    assert!(
+        d.dst_transition.is_none(),
+        "a no-op transition record is not an event: {:?}",
+        d.dst_transition
+    );
+}
