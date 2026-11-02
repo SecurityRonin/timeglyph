@@ -803,8 +803,22 @@ pub fn identify_bytes(bytes: &[u8]) -> Vec<(String, Vec<Candidate>)> {
             ));
         }
     }
+    // GSM TP-SCTS is exactly 7 bytes (6 semi-octet civil fields + the tz octet),
+    // so it fits neither the 4- nor the 8-byte integer lane. Without this the
+    // native on-disk form never reached the GSM decoder at all.
+    if let Some(seven) = bytes.get(..7).and_then(|s| <[u8; 7]>::try_from(s).ok()) {
+        let mut v: u64 = 0;
+        for b in seven {
+            v = (v << 8) | u64::from(b);
+        }
+        if let Ok(n) = i64::try_from(v) {
+            if let Some(c) = decode_one("gsm", n, &InterpretContext::default()) {
+                out.push(("GSM TP-SCTS (7-byte semi-octet)".to_string(), vec![c]));
+            }
+        }
+    }
     // Microsoft 128-bit SYSTEMTIME: 8 little-endian u16 fields
-    // (year, month, dayOfWeek, day, hour, minute, second, milliseconds).
+    // (year, dayOfWeek, day, hour, minute, second, milliseconds).
     if let Some(sixteen) = bytes.get(..16) {
         if let Some(c) = systemtime_candidate(sixteen) {
             out.push((

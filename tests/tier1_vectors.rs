@@ -44,6 +44,23 @@ fn gsm_scts_negative_offset() {
 }
 
 #[test]
+fn gsm_native_seven_byte_hex_reaches_the_decoder() {
+    // A TP-SCTS is exactly 7 bytes. The byte sweep only tried 4- and 8-byte
+    // integers, so the native form never reached the GSM decoder at all — the
+    // published example had to be zero-padded to 8 bytes to decode.
+    let groups = timeglyph::interpret::interpret_hex("70402132522423").unwrap();
+    let gsm = groups
+        .iter()
+        .find(|(label, _)| label.contains("GSM"))
+        .unwrap_or_else(|| panic!("no GSM lane in {groups:?}"));
+    let rendered = gsm.1[0].instant.to_rfc3339().unwrap_or_default();
+    assert!(
+        rendered.starts_with("2007-04-12T15:25:42"),
+        "the 7-byte form decodes with its tz octet: {rendered}"
+    );
+}
+
+#[test]
 fn gsm_rejects_a_malformed_timezone_octet() {
     // The tz octet is BCD: each digit must be 0-9. A units nibble of 0xA-0xF is
     // not a digit, so the octet is malformed and must be rejected rather than
