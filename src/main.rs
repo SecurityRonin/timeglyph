@@ -578,7 +578,7 @@ fn run_identify(
 /// shifting it asserts an instant and a zone the data never carried; a
 /// UTC-anchored value shifts into the display zone when representable there.
 fn render_candidate(c: &Candidate, zone: &RenderZone, style: DateStyle) -> Option<String> {
-    let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+    let tz = c.tz;
     match tz {
         timeglyph::TzSemantics::LocalNaive => {
             Some(timeglyph::datefmt::format_naive(c.instant, style))
@@ -626,7 +626,7 @@ fn fold_gap_note(
 fn render_candidates_in_zone(cands: &mut [Candidate], zone: &RenderZone, style: DateStyle) {
     for c in cands {
         c.rendered = render_candidate(c, zone, style);
-        let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+        let tz = c.tz;
         if let Some(note) = fold_gap_note(tz, c.instant, zone) {
             c.assumptions.push(note);
         }
@@ -1700,7 +1700,7 @@ fn print_candidates(cands: &[Candidate], zone: &RenderZone, style: DateStyle) {
         // A DST fold/gap is the one assumption that changes what the reading
         // MEANS, so the default human view carries it rather than hiding it
         // behind `--json`. Other assumptions stay in the JSON.
-        let tz = timeglyph::format(c.format_id).map_or(timeglyph::TzSemantics::Utc, |f| f.tz);
+        let tz = c.tz;
         if let Some(note) = fold_gap_note(tz, c.instant, zone) {
             println!("         ! {note}");
         }

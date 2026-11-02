@@ -42,6 +42,16 @@ pub struct Candidate {
     /// `i64::MAX`/never) rather than a real instant. Machine-readable so pipelines
     /// can refuse to treat it as authoritative (see also [`Candidate::score`]).
     pub sentinel: bool,
+    /// How this format's value relates to UTC. Carried on the candidate rather
+    /// than looked up from the numeric registry, because string forms (EXIF,
+    /// ASN.1 without a `Z`) are not in that registry and would otherwise default
+    /// to `Utc` — shifting a zone-less wall-clock as though it were an instant.
+    ///
+    /// Not serialised: the JSON already expresses it through `rendered` (a naive
+    /// value carries no designator), and `TzSemantics` is only `Serialize` behind
+    /// forensicnomicon's `serde` feature, which this crate does not enable.
+    #[serde(skip)]
+    pub tz: TzSemantics,
 }
 
 /// Byte order of a value observed on disk — supplied via [`InterpretContext`] so
@@ -132,11 +142,9 @@ pub fn identify_json(value: &str) -> String {
     // tell that `Z` from a real one, so strip it here, matching the CLI's
     // `--json` path, which renders naive values without a designator.
     for c in &mut cands {
-        if let Ok(f) = crate::format(c.format_id) {
-            if matches!(f.tz, TzSemantics::LocalNaive) {
-                if let Some(r) = c.rendered.as_mut() {
-                    r.truncate(r.trim_end_matches('Z').len());
-                }
+        if matches!(c.tz, TzSemantics::LocalNaive) {
+            if let Some(r) = c.rendered.as_mut() {
+                r.truncate(r.trim_end_matches('Z').len());
             }
         }
     }
@@ -229,6 +237,7 @@ fn build_candidate_float(f: &Format, value: f64) -> Option<Candidate> {
         // fraction is a real reading, not an 'unset' marker.
         assumptions,
         sentinel: false,
+        tz: f.tz,
     })
 }
 
@@ -356,6 +365,7 @@ fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Can
         components,
         assumptions,
         sentinel: sentinel.is_some(),
+        tz: f.tz,
     })
 }
 
@@ -845,6 +855,7 @@ fn systemtime_candidate(b: &[u8]) -> Option<Candidate> {
         "[MS-DTYP] §2.3.13 SYSTEMTIME (8× little-endian WORD fields)",
         instant,
         "decoded as a 16-byte SYSTEMTIME struct (UTC unless the source noted local)",
+        TzSemantics::Utc,
     ))
 }
 
@@ -922,6 +933,7 @@ fn all_ones_sentinel() -> Candidate {
                 .to_string(),
         ],
         sentinel: true,
+        tz: TzSemantics::Utc,
     }
 }
 
@@ -944,6 +956,9 @@ struct StringFormat {
     label: &'static str,
     spec: &'static str,
     note: &'static str,
+    /// How the parsed value relates to UTC. A form that stores no offset (EXIF)
+    /// is a wall-clock, not an instant, and must not be zone-shifted.
+    tz: TzSemantics,
 }
 
 /// The registry of fixed-interpretation string formats, in report order.
@@ -954,6 +969,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "ULID (first 48 bits = Unix ms)",
         spec: "ULID spec (Crockford base32; 48-bit ms timestamp)",
         note: "parsed as a ULID — the leading 48 bits are milliseconds since the Unix epoch",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_uuid_v1,
@@ -961,6 +977,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "UUID version 1 (100ns since 1582-10-15)",
         spec: "RFC 9562 §5.1 (UUIDv1 60-bit Gregorian timestamp)",
         note: "parsed as a UUIDv1 — a 60-bit count of 100ns intervals since 1582-10-15 UTC",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_uuid_v6,
@@ -968,6 +985,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "UUID version 6 (reordered 100ns since 1582-10-15)",
         spec: "RFC 9562 §5.6 (UUIDv6 60-bit Gregorian timestamp)",
         note: "parsed as a UUIDv6 — the v1 Gregorian timestamp reordered most-significant-first",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_uuid_v7,
@@ -975,6 +993,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "UUID version 7 (Unix ms in the high 48 bits)",
         spec: "RFC 9562 §5.7 (UUIDv7 48-bit Unix-ms timestamp)",
         note: "parsed as a UUIDv7 — the leading 48 bits are milliseconds since the Unix epoch",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_objectid,
@@ -982,6 +1001,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "MongoDB ObjectId (Unix seconds in the first 4 bytes)",
         spec: "MongoDB ObjectId spec (4-byte big-endian Unix-seconds prefix)",
         note: "parsed as a MongoDB ObjectId — the first 4 bytes are big-endian Unix seconds",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_google_ei,
@@ -989,6 +1009,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "Google ei= URL parameter (Unix seconds in the first 4 bytes)",
         spec: "Google ei URL param (urlsafe base64; first 4 bytes little-endian Unix seconds)",
         note: "parsed as a Google ei= URL parameter — the leading 4 bytes are little-endian Unix seconds",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_clf,
@@ -996,6 +1017,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "Apache/nginx common-log-format date",
         spec: "Apache mod_log_config (CLF): dd/Mon/YYYY:HH:MM:SS ±HHMM",
         note: "parsed as an Apache/nginx CLF date-time (offset normalised to UTC)",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_pdf_date,
@@ -1003,6 +1025,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "PDF metadata date (D:YYYYMMDDHHmmSS)",
         spec: "ISO 32000-1 §7.9.4 (PDF date string)",
         note: "parsed as a PDF metadata date (offset normalised to UTC)",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_dmtf_cim,
@@ -1010,6 +1033,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "DMTF/WMI CIM_DATETIME",
         spec: "DMTF DSP0004 (CIM_DATETIME): yyyymmddHHMMSS.mmmmmm±UUU",
         note: "parsed as a DMTF/WMI CIM datetime — UUU is the offset in minutes east of UTC",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_rfc2822,
@@ -1017,6 +1041,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "RFC 2822 / email date",
         spec: "RFC 5322 §3.3 (date-time; via jiff)",
         note: "parsed as an RFC 2822 date-time (offset normalised to UTC)",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_exif,
@@ -1024,6 +1049,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "EXIF DateTime (YYYY:MM:DD HH:MM:SS)",
         spec: "CIPA DC-008 (EXIF) DateTime / DateTimeOriginal",
         note: "parsed as an EXIF DateTime; NO offset is stored — assumed UTC, but is usually local time",
+        tz: TzSemantics::LocalNaive,
     },
     StringFormat {
         parse: parse_iso_ordinal,
@@ -1031,6 +1057,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "ISO 8601 ordinal date (YYYY-DDD)",
         spec: "ISO 8601 §5.2.2.1 (ordinal date)",
         note: "parsed as an ISO 8601 ordinal date (day-of-year), midnight UTC assumed",
+        tz: TzSemantics::Utc,
     },
     StringFormat {
         parse: parse_iso_week,
@@ -1038,6 +1065,7 @@ const STRING_FORMATS: &[StringFormat] = &[
         label: "ISO 8601 week date (YYYY-Www-D)",
         spec: "ISO 8601 §5.2.3 (week date)",
         note: "parsed as an ISO 8601 week date, midnight UTC assumed",
+        tz: TzSemantics::Utc,
     },
 ];
 
@@ -1052,7 +1080,9 @@ pub fn interpret_string(text: &str) -> Vec<Candidate> {
     push_jwt(s, &mut out);
     for f in STRING_FORMATS {
         if let Some(instant) = (f.parse)(s) {
-            out.push(string_candidate(f.id, f.label, f.spec, instant, f.note));
+            out.push(string_candidate(
+                f.id, f.label, f.spec, instant, f.note, f.tz,
+            ));
         }
     }
     out
@@ -1105,6 +1135,7 @@ fn push_jwt(s: &str, out: &mut Vec<Candidate>) {
                 "RFC 7519 (JWT registered claims)",
                 inst,
                 note,
+                TzSemantics::Utc,
             ));
         }
     }
@@ -1139,6 +1170,7 @@ fn push_iso8601(s: &str, out: &mut Vec<Candidate>) {
             "ISO 8601:2019 / RFC 3339",
             PosixNs(ts.as_nanosecond()),
             "parsed as an ISO 8601 / RFC 3339 string (offset normalised to UTC)",
+            TzSemantics::Utc,
         ));
     }
 }
@@ -1153,6 +1185,12 @@ fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
             "ITU-T X.680 / RFC 5280 §4.1.2.5.2",
             instant,
             &asn1_assumption("GeneralizedTime (4-digit year)", had_tz),
+            // An ASN.1 time with no designator is a wall-clock, not an instant.
+            if had_tz {
+                TzSemantics::Utc
+            } else {
+                TzSemantics::LocalNaive
+            },
         ));
     }
     if let Some((instant, had_tz)) = parse_asn1_utctime(s) {
@@ -1165,6 +1203,11 @@ fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
                 "UTCTime (2-digit year; RFC 5280 pivot: <50 => 20YY, else 19YY)",
                 had_tz,
             ),
+            if had_tz {
+                TzSemantics::Utc
+            } else {
+                TzSemantics::LocalNaive
+            },
         ));
     }
 }
@@ -1372,6 +1415,7 @@ fn string_candidate(
     citation: &'static str,
     instant: PosixNs,
     assumption: &str,
+    tz: TzSemantics,
 ) -> Candidate {
     Candidate {
         format_id,
@@ -1387,6 +1431,7 @@ fn string_candidate(
         ],
         assumptions: vec![assumption.to_string()],
         sentinel: false,
+        tz,
     }
 }
 

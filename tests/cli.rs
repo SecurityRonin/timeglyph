@@ -706,6 +706,32 @@ fn decode_flags_a_spring_forward_gap() {
 }
 
 #[test]
+fn an_exif_wall_clock_is_not_shifted_as_if_it_were_utc() {
+    // EXIF stores no offset (CIPA DC-008): the value is a wall-clock, usually
+    // local. Shifting it into the display zone as though it were UTC fabricates
+    // an instant — 01:30 becomes 21:30 the previous day. It must be shown as the
+    // wall-clock it is, with the fold note when that wall time is ambiguous.
+    let (out, _) = run(&[
+        "identify",
+        "2021:11:07 01:30:00",
+        "--tz",
+        "America/New_York",
+    ]);
+    assert!(
+        out.contains("2021-11-07T01:30:00"),
+        "the wall-clock is shown as stored: {out}"
+    );
+    assert!(
+        !out.contains("2021-11-06T21:30:00"),
+        "it must not be shifted as if UTC: {out}"
+    );
+    assert!(
+        out.contains("fall-back fold"),
+        "and the fold is flagged: {out}"
+    );
+}
+
+#[test]
 fn decode_wave2_byte_formats_via_cli() {
     // Oracle DATE [120,120,1,1,1,1,1] = 2020-01-01 00:00:00.
     let (out, code) = run(&["decode", "oracle_date", "78780101010101"]);

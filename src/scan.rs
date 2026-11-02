@@ -276,7 +276,7 @@ pub fn readings_for_opts(
 /// Build one [`Reading`] from a candidate, rendered in `zone` with `style`
 /// (semantics-aware).
 fn reading_from(c: interpret::Candidate, zone: &RenderZone, style: DateStyle) -> Reading {
-    let tz = crate::format(c.format_id).map_or(TzSemantics::Utc, |f| f.tz);
+    let tz = c.tz;
     let native = c.rendered.clone().unwrap_or_default();
     let (rendered, local) = render_in_zone(tz, c.instant, &native, zone, style);
     Reading {
