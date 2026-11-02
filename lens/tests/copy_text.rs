@@ -20,6 +20,7 @@ fn reading(rendered: &str, instant_ns: i128, local: bool) -> Reading {
         instant: PosixNs(instant_ns),
         score: 1.0,
         components: vec![],
+        dst_note: None,
     }
 }
 
