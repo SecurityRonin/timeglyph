@@ -579,7 +579,13 @@ fn encode_semioctet(instant: PosixNs) -> Result<i64, ChronoError> {
 }
 
 /// GSM 7-byte semi-octet timestamp: per byte nibble-swap → decimal, YY(+2000)
-/// MM DD HH MM SS, then a timezone byte (ignored). UTC.
+/// MM DD HH MM SS, then a timezone octet.
+///
+/// The civil fields are the time **local to the sending entity**, and the tz
+/// octet is the offset from GMT in quarter-hours (3GPP TS 23.040 §9.2.3.11):
+/// "the first bit (bit 3 of the seventh octet) represents the algebraic sign of
+/// this difference (0: positive, 1: negative)", with the remaining bits the tens
+/// and units digits. The offset is subtracted to reach the UTC instant.
 fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
     let v = u64::try_from(value)
         .ok()
@@ -592,14 +598,39 @@ fn decode_gsm(value: i64) -> Result<PosixNs, ChronoError> {
         let byte = ((v >> sh) & 0xFF) as u8;
         semi_pair(byte & 0x0F, byte >> 4)
     };
-    packed_civil(
+    let local = packed_civil(
         2000 + i16::from(semi(48)),
         semi(40),
         semi(32),
         semi(24),
         semi(16),
         semi(8),
-    )
+    )?;
+    Ok(PosixNs(local.0 - gsm_offset_ns(v)?))
+}
+
+/// The UTC offset encoded in a GSM timestamp's tz octet, in nanoseconds.
+///
+/// The octet is a semi-octet pair: the low nibble carries the sign bit (bit 3)
+/// and the tens digit, the high nibble the units digit. The magnitude is in
+/// quarter-hours, so the offset is `quarters * 900` seconds.
+fn gsm_offset_ns(v: u64) -> Result<i128, ChronoError> {
+    let octet = ((v >> 0) & 0xFF) as u8;
+    let low = octet & 0x0F;
+    let negative = low & 0b1000 != 0;
+    let tens = i32::from(low & 0b0111);
+    let units = i32::from(octet >> 4);
+    let quarters = tens * 10 + units;
+    // 79 quarter-hours is the largest representable magnitude (19h45m); anything
+    // above it is a malformed field, not a real offset.
+    if quarters > 79 {
+        return Err(ChronoError::OutOfRange {
+            what: "GSM timezone (quarters of an hour, max 79)",
+            value: i128::from(quarters),
+        });
+    }
+    let seconds = i128::from(quarters) * 900;
+    Ok(if negative { -seconds } else { seconds } * 1_000_000_000)
 }
 
 /// Nibble-swap a 2-digit decimal field (0..=99) into a GSM semi-octet byte:
@@ -627,7 +658,8 @@ fn encode_gsm(instant: PosixNs) -> Result<i64, ChronoError> {
         | (gsm_byte(hour) << 24)
         | (gsm_byte(minute) << 16)
         | (gsm_byte(second) << 8);
-    // Low byte is the timezone; UTC ⇒ 0x00.
+    // Low byte is the timezone; the encoder writes UTC (0x00), so the civil
+    // fields it emits are already UTC and no offset is applied.
     Ok(v as i64)
 }
 

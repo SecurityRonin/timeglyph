@@ -24,9 +24,29 @@ fn gsm_scts_developershome_example() {
     // GSM SMS TP-Service-Centre-Time-Stamp (7 semi-octets, nibble-swapped BCD +
     // quarter-hour tz), per 3GPP TS 23.040 §9.2.3.11. The developershome SMS
     // tutorial publishes the worked example: stored bytes 0x70402132522423 decode
-    // to 2007-04-12 23:25:42 (local, +08). Independent of time-decode.
+    // to 2007-04-12 23:25:42 GMT+8. Independent of time-decode.
     // https://www.developershome.com/sms/cmgrCommand3.asp (§26.2.6.3)
-    assert_vector("gsm", 0x0070_4021_3252_2423, "2007-04-12T23:25:42");
+    //
+    // The value is LOCAL to the sending entity, and the tz octet 0x23 encodes
+    // +32 quarter-hours = +8 h (TS 23.040 §9.2.3.11: "the first bit ... represents
+    // the algebraic sign ... (0: positive, 1: negative)"; low nibble 3 = sign 0 +
+    // tens 3, high nibble 2 = units 2). So the UTC instant is 23:25:42 - 8 h =
+    // 2007-04-12T15:25:42Z. Reading the wall clock as UTC was an 8-hour error.
+    assert_vector("gsm", 0x0070_4021_3252_2423, "2007-04-12T15:25:42");
+}
+
+#[test]
+fn gsm_scts_negative_offset() {
+    // A negative offset: tz octet 0x29 -> low nibble 0b1001 (sign bit set =
+    // negative, tens 1), high nibble 2 (units 2) -> -12 quarter-hours = -3 h.
+    // Wall clock 2007-04-12 23:25:42 at -03:00 is 2007-04-13T02:25:42Z.
+    assert_vector("gsm", 0x0070_4021_3252_2429, "2007-04-13T02:25:42");
+}
+
+#[test]
+fn gsm_scts_zero_offset_is_utc() {
+    // tz octet 0x00 -> +0 quarter-hours: the wall clock IS UTC.
+    assert_vector("gsm", 0x0070_4021_3252_2400, "2007-04-12T23:25:42");
 }
 
 #[test]
