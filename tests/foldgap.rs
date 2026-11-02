@@ -8,7 +8,9 @@
 //! expected instants below are hand-derivable from the documented US transitions.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use timeglyph::{resolve_local, LocalResolution, PosixNs, RenderZone};
+use timeglyph::{
+    ambiguity_cause, resolve_local, AmbiguityCause, LocalResolution, PosixNs, RenderZone,
+};
 
 /// Build a naive instant from whole Unix seconds read as civil-UTC.
 fn naive(secs: i64) -> PosixNs {
@@ -40,6 +42,41 @@ fn spring_forward_wall_time_is_a_gap() {
         resolve_local(naive(1_647_138_600), &ny),
         LocalResolution::Gap
     ));
+}
+
+#[test]
+fn a_fold_has_one_cause_whichever_half_you_ask_about() {
+    // Cancun 1998-10-25: the fold at 07:00Z is a real DST fall-back (CDT -> CST).
+    // The wall time 01:30 occurs twice: 06:30Z (before the transition) and 07:30Z
+    // (after). Asking for the cause at the EARLIER instant must not report the
+    // PREVIOUS transition's character — both halves are the same fold.
+    let zone = RenderZone::parse("America/Cancun").unwrap();
+    let wall = PosixNs(909_279_000i128 * 1_000_000_000); // 1998-10-25T01:30 civil
+    assert!(
+        matches!(resolve_local(wall, &zone), LocalResolution::Fold { .. }),
+        "the wall time is a fold"
+    );
+    assert_eq!(
+        ambiguity_cause(wall, &zone),
+        Some(AmbiguityCause::DaylightSaving),
+        "the fold is a DST fall-back, not a standard-offset move"
+    );
+}
+
+#[test]
+fn a_fold_from_a_standard_offset_move_is_classified_as_such() {
+    // Caracas 2007-12-09: -04 -> -04:30 with isdst=0 on both sides. The wall time
+    // 02:45 is ambiguous, but no daylight saving was involved.
+    let zone = RenderZone::parse("America/Caracas").unwrap();
+    let wall = PosixNs(1_197_168_300i128 * 1_000_000_000); // 2007-12-09T02:45 civil
+    assert!(matches!(
+        resolve_local(wall, &zone),
+        LocalResolution::Fold { .. }
+    ));
+    assert_eq!(
+        ambiguity_cause(wall, &zone),
+        Some(AmbiguityCause::StandardOffset)
+    );
 }
 
 #[test]

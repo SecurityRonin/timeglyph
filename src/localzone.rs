@@ -26,23 +26,44 @@ pub enum AmbiguityCause {
     StandardOffset,
 }
 
-/// Classify the transition nearest `instant` in `zone` by whether it was a
-/// daylight-saving change. `None` for UTC / fixed zones, which never transition.
+/// Classify the transition that makes the wall time `naive` ambiguous, by whether
+/// it was a daylight-saving change. `None` for UTC / fixed zones (which never
+/// transition) and for a wall time that is not ambiguous.
 ///
-/// Looks at the transition at or before `instant` and compares the tzdb's DST
-/// flag on each side of it.
+/// `naive` is the wall-clock value with its civil fields read as UTC — the same
+/// input [`resolve_local`] takes, NOT one of the two resolved instants. Taking
+/// the last transition before a resolved instant would be wrong for the earlier
+/// half of a fold: the transition that causes the ambiguity lies AFTER it, so
+/// `preceding()` would return the previous, unrelated transition and report its
+/// character instead.
 #[must_use]
-pub fn ambiguity_cause(instant: PosixNs, zone: &RenderZone) -> Option<AmbiguityCause> {
+pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCause> {
     let tz = match zone {
         RenderZone::Utc | RenderZone::Fixed(_) => return None,
         RenderZone::Named(tz) => tz,
     };
-    let ts = jiff::Timestamp::from_nanosecond(instant.0).ok()?;
-    // The transition governing this instant is the last one at or before it.
-    let t = tz.preceding(ts).next()?;
-    let before = jiff::Timestamp::from_nanosecond(t.timestamp().as_nanosecond() - 1).ok()?;
+    let ts = jiff::Timestamp::from_nanosecond(naive.0).ok()?;
+    let civil = jiff::tz::Offset::UTC.to_datetime(ts);
+    let amb = tz.to_ambiguous_timestamp(civil);
+    // The transition instant itself. For a fold it lies BETWEEN the two halves
+    // (not at `later()`, which is the wall time re-expressed after the jump), so
+    // it is found by stepping forward from the earlier half. For a gap it is the
+    // first transition at or after the wall time.
+    let at = match amb.offset() {
+        jiff::tz::AmbiguousOffset::Fold { .. } => {
+            let earlier =
+                jiff::Timestamp::from_nanosecond(amb.earlier().ok()?.as_nanosecond()).ok()?;
+            tz.following(earlier).next()?.timestamp().as_nanosecond()
+        }
+        jiff::tz::AmbiguousOffset::Gap { .. } => {
+            tz.following(ts).next()?.timestamp().as_nanosecond()
+        }
+        jiff::tz::AmbiguousOffset::Unambiguous { .. } => return None,
+    };
+    let before = jiff::Timestamp::from_nanosecond(at - 1).ok()?;
+    let at_ts = jiff::Timestamp::from_nanosecond(at).ok()?;
     let was_dst = tz.to_offset_info(before).dst();
-    Some(if was_dst == t.dst() {
+    Some(if was_dst == tz.to_offset_info(at_ts).dst() {
         AmbiguityCause::StandardOffset
     } else {
         AmbiguityCause::DaylightSaving
