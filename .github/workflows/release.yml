@@ -1,7 +1,13 @@
 name: Release
 
-# Tag-driven: pushing a `vX.Y.Z` tag is the ONLY thing that builds binaries and
-# cuts a GitHub Release. GitHub's auto source tarball is NOT the release.
+# Tag-driven: a `vX.Y.Z` tag is the ONLY thing that builds binaries and cuts a
+# GitHub Release. GitHub's auto source tarball is NOT the release.
+#
+# The tag is cut by release-plz.yml, signed, right after it publishes the crate
+# from a merged release PR -- so the crate and every binary channel ship from one
+# reviewed decision. The crate itself is published ONLY by release-plz (this
+# workflow's old `publish-crate` job is gone: one owner per channel). Pushing a
+# signed `v*` tag by hand still works as the fallback.
 #
 # Distribution fan-out (Homebrew / apt-Cloudsmith / winget) is wired below but
 # DORMANT until these prerequisites exist — each is gated by a secret and an
@@ -248,28 +254,9 @@ jobs:
   # compile on every target never reaches the registry (a crates.io publish is
   # irreversible — versions can only be yanked, never replaced). Uses the org
   # CARGO_REGISTRY_TOKEN secret; the toolchain matches the rust-toolchain.toml pin.
-  publish-crate:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: dtolnay/rust-toolchain@1.96.0
-      # Idempotent: skip only when this exact version is already on crates.io, so
-      # re-tagging after a partial failure (or to ship a forgotten channel) never
-      # wedges on "already exists" — but a real publish error still fails loud.
-      - name: cargo publish (skip if already published)
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          VER="${GITHUB_REF_NAME#v}"
-          if curl -sf "https://index.crates.io/ti/me/timeglyph" | grep -q "\"vers\":\"$VER\""; then
-            echo "timeglyph $VER already on crates.io — skipping publish"
-          else
-            cargo publish --locked
-          fi
-
-  # Python wheels — built and published on the SAME v* tag as the crate/binaries,
-  # so ONE tag ships every channel (crate + binaries + brew/apt/winget + PyPI).
+  # Python wheels — built and published on the SAME v* tag as the binaries, so
+  # ONE tag ships every non-crate channel (binaries + brew/apt/winget + PyPI);
+  # release-plz has already published the crate before it cuts that tag.
   # A separate py-v* tag used to be required and was silently forgotten at 0.4.0;
   # the sync-version step below stamps bindings/ from the crate so the wheel can't
   # drift (the same stamp ci.yml runs).
