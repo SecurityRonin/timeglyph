@@ -108,3 +108,15 @@ fn fixed_offset_shifts_the_naive_civil_by_the_offset() {
         LocalResolution::Unique(naive(1_623_715_200))
     );
 }
+
+#[test]
+fn ambiguity_cause_is_none_for_zones_that_never_transition() {
+    // UTC and a fixed offset have no transitions, so no wall time is ambiguous
+    // and there is no cause to classify.
+    let wall = naive(1_636_248_600); // 2021-11-07T01:30 civil — a fold in NY
+    assert_eq!(ambiguity_cause(wall, &RenderZone::Utc), None);
+    assert_eq!(
+        ambiguity_cause(wall, &RenderZone::parse("-05:00").unwrap()),
+        None
+    );
+}

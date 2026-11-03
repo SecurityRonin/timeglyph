@@ -141,20 +141,9 @@ pub fn identify(value: &str) -> Vec<Candidate> {
 /// undecodable value yields `"[]"`.
 #[must_use]
 pub fn identify_json(value: &str) -> String {
-    let mut cands = identify(value);
-    // A `LocalNaive` format (FAT, exFAT, HFS, …) stores a zone-less wall-clock.
-    // Its `rendered` is built from `to_rfc3339`, which appends `Z` — asserting a
-    // UTC anchor the value never carried. A consumer (an LLM, a binding) cannot
-    // tell that `Z` from a real one, so strip it here, matching the CLI's
-    // `--json` path, which renders naive values without a designator.
-    for c in &mut cands {
-        if matches!(c.tz, TzSemantics::LocalNaive) {
-            if let Some(r) = c.rendered.as_mut() {
-                r.truncate(r.trim_end_matches('Z').len());
-            }
-        }
-    }
-    serde_json::to_string(&cands)
+    // Naive wall-clocks already carry no `Z`: every constructor renders through
+    // `rfc3339_for`, so there is nothing to correct here.
+    serde_json::to_string(&identify(value))
         // cov:unreachable: Candidate serialization is infallible (no fallible
         // types); the fallback is a kept defensive arm, never taken.
         .unwrap_or_else(|_| "[]".to_owned())
@@ -222,19 +211,28 @@ pub fn interpret_float(value: f64) -> Vec<Candidate> {
     out
 }
 
+/// RFC 3339 rendering of `instant` that respects its tz semantics: a
+/// [`TzSemantics::LocalNaive`] value is a zone-less wall-clock, so it carries NO
+/// `Z` — `to_rfc3339` appends one, which would assert a UTC anchor the value
+/// never had. The single place this rule lives; every constructor and the MCP
+/// `decode` tool go through it so the copies cannot drift. `None` outside the
+/// civil range.
+#[must_use]
+pub(crate) fn rfc3339_for(instant: PosixNs, tz: TzSemantics) -> Option<String> {
+    let r = instant.to_rfc3339()?;
+    Some(if matches!(tz, TzSemantics::LocalNaive) {
+        r.trim_end_matches('Z').to_string()
+    } else {
+        r
+    })
+}
+
 /// Build a scored candidate for one format + float value, or `None` if the value
 /// is not float-decodable under it (non-`LinearFloat` strategy, non-finite, or
 /// out of range) or renders outside the civil range.
 fn build_candidate_float(f: &Format, value: f64) -> Option<Candidate> {
     let instant = f.decode_float(value).ok()?;
-    // A naive wall-clock carries no `Z` (see `string_candidate`).
-    let rendered = instant.to_rfc3339().map(|r| {
-        if matches!(f.tz, TzSemantics::LocalNaive) {
-            r.trim_end_matches('Z').to_string()
-        } else {
-            r
-        }
-    })?;
+    let rendered = rfc3339_for(instant, f.tz)?;
     let components = score_components_float(f, instant);
     let score = overall_score(&components);
     let assumptions = assumptions(f);
@@ -301,14 +299,7 @@ fn prevalence(id: &str) -> f64 {
 /// civil range. Shared by [`interpret_int`] and the per-format hex decoders.
 fn build_candidate(f: &Format, value: i64, ctx: &InterpretContext) -> Option<Candidate> {
     let instant = f.decode_int(value).ok()?;
-    // A naive wall-clock carries no `Z` (see `string_candidate`).
-    let rendered = instant.to_rfc3339().map(|r| {
-        if matches!(f.tz, TzSemantics::LocalNaive) {
-            r.trim_end_matches('Z').to_string()
-        } else {
-            r
-        }
-    })?;
+    let rendered = rfc3339_for(instant, f.tz)?;
     let components = score_components(f, value, instant, ctx);
     let score = overall_score(&components);
     let mut assumptions = assumptions(f);
@@ -837,6 +828,8 @@ pub fn identify_bytes(bytes: &[u8]) -> Vec<(String, Vec<Candidate>)> {
             if let Some(c) = decode_one("gsm", n, &InterpretContext::default()) {
                 out.push(("GSM TP-SCTS (7-byte semi-octet)".to_string(), vec![c]));
             }
+            // cov:unreachable (the `try_from` failure path below): `v` is built
+            // from exactly 7 bytes, so `v < 2^56` and always fits in an `i64`.
         }
     }
     // Microsoft 128-bit SYSTEMTIME: 8 little-endian u16 fields
@@ -1306,11 +1299,9 @@ fn push_asn1(s: &str, out: &mut Vec<Candidate>) {
                 "UTCTime (2-digit year; RFC 5280 pivot: <50 => 20YY, else 19YY)",
                 had_tz,
             ),
-            if had_tz {
-                TzSemantics::Utc
-            } else {
-                TzSemantics::LocalNaive
-            },
+            // `parse_asn1` rejects a UTCTime with no designator (X.680 §47.3), so
+            // `had_tz` is always true here: a UTCTime is always UTC-anchored.
+            TzSemantics::Utc,
             false,
         ));
     }
@@ -1582,16 +1573,7 @@ fn string_candidate(
     tz: TzSemantics,
     date_only: bool,
 ) -> Candidate {
-    // A naive wall-clock must not carry a `Z`: `to_rfc3339` appends one, which
-    // asserts a UTC anchor the value never had. Strip it here so every consumer
-    // of `Candidate.rendered` (not only the JSON wrapper) sees the truth.
-    let rendered = instant.to_rfc3339().map(|r| {
-        if matches!(tz, TzSemantics::LocalNaive) {
-            r.trim_end_matches('Z').to_string()
-        } else {
-            r
-        }
-    });
+    let rendered = rfc3339_for(instant, tz);
     Candidate {
         format_id,
         label,
@@ -1913,17 +1895,8 @@ pub fn explain(id: &str) -> Option<String> {
     let epoch = f
         .decode_int(0)
         .ok()
-        .and_then(PosixNs::to_rfc3339)
-        .map_or_else(
-            || "n/a (packed civil — no linear zero)".to_string(),
-            |r| {
-                if matches!(f.tz, TzSemantics::LocalNaive) {
-                    r.trim_end_matches('Z').to_string()
-                } else {
-                    r
-                }
-            },
-        );
+        .and_then(|i| rfc3339_for(i, f.tz))
+        .unwrap_or_else(|| "n/a (packed civil — no linear zero)".to_string());
     let tick = match f.encoding {
         Encoding::LinearInt { unit, .. }
         | Encoding::LinearFloat { unit, .. }

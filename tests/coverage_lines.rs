@@ -730,3 +730,20 @@ fn a_packed_format_that_rejects_a_cell_both_ways_renders_empty() {
     .unwrap();
     assert_eq!(out, "ts,ts_dttm\n0,\n", "{out}");
 }
+
+#[test]
+fn a_month_grid_paints_a_non_dst_offset_change_in_the_rollover_ink() {
+    use timeglyph::cal::{build_month, WeekStart};
+    use timeglyph::cal_color::ColorMode;
+    use timeglyph::cal_render::render_month_text;
+    // Caracas 2007-12-09 is a standard-offset change (-04 -> -04:30, no DST). Its
+    // grid cell must wear the `~` glyph in the rollover ink (0x61afef), never a
+    // DST gap/fold colour.
+    let car = RenderZone::parse("America/Caracas").unwrap();
+    let m = build_month(2007, 12, &car, WeekStart::Monday).unwrap();
+    let text = render_month_text(&m, None, ColorMode::Truecolor);
+    assert!(
+        text.contains("  9\x1b[38;2;97;175;239m~\x1b[0m"),
+        "the 9th is painted `~` in the rollover ink: {text:?}"
+    );
+}

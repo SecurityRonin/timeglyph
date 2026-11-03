@@ -583,25 +583,46 @@ fn transition_in_day(
         return None;
     }
     let before = tz.to_offset_info(probe);
-    let offset_moved = before.offset() != t.offset();
-    let dst_flipped = before.dst() != t.dst();
-    let renamed = before.abbreviation() != t.abbreviation();
-    let kind = match (offset_moved, dst_flipped, renamed) {
-        // Nothing observable changed: the tzdb records a transition record with
-        // identical offset, DST flag and abbreviation (Asia/Kathmandu 2038-01-19
-        // is one). Reporting it would invent an event.
+    let kind = classify_transition(
+        before.offset().seconds(),
+        t.offset().seconds(),
+        before.dst() != t.dst(),
+        before.abbreviation() != t.abbreviation(),
+    )?;
+    Some(DstTransition {
+        kind: kind.to_string(),
+        at_utc: t.timestamp().to_string(),
+    })
+}
+
+/// Classify a tz transition from what actually changed across it: the UTC
+/// offset (`offset_before` → `offset_after`, seconds), whether the tzdb's DST
+/// flag flipped, and whether the abbreviation changed. These are three
+/// independent facts, and each combination is a different real-world event.
+/// `None` when nothing observable changed.
+///
+/// Pure, so every arm is testable without depending on which records a given
+/// tzdb build happens to contain (the no-op record exists in some builds only).
+#[must_use]
+pub fn classify_transition(
+    offset_before: i32,
+    offset_after: i32,
+    dst_flipped: bool,
+    renamed: bool,
+) -> Option<&'static str> {
+    let offset_moved = offset_before != offset_after;
+    Some(match (offset_moved, dst_flipped, renamed) {
+        // Nothing observable changed: some tzdb builds carry a transition record
+        // with identical offset, DST flag and abbreviation (Asia/Kathmandu
+        // 2038-01-19 in a 2026e build). Reporting it would invent an event.
         (false, false, false) => return None,
         // Neither the offset nor the DST flag moved: only the zone's name
         // changed (Nome's YST -> AKST in 1983). Nothing about the clock did.
         (false, false, true) => "abbreviation",
         (false, true, _) => "dst-flag",
-        (true, true, _) if t.offset() > before.offset() => "gap",
+        (true, true, _) if offset_after > offset_before => "gap",
         (true, true, _) => "fold",
         (true, false, _) => "offset",
-    };
-    Some(DstTransition {
-        kind: kind.to_string(),
-        at_utc: t.timestamp().to_string(),
     })
 }
 

@@ -880,3 +880,39 @@ fn a_no_op_transition_record_is_not_reported() {
         d.dst_transition
     );
 }
+
+#[test]
+fn classify_transition_covers_every_combination() {
+    use timeglyph::cal::classify_transition;
+    // (offset_before, offset_after, dst_flipped, renamed) -> kind
+    assert_eq!(
+        classify_transition(3600, 3600, false, false),
+        None,
+        "no-op record"
+    );
+    assert_eq!(
+        classify_transition(-32400, -32400, false, true),
+        Some("abbreviation"),
+        "Nome 1983: YST -> AKST"
+    );
+    assert_eq!(
+        classify_transition(3600, 3600, true, true),
+        Some("dst-flag"),
+        "Lisbon 1992: WEST -> CET, both +01"
+    );
+    assert_eq!(
+        classify_transition(-18000, -14400, true, true),
+        Some("gap"),
+        "US spring-forward"
+    );
+    assert_eq!(
+        classify_transition(-14400, -18000, true, true),
+        Some("fold"),
+        "US fall-back"
+    );
+    assert_eq!(
+        classify_transition(-14400, -16200, false, true),
+        Some("offset"),
+        "Caracas 2007: -04 -> -04:30, no DST"
+    );
+}

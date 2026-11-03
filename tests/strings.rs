@@ -94,3 +94,19 @@ fn asn1_fraction_without_seconds_is_rejected() {
         .iter()
         .all(|c| c.format_id != "asn1_generalizedtime"));
 }
+
+#[test]
+fn an_iso_ordinal_day_outside_the_year_is_rejected() {
+    // ISO 8601 §5.2.2.1: the ordinal day is 001..=365, or 366 in a leap year.
+    // Out-of-range days used to roll into the next year and read as valid.
+    let ordinal = |s: &str| {
+        interpret::interpret_string(s)
+            .into_iter()
+            .any(|c| c.format_id == "iso_ordinal")
+    };
+    assert!(!ordinal("2021-000"), "day 000 does not exist");
+    assert!(!ordinal("2021-366"), "2021 is not a leap year");
+    assert!(!ordinal("2021-999"), "far out of range");
+    assert!(ordinal("2020-366"), "2020 is a leap year: day 366 exists");
+    assert!(ordinal("2021-365"), "the last day of a common year");
+}

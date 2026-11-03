@@ -65,18 +65,10 @@ fn call_tool(params: Option<&Value>) -> Result<Value, (i64, &'static str)> {
             } else {
                 return Err((-32602, "value is not numeric"));
             };
-            let rendered = inst
-                .ok()
-                .and_then(crate::PosixNs::to_rfc3339)
-                .ok_or((-32602, "value out of decodable range"))?;
-            // A `LocalNaive` format stores a zone-less wall-clock; `to_rfc3339`
-            // appends `Z`, asserting a UTC anchor the value never carried. Strip
-            // it, matching `identify_json` and the CLI.
-            if matches!(f.tz, crate::TzSemantics::LocalNaive) {
-                rendered.trim_end_matches('Z').to_string()
-            } else {
-                rendered
-            }
+            // A naive wall-clock carries no `Z` (see `interpret::rfc3339_for`).
+            inst.ok()
+                .and_then(|i| crate::interpret::rfc3339_for(i, f.tz))
+                .ok_or((-32602, "value out of decodable range"))?
         }
         _ => return Err((-32601, "unknown tool")),
     };

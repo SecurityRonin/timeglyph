@@ -67,6 +67,12 @@ pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCau
             let mut found = None;
             for t in tz.following(probe) {
                 if t.timestamp() > limit {
+                    // cov:unreachable: jiff reported a Gap, so some transition's
+                    // local before/after range contains `civil`; that transition
+                    // lies within (civil - offset_after, civil - offset_before),
+                    // and every tzdb offset is within ±1 day, so it is inside
+                    // [probe, limit] and the loop breaks on it first. Kept so a
+                    // pathological zone cannot spin.
                     break;
                 }
                 let prev =
@@ -77,6 +83,13 @@ pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCau
                 if civil > before_local && civil < after_local {
                     found = Some(t.timestamp().as_nanosecond());
                     break;
+                    // cov:unreachable (the no-match fall-through below): measured
+                    // on the tzdb, no forward gap occurs within 2 days of the
+                    // preceding transition (2,403,715 adjacent pairs checked), and
+                    // the gap's transition lies within ~1.6 days after `probe`, so
+                    // the first transition examined is always the gap's. Kept: a
+                    // future tzdb could add such a pair, and then continuing the
+                    // search is the correct handling.
                 }
             }
             found?

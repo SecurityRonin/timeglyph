@@ -472,3 +472,17 @@ fn a_designator_less_asn1_time_is_scanned_as_a_wall_clock() {
     assert!(asn1.local, "it is a wall-clock");
     assert!(asn1.dst_note.is_some(), "and a fold in New York");
 }
+
+#[test]
+fn a_standard_offset_fold_is_not_attributed_to_dst_in_a_scan() {
+    // HFS 3280013100 = 2007-12-09 02:45 (naive). Caracas moved -04 -> -04:30 that
+    // night with no DST (zdump: isdst=0 both sides), so 02:45 repeats — but the
+    // note must name a standard-offset change, not DST.
+    let car = RenderZone::parse("America/Caracas").unwrap();
+    let r = scan::readings_for("3280013100", 5, &car)
+        .into_iter()
+        .find(|x| x.format_id == "hfs")
+        .expect("an hfs reading");
+    let note = r.dst_note.expect("a fold note");
+    assert!(note.starts_with("standard-offset change"), "{note}");
+}

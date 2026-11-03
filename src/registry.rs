@@ -632,6 +632,10 @@ fn gsm_offset_ns(v: u64) -> Result<i128, ChronoError> {
     // 79 quarter-hours is the largest representable magnitude (19h45m); anything
     // above it is a malformed field, not a real offset.
     if quarters > 79 {
+        // cov:unreachable: `tens` is 3 bits (`low & 0b0111` ≤ 7) and `units`
+        // passed the BCD check above (≤ 9), so `quarters` ≤ 79 by construction.
+        // Kept so a future change to the nibble masks cannot silently admit an
+        // impossible offset.
         return Err(ChronoError::OutOfRange {
             what: "GSM timezone (quarters of an hour, max 79)",
             value: i128::from(quarters),
