@@ -6,6 +6,37 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.8...timeglyph-v0.10.0) - 2026-11-03
+
+### Added
+
+- *(interpret)* decode Google ei microseconds, and caveat its meaning
+
+### Fixed
+
+- *(gitignore)* scope the __pycache__ ignore to scripts/
+- *(coverage-gate)* reject a cov:unreachable marker with no reason (GREEN)
+- *(ci)* give the two new cov:unreachable markers a gate-readable reason
+- *(ci)* restore 100% coverage after the DST/naive-wall-clock landing
+- close the fourth review's findings
+- *(carve)* do not export an unresolved wall-clock as a timeline event
+- close the third review's findings
+- close the remaining naive-wall-clock paths found by the second review
+- classify a fold by the transition between its two halves
+- give the byte sweep a 7-byte GSM lane
+- *(lens)* recompute the DST note when the display zone changes
+- four defects found by the Codex steelman review
+- a zone-less string form is a wall-clock, not a UTC instant
+- *(cal)* a DST-flag flip with an unchanged offset is not a fold
+- *(gsm)* decode the TP-SCTS timezone octet instead of discarding it
+- *(mcp)* stop stamping a naive wall-clock as UTC
+- surface the DST fold/gap note on every render path, not just identify --json
+- *(cal)* report midnight transitions, and stop calling every offset change DST
+
+### Other
+
+- Merge origin/main into fix/dst-transitions
+
 ## [0.9.8](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.7...timeglyph-v0.9.8) - 2026-08-20
 
 ### Fixed
