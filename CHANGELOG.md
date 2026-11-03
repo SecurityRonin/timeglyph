@@ -8,6 +8,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.10.0](https://github.com/SecurityRonin/timeglyph/compare/timeglyph-v0.9.8...timeglyph-v0.10.0) - 2026-11-03
 
+### Added
+
+- *(interpret)* decode Google ei microseconds, and caveat its meaning
+
 ### Fixed
 
 - *(gitignore)* scope the __pycache__ ignore to scripts/
