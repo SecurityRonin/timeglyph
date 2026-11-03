@@ -846,11 +846,7 @@ fn render_readings(
                                     // calendar expansions read it in UTC (its
                                     // civil fields) rather than shifting it into
                                     // the display zone, which would move the date.
-                                    let cal_zone = if r.local {
-                                        &RenderZone::Utc
-                                    } else {
-                                        zone
-                                    };
+                                    let cal_zone = if r.local { &RenderZone::Utc } else { zone };
                                     if cal.show_lunar {
                                         ui.label(""); // col 1 (confidence)
                                         ui.label(""); // col 2 (format)
