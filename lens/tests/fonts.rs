@@ -16,8 +16,8 @@
 //! set drift while the test still read green.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use skrifa::font::Font;
 use timeglyph_lens::fonts;
-use ttf_parser::Face;
 
 /// Which class of face a symbol needs. A glyph is only CHECKABLE when a face of
 /// its class is loaded: asserting a CJK ideograph against a host with no CJK
@@ -54,15 +54,22 @@ fn fallback_fonts_cover_every_ui_symbol() {
     // lets the two disagree: NotoColorEmoji is a CBDT bitmap font, and a parser
     // that declines it would leave the key present, the glyph uncovered, and the
     // test failing for a symbol nothing could have rendered.
-    let faces: Vec<(&str, Face)> = stack
+    let faces: Vec<(&str, Font)> = stack
         .iter()
-        .filter_map(|(key, bytes)| Face::parse(bytes, 0).ok().map(|f| (*key, f)))
+        .filter_map(|(key, bytes)| Font::new(bytes.clone(), 0).map(|f| (*key, f)))
         .collect();
     assert!(
         !faces.is_empty(),
         "loaded fallback bytes did not parse as fonts"
     );
-    let covered = |c: char| faces.iter().any(|(_, f)| f.glyph_index(c).is_some());
+    // skrifa returns None for a code point mapped to glyph 0 (`.notdef`, the
+    // missing-glyph box), so a "covered" symbol here is one that actually
+    // renders — not one that maps to tofu.
+    let covered = |c: char| {
+        faces
+            .iter()
+            .any(|(_, f)| f.charmap().map_unicode(c).is_some())
+    };
     let loaded = |k: &str| faces.iter().any(|(key, _)| key.contains(k));
 
     // (class, is the face for it loaded, what to call it when reporting a skip)

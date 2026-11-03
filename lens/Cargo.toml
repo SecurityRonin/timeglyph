@@ -90,8 +90,10 @@ unsafe_code = "allow"
 
 [dev-dependencies]
 # Read font cmaps to assert the overlay's fallback stack covers every UI symbol
-# (regression guard against tofu). Pure-safe parser; dev-only.
-ttf-parser = "0.25"
+# (regression guard against tofu). Dev-only. skrifa (googlefonts/fontations)
+# replaces ttf-parser, which its author declared unmaintained (RUSTSEC-2026-0192,
+# which names skrifa as the successor).
+skrifa = "0.49"
 # Decode a captured screenshot PNG for the `shotcheck` example (the automated
 # half of GUI screenshot validation). Dev-only + confined to the example, so the
 # decoder never links into the shipped lens binary. png feature only — that is
