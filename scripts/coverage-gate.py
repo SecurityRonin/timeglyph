@@ -22,6 +22,10 @@ Scope (both gates): the crate's own `**/src/**` sources, excluding `tests/` and
 `main.rs` — the Humble-Object CLI shell is exercised by `tests/cli.rs` but not
 gated to 100% (decisions belong in the testable library, not thin glue).
 
+Marker form: `// cov:unreachable: <why this is provably dead>`. The reason must
+follow a colon directly after the marker (the fleet gate's regex, reused
+verbatim); a marker with no reason is BARE and fails rather than exempting.
+
 Marker placement:
   * a **function** marker sits on the `fn`/closure line or up to 2 lines above it
     (so a short `// cov:unreachable: …` comment above the signature counts);
@@ -38,6 +42,11 @@ import sys
 from collections import defaultdict
 
 MARKER = "cov:unreachable"
+# Verbatim from the fleet gate (SecurityRonin/fleet-ci rust-ci.yml), so the two
+# cannot disagree: the reason must follow a colon DIRECTLY after the marker. A
+# match with no reason is a BARE marker -- an unreviewable assertion that a guard
+# is dead -- and fails instead of exempting.
+MARKER_RE = re.compile(r"cov:unreachable(?P<reason>\s*:\s*\S.*)?")
 
 # A function signature bounds the upward marker search: a marker in one dead
 # function must not exempt lines in the next one.
@@ -70,8 +79,12 @@ class Source:
         lines = self.lines(file)
         return lines[line - 1] if 0 <= line - 1 < len(lines) else ""
 
-    def marked_at(self, file: str, line: int) -> bool:
-        return MARKER in self.text(file, line)
+    def marker_at(self, file: str, line: int) -> str | None:
+        """`"ok"` for a justified marker, `"bare"` for one with no reason, else None."""
+        m = MARKER_RE.search(self.text(file, line))
+        if m is None:
+            return None
+        return "ok" if m.group("reason") else "bare"
 
 
 def load_lines(lcov_path: str) -> dict[str, dict[int, int]]:
@@ -90,7 +103,7 @@ def load_lines(lcov_path: str) -> dict[str, dict[int, int]]:
     return per_file
 
 
-def gate_functions(cov_path: str, src: Source) -> tuple[list[str], list[str]]:
+def gate_functions(cov_path: str, src: Source, bare: list[str]) -> tuple[list[str], list[str]]:
     data = json.load(open(cov_path, encoding="utf-8"))
     export = data["data"][0]
     if "functions" not in export:
@@ -122,14 +135,17 @@ def gate_functions(cov_path: str, src: Source) -> tuple[list[str], list[str]]:
         short = f"{file.split('/src/')[-1]}:{line}"
         # The marker may sit on the function/closure line or up to two lines
         # above it, so a short `// cov:unreachable: …` comment block counts.
-        if any(src.marked_at(file, ln) for ln in (line - 2, line - 1, line)):
+        kinds = [src.marker_at(file, ln) for ln in (line - 2, line - 1, line)]
+        if "ok" in kinds:
             exempted.append(short)
+        elif "bare" in kinds:
+            bare.append(short)
         else:
             failing.append(short)
     return failing, exempted
 
 
-def gate_lines(lcov_path: str, src: Source) -> tuple[list[str], list[str]]:
+def gate_lines(lcov_path: str, src: Source, bare: list[str]) -> tuple[list[str], list[str]]:
     failing, exempted = [], []
     for file, hits in load_lines(lcov_path).items():
         if not in_scope(file):
@@ -137,10 +153,10 @@ def gate_lines(lcov_path: str, src: Source) -> tuple[list[str], list[str]]:
         mapped = set(hits)
         covered = {ln for ln, c in hits.items() if c > 0}
         for line in sorted(ln for ln, c in hits.items() if c == 0):
-            found = False
+            found = None
             for probe in range(line, 0, -1):
-                if src.marked_at(file, probe):
-                    found = True
+                found = src.marker_at(file, probe)
+                if found:
                     break
                 text = src.text(file, probe).strip()
                 if FN_SIG.match(text):
@@ -150,7 +166,12 @@ def gate_lines(lcov_path: str, src: Source) -> tuple[list[str], list[str]]:
                 if not (in_region or filler):
                     break  # a covered line, or unmapped code: not the same dead block
             short = f"{file.split('/src/')[-1]}:{line}"
-            (exempted if found else failing).append(short)
+            if found == "ok":
+                exempted.append(short)
+            elif found == "bare":
+                bare.append(short)
+            else:
+                failing.append(short)
     return failing, exempted
 
 
@@ -177,14 +198,24 @@ def main() -> int:
             return 2
 
     src = Source()
-    fn_fail, fn_exempt = gate_functions(cov_path, src)
-    ln_fail, ln_exempt = gate_lines(lcov_path, src)
+    bare: list[str] = []
+    fn_fail, fn_exempt = gate_functions(cov_path, src, bare)
+    ln_fail, ln_exempt = gate_lines(lcov_path, src, bare)
 
     report("functions", fn_fail, fn_exempt)
     print()
     report("lines", ln_fail, ln_exempt)
+    if bare:
+        print(f"\nbare `// cov:unreachable` with no invariant ({len(bare)}):")
+        for b in sorted(bare):
+            print(f"  x {b}")
+        print(
+            "Write `// cov:unreachable: <why this is provably dead>` -- the marker "
+            "asserts a guard cannot be reached, and an assertion with no stated "
+            "reason cannot be reviewed."
+        )
 
-    if fn_fail or ln_fail:
+    if fn_fail or ln_fail or bare:
         print(
             "\nFAIL: cover these, or annotate provably-dead defensive arms with "
             "`// cov:unreachable: <the dominating invariant>`.\n"
