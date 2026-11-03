@@ -32,7 +32,15 @@ allow = [
     "CC0-1.0",
 ]
 confidence-threshold = 0.8
-exceptions = []
+# Scoped, not global. epaint_default_fonts is the egui font bundle that
+# timeglyph-lens ships via eframe's `default_fonts` feature: Noto/Hack/emoji
+# under OFL-1.1 and Ubuntu-Light under the Ubuntu Font Licence 1.0, both of which
+# permit embedding and redistribution. These are the real licences of bytes the
+# lens binary carries, so per ADR-0013 the gate is widened for this one crate
+# rather than the feature dropped. Only reached when checking lens/Cargo.toml.
+exceptions = [
+    { allow = ["OFL-1.1", "Ubuntu-font-1.0"], crate = "epaint_default_fonts" },
+]
 
 # ---------------------------------------------------------------------------
 # Bans — surface duplicate or unwanted crates
@@ -40,6 +48,10 @@ exceptions = []
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# A path dependency carries no version, which `wildcards = "deny"` otherwise
+# rejects. cargo-deny allows it only for `publish = false` crates, so this admits
+# timeglyph-lens -> timeglyph (path = "..") and nothing a crates.io consumer sees.
+allow-wildcard-paths = true
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"

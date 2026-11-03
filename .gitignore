@@ -32,3 +32,6 @@ lcov.info
 
 # macOS Finder metadata
 .DS_Store
+
+# Python bytecode from running scripts/test_*.py
+__pycache__/

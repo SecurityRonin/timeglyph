@@ -158,12 +158,54 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      # BOTH locks. `lens/` is excluded from the workspace and carries its own
-      # Cargo.lock, which this job never looked at -- so it drifted while the
-      # check reported on the root alone and read as covering the repo. A gate
-      # that inspects one of two artifacts is not a gate on the repo.
+      # BOTH committed locks. `lens/` is excluded from the workspace and carries
+      # its own Cargo.lock, which this job once never looked at -- so it drifted
+      # while the check reported on the root alone and read as covering the repo.
+      # (wasm/, fuzz/ and bindings/python/ also have Cargo.locks locally, but
+      # those are gitignored and never committed: CI resolves them fresh, so
+      # there is no committed lock there to go stale.)
       - run: cargo update --locked
       - run: cargo update --locked --manifest-path lens/Cargo.toml
+      # Guard the list: every COMMITTED Cargo.lock must be checked above, so a
+      # lock that starts being committed cannot silently fall outside the gate.
+      # `git ls-files`, not `find`: an ignored local lock is not the repo's.
+      - name: Every committed Cargo.lock is checked above
+        run: |
+          checked=". lens"
+          missing=0
+          while IFS= read -r lock; do
+            dir=$(dirname "$lock")
+            case " $checked " in *" $dir "*) ;; *) echo "::error::$lock is committed but not checked by the freshness job"; missing=1 ;; esac
+          done < <(git ls-files ':(glob)**/Cargo.lock' 'Cargo.lock')
+          exit $missing
+  lens-supply-chain:
+    # lens/ is excluded from the workspace and ships as a binary (release.yml),
+    # but ci.yml's cargo-deny and cargo-vet jobs only ever see the root
+    # workspace -- so the lens dependency graph was never checked by either.
+    # Tools are installed with the same pinned installer the fleet's rust-ci.yml
+    # uses, so lens is judged by the versions that judge root.
+    name: Lens supply chain (deny + vet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: taiki-e/install-action@59012be0884e296ca2da49b530610e72c49039ad # v2.81.6
+        with:
+          tool: cargo-deny,cargo-vet
+      # No --config: cargo-deny discovers ../deny.toml by walking up from
+      # lens/, which keeps this correct whichever side of `check` a given
+      # cargo-deny version wants --config on (that placement changed between
+      # 0.19 and 0.20). The root policy is the single source of truth.
+      - run: cargo deny --manifest-path lens/Cargo.toml --all-features check all
+      - run: cargo vet --locked --manifest-path lens/Cargo.toml
+  gate-script-tests:
+    # scripts/coverage-gate.py mirrors the fleet coverage gate for local runs;
+    # these tests keep its marker rule from drifting from the fleet's again.
+    name: coverage-gate.py tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
   lean-build:
     # Gate: `cargo add timeglyph --no-default-features` must NOT pull in clap,
     # csv, or tracing-subscriber.  Those are CLI-only deps; a library consumer
