@@ -83,8 +83,8 @@ pub fn ambiguity_cause(naive: PosixNs, zone: &RenderZone) -> Option<AmbiguityCau
                 if civil > before_local && civil < after_local {
                     found = Some(t.timestamp().as_nanosecond());
                     break;
-                    // cov:unreachable (the no-match fall-through below): measured
-                    // on the tzdb, no forward gap occurs within 2 days of the
+                    // cov:unreachable: the no-match fall-through below — measured
+                    // on tzdb 2026e, no forward gap occurs within 2 days of the
                     // preceding transition (2,403,715 adjacent pairs checked), and
                     // the gap's transition lies within ~1.6 days after `probe`, so
                     // the first transition examined is always the gap's. Kept: a

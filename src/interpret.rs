@@ -828,7 +828,7 @@ pub fn identify_bytes(bytes: &[u8]) -> Vec<(String, Vec<Candidate>)> {
             if let Some(c) = decode_one("gsm", n, &InterpretContext::default()) {
                 out.push(("GSM TP-SCTS (7-byte semi-octet)".to_string(), vec![c]));
             }
-            // cov:unreachable (the `try_from` failure path below): `v` is built
+            // cov:unreachable: the `try_from` failure path below — `v` is built
             // from exactly 7 bytes, so `v < 2^56` and always fits in an `i64`.
         }
     }
