@@ -33,8 +33,7 @@ lcov.info
 # macOS Finder metadata
 .DS_Store
 
-# Python bytecode from running scripts/test_*.py. Scoped to scripts/ on
-# purpose: a bare `__pycache__/` also matched committed .pyc files under
-# integrations/, making them committed-AND-ignored, which release-plz rejects as
-# an unclean tree (it failed on aab8387).
-/scripts/__pycache__/
+# Python bytecode, anywhere. (Two .pyc files under integrations/ were once
+# committed by accident; with them removed, a repo-wide ignore cannot collide
+# with a committed file, which release-plz rejects as an unclean tree.)
+__pycache__/
