@@ -62,15 +62,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # release-plz regenerates only the ROOT workspace lock. `lens/` is a
-      # separate workspace (excluded because it is Windows-only) with its own
-      # committed Cargo.lock, so after a version bump it still pins the old
-      # `timeglyph` version (a path dep) and the freshness gate's
-      # `cargo update --locked --manifest-path lens/Cargo.toml` fails on the very
-      # next release. Refresh it on the same release PR branch. lens is not
-      # published, so this touches no cargo-vet attestations. Runs only when a
+      # release-plz regenerates only the ROOT workspace lock. `lens/` and `wasm/`
+      # are separate workspaces with their own committed Cargo.lock, so after a
+      # version bump each still pins the old `timeglyph` (a path dep): the
+      # freshness gate fails on it, and wasm-build / the docs.yml deploy refuse
+      # it under --locked. Refresh both on the same release PR branch.
+      #
+      # A FULL `cargo update`, not `-p timeglyph`: freshness requires the lock to
+      # equal what a full resolve produces, and a precise update can re-point
+      # dependents at older versions already in the lock (seen: windows-sys and
+      # heck edges flipping), leaving it stale. A full update can also move
+      # third-party deps; lens has a cargo-vet store, so if it moves a vetted
+      # crate past its pin, the lens supply-chain job flags it on this PR --
+      # intended, rather than shipping unvetted code silently. Runs only when a
       # release PR exists (created or updated).
-      - name: Refresh lens/Cargo.lock on the release PR
+      - name: Refresh lens/ and wasm/ Cargo.lock on the release PR
         if: steps.release-pr.outputs.prs != '' && steps.release-pr.outputs.prs != '[]'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
@@ -82,13 +88,15 @@ jobs:
           fi
           git fetch origin "$branch"
           git checkout "$branch"
-          cargo update --manifest-path lens/Cargo.toml
-          if git diff --quiet -- lens/Cargo.lock; then
-            echo "lens/Cargo.lock already current"
+          for ws in lens wasm; do
+            cargo update --manifest-path "$ws/Cargo.toml"
+          done
+          if git diff --quiet -- lens/Cargo.lock wasm/Cargo.lock; then
+            echo "lens/ and wasm/ Cargo.lock already current"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add lens/Cargo.lock
-            git commit -m "chore: refresh lens/Cargo.lock behind the version bump"
+            git add lens/Cargo.lock wasm/Cargo.lock
+            git commit -m "chore: refresh lens/ and wasm/ Cargo.lock behind the version bump"
             git push origin "HEAD:$branch"
           fi
