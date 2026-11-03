@@ -158,20 +158,20 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      # BOTH committed locks. `lens/` is excluded from the workspace and carries
-      # its own Cargo.lock, which this job once never looked at -- so it drifted
-      # while the check reported on the root alone and read as covering the repo.
-      # (wasm/, fuzz/ and bindings/python/ also have Cargo.locks locally, but
-      # those are gitignored and never committed: CI resolves them fresh, so
-      # there is no committed lock there to go stale.)
+      # EVERY committed lock. `lens/` and `wasm/` are excluded from the
+      # workspace and each carries its own Cargo.lock; this job once looked at
+      # the root alone, and lens drifted while it read as covering the repo.
+      # (fuzz/ and bindings/python/ locks are gitignored and never committed:
+      # CI resolves them fresh, so there is no committed lock there to go stale.)
       - run: cargo update --locked
       - run: cargo update --locked --manifest-path lens/Cargo.toml
+      - run: cargo update --locked --manifest-path wasm/Cargo.toml
       # Guard the list: every COMMITTED Cargo.lock must be checked above, so a
       # lock that starts being committed cannot silently fall outside the gate.
       # `git ls-files`, not `find`: an ignored local lock is not the repo's.
       - name: Every committed Cargo.lock is checked above
         run: |
-          checked=". lens"
+          checked=". lens wasm"
           missing=0
           while IFS= read -r lock; do
             dir=$(dirname "$lock")
@@ -198,6 +198,9 @@ jobs:
       # 0.19 and 0.20). The root policy is the single source of truth.
       - run: cargo deny --manifest-path lens/Cargo.toml --all-features check all
       - run: cargo vet --locked --manifest-path lens/Cargo.toml
+      # wasm/ ships too: its committed lock is the engine the docs.yml
+      # playground deploys. Same root policy, found the same way.
+      - run: cargo deny --manifest-path wasm/Cargo.toml --all-features check all
   gate-script-tests:
     # scripts/coverage-gate.py mirrors the fleet coverage gate for local runs;
     # these tests keep its marker rule from drifting from the fleet's again.
@@ -247,7 +250,9 @@ jobs:
       - name: WASM lib build (wasm32-unknown-unknown, no default features)
         run: cargo build --lib --no-default-features --target wasm32-unknown-unknown
       - name: WASM playground binding build (wasm32)
-        run: cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown
+        # --locked: build from the committed wasm/Cargo.lock, the same graph the
+        # docs.yml playground deploy ships, not a fresh resolve.
+        run: cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown --locked
   python-wheel:
     # Gate: the PyO3 Python bindings build a wheel and its tests pass. Publishing
     # to PyPI is a separate credentialed release step; this proves the wheel is

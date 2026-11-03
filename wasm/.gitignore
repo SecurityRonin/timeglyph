@@ -1,4 +1,7 @@
 /target
 /pkg
 /pkg-node
-Cargo.lock
+# Cargo.lock is committed on purpose: this crate builds the playground that
+# docs.yml deploys, so the shipped engine must come from pinned versions
+# rather than whatever resolves on the day of the deploy. The
+# freshness job keeps it current; do not re-ignore it.
